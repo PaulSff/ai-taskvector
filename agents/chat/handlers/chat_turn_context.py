@@ -1,62 +1,93 @@
 """
-Helpers to turn chat history and user input into model-facing context (no Flet UI).
+Helpers to turn chat history and user input into model-facing context.
 
-Used by agents chat for inject_previous_turn, follow-up chains, and workflow user_message.
+Used by agents chat to inject previous turn.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
+
+from core.schemas.primitives import JsonValue, is_json_object_keyed_dict
+
+_NO_MESSAGE = "(No message provided.)"
 
 
-def normalize_user_message_for_workflow(raw: Any) -> str:
-    """Ensure the user message is a proper string for the workflow (inject_user_message.data)."""
+def normalize_user_message_for_workflow(raw: object) -> str:
+    """Ensure the user message is a proper string for the workflow."""
     if raw is None:
-        return "(No message provided.)"
-    s = raw if isinstance(raw, str) else str(raw)
-    s = s.replace("\x00", "").strip()
-    return s if s else "(No message provided.)"
+        return _NO_MESSAGE
+
+    message = raw if isinstance(raw, str) else str(raw)
+    message = message.replace("\x00", "").strip()
+
+    return message or _NO_MESSAGE
 
 
 def summarize_parsed_edits_for_context(
-    edits: Any,
+    edits: JsonValue,
     *,
     max_items: int = 28,
     max_len: int = 1800,
 ) -> str:
     """
     Compact description of graph edit actions for LLM context.
-    Workflow Designer replies are often only ```json``` blocks; CleanText (via run_clean_text_for_chat)
-    then removes most of it, so the model would otherwise see '(no response)' for the previous turn.
     """
     if not isinstance(edits, list) or not edits:
         return ""
+
     parts: list[str] = []
-    for e in edits[:max_items]:
-        if not isinstance(e, dict):
+
+    for edit in edits[:max_items]:
+        if not is_json_object_keyed_dict(edit):
             continue
-        act = (e.get("action") or "").strip()
-        if act == "add_unit":
-            u_raw = e.get("unit")
-            u = u_raw if isinstance(u_raw, dict) else {}
-            parts.append(f"add_unit {u.get('id', '?')} ({u.get('type', '?')})")
-        elif act == "remove_unit":
-            parts.append(f"remove_unit {e.get('unit_id', '?')}")
-        elif act == "connect":
-            parts.append(f"connect {e.get('from', '?')} -> {e.get('to', '?')}")
-        elif act == "disconnect":
-            parts.append(f"disconnect {e.get('from', '?')} - {e.get('to', '?')}")
-        elif act == "set_params":
-            parts.append(f"set_params {e.get('id', '?')}")
-        elif act == "replace_unit":
-            fu_raw = e.get("find_unit")
-            fu = fu_raw if isinstance(fu_raw, dict) else {}
-            parts.append(f"replace_unit {fu.get('id', '?')}")
-        elif act == "replace_graph":
+
+        action_raw = edit.get("action")
+        action = action_raw.strip() if isinstance(action_raw, str) else ""
+
+        if action == "add_unit":
+            unit_raw = edit.get("unit")
+            unit = (
+                unit_raw
+                if is_json_object_keyed_dict(unit_raw)
+                else {}
+            )
+            parts.append(
+                f"add_unit {unit.get('id', '?')} ({unit.get('type', '?')})"
+            )
+
+        elif action == "remove_unit":
+            parts.append(f"remove_unit {edit.get('unit_id', '?')}")
+
+        elif action == "connect":
+            parts.append(
+                f"connect {edit.get('from', '?')} -> {edit.get('to', '?')}"
+            )
+
+        elif action == "disconnect":
+            parts.append(
+                f"disconnect {edit.get('from', '?')} - {edit.get('to', '?')}"
+            )
+
+        elif action == "set_params":
+            parts.append(f"set_params {edit.get('id', '?')}")
+
+        elif action == "replace_unit":
+            find_unit_raw = edit.get("find_unit")
+            find_unit = (
+                find_unit_raw
+                if is_json_object_keyed_dict(find_unit_raw)
+                else {}
+            )
+            parts.append(f"replace_unit {find_unit.get('id', '?')}")
+
+        elif action == "replace_graph":
             parts.append("replace_graph (full graph)")
-        elif act == "import_workflow":
-            parts.append(f"import_workflow {e.get('source', '?')}")
-        elif act in (
+
+        elif action == "import_workflow":
+            parts.append(f"import_workflow {edit.get('source', '?')}")
+
+        elif action in {
             "search",
             "web_search",
             "browse",
@@ -67,7 +98,6 @@ def summarize_parsed_edits_for_context(
             "report",
             "read_code_block",
             "read_current_workflow",
-        ) or act in (
             "add_todo_list",
             "remove_todo_list",
             "add_task",
@@ -75,22 +105,25 @@ def summarize_parsed_edits_for_context(
             "mark_completed",
             "add_comment",
             "no_edit",
-        ):
-            parts.append(f"{act}")
-        elif act:
-            parts.append(act)
+        } or action:
+            parts.append(action)
+
     if not parts:
         return ""
-    out = "; ".join(parts)
+
+    output = "; ".join(parts)
+
     if len(edits) > max_items:
-        out += f"; … (+{len(edits) - max_items} more)"
-    if len(out) > max_len:
-        out = out[: max_len - 3] + "..."
-    return out
+        output += f"; … (+{len(edits) - max_items} more)"
+
+    if len(output) > max_len:
+        output = output[: max_len - 3] + "..."
+
+    return output
 
 
 async def messages_from_history(
-    history: list[dict[str, Any]],
+    history: list[dict[str, object]],
     *,
     max_turn_pairs: int = 10,
 ) -> list[dict[str, str]]:
@@ -125,7 +158,7 @@ async def messages_from_history(
     return out
 
 
-async def format_previous_turn(history: list[dict[str, Any]]) -> str:
+async def format_previous_turn(history: list[dict[str, object]]) -> str:
     """
     Format the last complete turn (last user + last agent) for the workflow.
     Includes any follow_up_context (RAG, web search, etc.) stored in the agent message meta
@@ -139,15 +172,21 @@ async def format_previous_turn(history: list[dict[str, Any]]) -> str:
     if not history or len(history) < 2:
         return ""
 
-    last_agent: dict[str, Any] | None = None
-    last_user_before: dict[str, Any] | None = None
+    last_agent: dict[str, object] | None = None
+    last_user_before: dict[str, object] | None = None
 
-    for m in reversed(history):
-        role = (m.get("role") or "").strip().lower()
+    for message in reversed(history):
+        role_raw = message.get("role")
+        role = role_raw.strip().lower() if isinstance(role_raw, str) else ""
+
         if role == "agent" and last_agent is None:
-            last_agent = m
-        elif role == "user" and last_agent is not None and last_user_before is None:
-            last_user_before = m
+            last_agent = message
+        elif (
+            role == "user"
+            and last_agent is not None
+            and last_user_before is None
+        ):
+            last_user_before = message
             break
 
     if last_user_before is None or last_agent is None:
@@ -175,8 +214,9 @@ async def format_previous_turn(history: list[dict[str, Any]]) -> str:
 
     if not asst_stripped or asst_stripped.lower() == "(no response)":
         edit_summary = summarize_parsed_edits_for_context(
-            last_agent.get("parsed_edits")
+            cast(JsonValue, last_agent.get("parsed_edits"))
         )
+
         if edit_summary:
             asst_content = (
                 "[Previous agent message was mostly JSON edit blocks.] "
@@ -190,13 +230,29 @@ async def format_previous_turn(history: list[dict[str, Any]]) -> str:
     else:
         asst_content = asst_stripped
 
-    follow_ups = last_agent.get("follow_up_contexts") or (
-        last_agent.get("meta") or {}
-    ).get("follow_up_contexts")
-    if isinstance(follow_ups, list) and follow_ups:
+
+    meta_raw = last_agent.get("meta")
+    meta = (
+        cast(dict[str, object], meta_raw)
+        if isinstance(meta_raw, dict)
+        else {}
+    )
+
+    follow_ups_raw = last_agent.get("follow_up_contexts") or meta.get(
+        "follow_up_contexts"
+    )
+
+    if isinstance(follow_ups_raw, list) and follow_ups_raw:
+        follow_ups = cast(list[object], follow_ups_raw)
+
         context_block = "Context used in that turn:\n" + "\n\n".join(
-            str(c).strip() for c in follow_ups if c
+            str(context).strip()
+            for context in follow_ups
+            if context
         )
+
         asst_content = context_block + "\n\n--- My response ---\n\n" + asst_content
+
+
 
     return f"User: {user_content}\n\nagent: {asst_content}"
