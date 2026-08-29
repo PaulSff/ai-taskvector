@@ -8,26 +8,41 @@ Used in the agent workflow so the runner does not need to compute diff; the work
 
 from __future__ import annotations
 
-from typing import Any
-
 from core.graph.diff import graph_diff as _graph_diff
+from core.schemas import ProcessGraph
 from units.registry import UnitSpec, register_unit
 
-GRAPH_DIFF_INPUT_PORTS = [("prev_graph", "Any"), ("current_graph", "Any")]
+GRAPH_DIFF_INPUT_PORTS = [("prev_graph", "ProcessGraph"), ("current_graph", "ProcessGraph")]
 GRAPH_DIFF_OUTPUT_PORTS = [("diff", "str")]
 
 
+def _as_graph(value: object) -> ProcessGraph | None:
+    if value is None:
+        return None
+
+    if isinstance(value, ProcessGraph):
+        return value
+
+    if isinstance(value, dict):
+        return ProcessGraph.model_validate(value)
+
+    raise TypeError(
+        f"Expected ProcessGraph, mapping, or None; got {type(value).__name__}"
+    )
+
 def _graph_diff_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: dict[str, object],
+    inputs: dict[str, object],
+    state: dict[str, object],
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Compute diff between prev and current graph."""
-    prev = inputs.get("prev_graph")
-    current = inputs.get("current_graph")
-    diff = _graph_diff(prev, current)
-    return ({"diff": diff}, state)
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Compute the structured diff between the previous and current graphs."""
+    prev = _as_graph(inputs.get("prev_graph"))
+    current = _as_graph(inputs.get("current_graph"))
+
+    diff = _graph_diff(prev, current, format="payload")
+
+    return {"diff": diff}, state
 
 
 def register_graph_diff() -> None:

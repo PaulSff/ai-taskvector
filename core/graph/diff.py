@@ -1,246 +1,460 @@
 """
-graph_diff(prev, current) format options:
-    - format="str" (default) returns a semicolon-separated string;
-    - format="array" returns list[str]
+graph_diff(prev, current, format="str") supports three output formats:
 
-If prev is None or current is None, it returns "".
-Otherwise, it builds a list of clause strings and returns "; ".join(clauses).
-A clause is included only if that category difference is detected.
+- format="str" (default) returns a semicolon-separated string.
+- format="array" returns list[str].
+- format="payload" returns a structured dictionary describing all detected changes.
 
-Ordering is the order implemented in the function:
- 1. environment_type clause (optional), Format: `environment_type: {prev_value}->{curr_value}`
- 2. environments clause (optional),  Format: `environments changed`
- 3. top-level units/connections clause(s) (always considered, but only included if there’s a diff), subformats:
-    - `added {N} units: {uid1} ({type1}), {uid2} ({type2})...`
-    - `removed {N} units: {id1}, {id2}, ...`
-    - `updated units: {id1}, {id2}, ...`
-    - `connected {N}: {sig1}, {sig2}, ...`
-    - `disconnected {N}: {sig1}, {sig2}, ...`
- 4. code_blocks clause(s), subformats:
-    - `added code_blocks: {id1}, {id2}, ...`
-    - `removed code_blocks: {id1}, {id2}, ...`
-    - `updated code_blocks: {id1}, {id2}, ...`
- 5. layout clause (optional), Format: `layout changed`
- 6. comments clause(s), subformats:
-    - `added comments: {id1}, {id2}, ...`
-    - `removed comments: {id1}, {id2}, ...`
-    - `updated comments: {id1}, {id2}, ...`
- 7. todo_list clause(s) (only emitted if prev_todo != curr_todo), subformats:
-    - `added todo_list` (if prev_todo is None and curr_todo is not None)
-    - `removed todo_list` (if prev_todo is not None and curr_todo is None)
-    - `todo_list.title: {prev_title}->{curr_title}` (only if both exist and titles differ)
-    - todo task subformats (only if both exist):
-      - `added todo tasks: {task_id1}, {task_id2}, ...`
-      - `removed todo tasks: {task_id1}, {task_id2}, ...`
-      - `updated todo tasks: {task_id1}, {task_id2}, ...`
- 8. origin clause (optional), Format: `origin changed`
- 9. tabs clause(s) (optional; includes per-tab internal unit/connection clauses), subformats:
-    - `added tabs: {tab_id1}, {tab_id2}, ...`
-    - `removed tabs: {tab_id1}, {tab_id2}, ...`
-    - `tab[{tab_id}] meta changed`
-    - per-tab unit/connection subformats (each prefixed with `tab[{tab_id}] `):
-      - `tab[{tab_id}] added {N} units: ...`
-      - `tab[{tab_id}] removed {N} units: ...`
-      - `tab[{tab_id}] updated units: ...`
-      - `tab[{tab_id}] connected {N}: ...`
-      - `tab[{tab_id}] disconnected {N}: ...`
- 10. metadata clause (optional), Format: `metadata changed`
+If prev is None or current is None:
 
+- format="str" returns "".
+- format="array" returns [].
+- format="payload" returns {}.
+
+For string and array formats, the function builds an ordered list of clause strings. A clause is included only when the corresponding difference is detected. The output order is:
+
+1. Environment settings
+
+   - `environment_type: {prev_value}->{curr_value}`
+   - `environments changed`
+   - `keep_alive: {prev_value}->{curr_value}`
+
+2. Top-level units and connections
+
+   - `added {N} units: {id1} ({type1}), {id2} ({type2}), ...`
+   - `removed {N} units: {id1}, {id2}, ...`
+   - `updated units: {id1}, {id2}, ...`
+   - `connected {N}: {sig1}, {sig2}, ...`
+   - `disconnected {N}: {sig1}, {sig2}, ...`
+
+   Connection signatures use the format:
+
+   `{source}->{target}[{source_port}->{target_port}]({connection_type})`
+
+   A missing connection type is rendered as `none`.
+
+3. Code blocks
+
+   - `added code_blocks: {id1}, {id2}, ...`
+   - `removed code_blocks: {id1}, {id2}, ...`
+   - `updated code_blocks: {id1}, {id2}, ...`
+
+4. Layout
+
+   - `layout changed`
+
+5. Comments
+
+   - `added comments: {id1}, {id2}, ...`
+   - `removed comments: {id1}, {id2}, ...`
+   - `updated comments: {id1}, {id2}, ...`
+
+6. Todo lists
+
+   Todo-list clauses are emitted when applicable:
+
+   - `added todo lists: {id1}, {id2}, ...`
+   - `removed todo lists: {id1}, {id2}, ...`
+   - `todo_list[{todo_id}].title: {prev_title}->{curr_title}`
+   - `todo_list[{todo_id}].coordinates: ({prev_x},{prev_y})->({curr_x},{curr_y})`
+   - `added todo tasks ({todo_id}): {task_id1}, {task_id2}, ...`
+   - `removed todo tasks ({todo_id}): {task_id1}, {task_id2}, ...`
+   - `updated todo tasks ({todo_id}): {task_id1}, {task_id2}, ...`
+
+   Todo-list changes are compared by todo-list ID. Existing todo lists are inspected for title, coordinates, and task changes.
+
+7. Tabs
+
+   Tab clauses are emitted only when `previous.tabs != current.tabs`:
+
+   - `added tabs: {tab_id1}, {tab_id2}, ...`
+   - `removed tabs: {tab_id1}, {tab_id2}, ...`
+   - `tab[{tab_id}] meta changed`
+
+   Tab metadata changes include changes to `label` or `disabled`.
+
+   Units and connections within an existing tab are reported using the same formats as top-level graph changes, prefixed with `tab[{tab_id}] `:
+
+   - `tab[{tab_id}] added {N} units: ...`
+   - `tab[{tab_id}] removed {N} units: ...`
+   - `tab[{tab_id}] updated units: ...`
+   - `tab[{tab_id}] connected {N}: ...`
+   - `tab[{tab_id}] disconnected {N}: ...`
+
+8. Origin
+
+   - `origin changed`
+
+9. Metadata
+
+   - `metadata changed`
+
+The `payload` format returns a dictionary with these keys:
+
+- `environment_type_changed`: bool
+- `environments_changed`: bool
+- `keep_alive_changed`: bool
+- `units_added`: list of objects containing `id` and `type`
+- `units_removed`: list[str]
+- `units_updated`: list[str]
+- `connections_added`: list of objects containing `from`, `to`, `from_port`, `to_port`, and `connection_type`
+- `connections_removed`: list of objects containing `from`, `to`, `from_port`, `to_port`, and `connection_type`
+- `code_blocks_added`: list[str]
+- `code_blocks_removed`: list[str]
+- `code_blocks_updated`: list[str]
+- `layout_changed`: bool
+- `comments_added`: list[str]
+- `comments_removed`: list[str]
+- `comments_updated`: list[str]
+- `origin_changed`: bool
+- `todo_lists_added`: list[str]
+- `todo_lists_removed`: list[str]
+- `todo_lists_updated`: list of objects describing title, coordinate, and task changes for each affected existing todo list
+- `tabs_added`: list[str]
+- `tabs_removed`: list[str]
+- `tab_meta_changed`: list[str]
+- `tabs`: dict
+- `metadata_changed`: bool
+
+All collection IDs and change lists are sorted lexicographically. Unit and connection differences are determined by ID and connection signature, respectively. Updates are reported when matching objects differ by equality comparison.
 """
-
 from __future__ import annotations
 
-import json
-from typing import Any, Literal
+from collections.abc import Iterable, Mapping
+from typing import Literal, Protocol, cast
 
-from core.schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import (
+    Connection,
+    ProcessGraph,
+)
 
 DiffFormat = Literal["str", "array", "payload"]
 
-
-def _as_dict(x: ProcessGraph | dict[str, Any] | None) -> dict[str, Any] | None:
-    if x is None:
-        return None
-    if isinstance(x, ProcessGraph):
-        return x.model_dump(by_alias=True)
-    return dict(x)
+class _HasId(Protocol):
+    id: str
 
 
-def _json_dumps(x: Any) -> str:
-    return json.dumps(x, sort_keys=True, default=str, separators=(",", ":"))
+def _collection_by_id[T: _HasId](
+    items: Iterable[T] | None,
+) -> dict[str, T]:
+    return {
+        item.id: item
+        for item in items or []
+    }
+
+def _changed_ids[T: _HasId](
+    previous: Mapping[str, T],
+    current: Mapping[str, T],
+) -> tuple[list[str], list[str], list[str]]:
+    previous_ids = set(previous)
+    current_ids = set(current)
+
+    added = sorted(current_ids - previous_ids)
+    removed = sorted(previous_ids - current_ids)
+    updated = sorted(
+        item_id
+        for item_id in previous_ids & current_ids
+        if previous[item_id] != current[item_id]
+    )
+
+    return added, removed, updated
 
 
-def _norm_obj(x: Any) -> Any:
-    # Recursively normalize dict/list ordering for stable comparisons.
-    if isinstance(x, dict):
-        return {k: _norm_obj(v) for k, v in x.items()}
-    if isinstance(x, list):
-        return [_norm_obj(v) for v in x]
-    return x
+ConnectionSignature = tuple[str, str, str, str, str | None]
 
+def _connection_signature(
+    connection: Connection,
+) -> ConnectionSignature:
+    return (
+        connection.from_id,
+        connection.to_id,
+        connection.from_port,
+        connection.to_port,
+        connection.connection_type,
+    )
 
-def _unit_fingerprint(u: dict[str, Any]) -> str:
-    # Include fields that matter for meaning/roundtrip.
-    keys = [
-        "id",
-        "type",
-        "controllable",
-        "params",
-        "name",
-        "input_ports",
-        "output_ports",
-    ]
-    obj = {k: u.get(k) for k in keys if k in u}
-    # Preserve any extra keys deterministically too.
-    extra = {k: v for k, v in u.items() if k not in obj}
-    if extra:
-        obj["__extra__"] = extra
-    return _json_dumps(_norm_obj(obj))
+def _connection_text(signature: ConnectionSignature) -> str:
+    source, target, source_port, target_port, connection_type = signature
 
+    return (
+        f"{source}->{target}"
+        f"[{source_port}->{target_port}]"
+        f"({connection_type if connection_type is not None else 'none'})"
+    )
 
-def _unit_id(u: Any) -> str | None:
-    if not isinstance(u, dict):
-        return None
-    uid = u.get("id")
-    return None if uid is None else str(uid)
+def _connection_set(
+    graph: ProcessGraph,
+) -> set[ConnectionSignature]:
+    return {
+        _connection_signature(connection)
+        for connection in graph.connections
+    }
 
-
-def _units_by_id(g: dict[str, Any]) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for u in g.get("units") or []:
-        uid = _unit_id(u)
-        if uid is None:
-            continue
-        out[uid] = _unit_fingerprint(u)
-    return out
-
-
-def _conn_signature(c: dict[str, Any]) -> tuple[str, str, str, str, str | None]:
-    # Support both alias keys: "from"/"to" and "from_id"/"to_id".
-    fr = c.get("from", c.get("from_id"))
-    to = c.get("to", c.get("to_id"))
-    fp = c.get("from_port", "0")
-    tp = c.get("to_port", "0")
-    ct = c.get("connection_type", None)
-
-    fr_s = "?" if fr is None else str(fr)
-    to_s = "?" if to is None else str(to)
-    fp_s = "?" if fp is None else str(fp)
-    tp_s = "?" if tp is None else str(tp)
-    return (fr_s, to_s, fp_s, tp_s, None if ct is None else str(ct))
-
-
-def _conn_pretty(sig: tuple[str, str, str, str, str | None]) -> str:
-    a, b, fp, tp, ct = sig
-    ct_s = ct if ct is not None else "none"
-    return f"{a}->{b}[{fp}->{tp}]({ct_s})"
-
-
-def _conns_by_sig(g: dict[str, Any]) -> set[tuple[str, str, str, str, str | None]]:
-    out: set[tuple[str, str, str, str, str | None]] = set()
-    for c in g.get("connections") or []:
-        if isinstance(c, dict):
-            out.add(_conn_signature(c))
-    return out
-
-
-def _graph_diff_for_units_and_conns(
-    prev_g: dict[str, Any], curr_g: dict[str, Any], prefix: str = ""
+def _graph_parts(
+    previous: ProcessGraph,
+    current: ProcessGraph,
+    prefix: str = "",
 ) -> list[str]:
     parts: list[str] = []
 
-    prev_units = _units_by_id(prev_g)
-    curr_units = _units_by_id(curr_g)
+    previous_units = _collection_by_id(previous.units)
+    current_units = _collection_by_id(current.units)
 
-    prev_ids = set(prev_units.keys())
-    curr_ids = set(curr_units.keys())
+    added, removed, updated = _changed_ids(previous_units, current_units)
 
-    added_units = curr_ids - prev_ids
-    removed_units = prev_ids - curr_ids
-    updated_units = {
-        uid for uid in (curr_ids & prev_ids) if prev_units[uid] != curr_units[uid]
-    }
-
-    if added_units:
-        id_to_type = {
-            str(u.get("id")): str(u.get("type") or "?")
-            for u in (curr_g.get("units") or [])
-            if isinstance(u, dict) and u.get("id") is not None
-        }
+    if added:
         parts.append(
-            f"{prefix}added {len(added_units)} units: "
+            f"{prefix}added {len(added)} units: "
             + ", ".join(
-                f"{uid} ({id_to_type.get(uid, '?')})" for uid in sorted(added_units)
+                f"{unit_id} ({current_units[unit_id].type})"
+                for unit_id in added
             )
         )
 
-    if removed_units:
+    if removed:
         parts.append(
-            f"{prefix}removed {len(removed_units)} units: "
-            + ", ".join(sorted(removed_units))
+            f"{prefix}removed {len(removed)} units: "
+            + ", ".join(removed)
         )
 
-    if updated_units:
-        parts.append(f"{prefix}updated units: " + ", ".join(sorted(updated_units)))
-
-    prev_conns = _conns_by_sig(prev_g)
-    curr_conns = _conns_by_sig(curr_g)
-
-    added_conns = curr_conns - prev_conns
-    removed_conns = prev_conns - curr_conns
-
-    if added_conns:
+    if updated:
         parts.append(
-            f"{prefix}connected {len(added_conns)}: "
-            + ", ".join(_conn_pretty(s) for s in sorted(added_conns))
+            f"{prefix}updated units: " + ", ".join(updated)
         )
 
-    if removed_conns:
+    previous_connections = _connection_set(previous)
+    current_connections = _connection_set(current)
+
+    added_connections = sorted(current_connections - previous_connections)
+    removed_connections = sorted(previous_connections - current_connections)
+
+    if added_connections:
         parts.append(
-            f"{prefix}disconnected {len(removed_conns)}: "
-            + ", ".join(_conn_pretty(s) for s in sorted(removed_conns))
+            f"{prefix}connected {len(added_connections)}: "
+            + ", ".join(map(_connection_text, added_connections))
+        )
+
+    if removed_connections:
+        parts.append(
+            f"{prefix}disconnected {len(removed_connections)}: "
+            + ", ".join(map(_connection_text, removed_connections))
         )
 
     return parts
 
 
-def _fingerprint_collection(
-    items: list[Any], key: str, stable_shape: list[str]
-) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for it in items or []:
-        if not isinstance(it, dict):
-            continue
-        if it.get(key) is None:
-            continue
-        # Keep only stable_shape + extras for determinism.
-        obj = {k: it.get(k) for k in stable_shape if k in it}
-        extra = {k: v for k, v in it.items() if k not in obj}
-        if extra:
-            obj["__extra__"] = extra
-        out[str(it.get(key))] = _json_dumps(_norm_obj(obj))
-    return out
+def _diff_collection[T: _HasId](
+    previous: Iterable[T] | None,
+    current: Iterable[T] | None,
+) -> tuple[list[str], list[str], list[str]]:
+    return _changed_ids(
+        _collection_by_id(previous),
+        _collection_by_id(current),
+    )
 
 
+def _diff_todo_lists(
+    prev: ProcessGraph,
+    current: ProcessGraph,
+    payload: dict[str, object],
+    parts: list[str],
+) -> None:
+    previous = {
+        todo.id: todo
+        for todo in prev.todo_lists
+    }
+    current_lists = {
+        todo.id: todo
+        for todo in current.todo_lists
+    }
+
+    previous_ids = set(previous)
+    current_ids = set(current_lists)
+
+    added = sorted(current_ids - previous_ids)
+    removed = sorted(previous_ids - current_ids)
+
+    payload["todo_lists_added"] = added
+    payload["todo_lists_removed"] = removed
+
+    if added:
+        parts.append("added todo lists: " + ", ".join(added))
+
+    if removed:
+        parts.append("removed todo lists: " + ", ".join(removed))
+
+    updated_lists_value = payload["todo_lists_updated"]
+
+    if not isinstance(updated_lists_value, list):
+        raise TypeError("payload['todo_lists_updated'] must be a list")
+
+    updated_lists = cast(list[object], updated_lists_value)
+
+
+    for todo_id in sorted(previous_ids & current_ids):
+        old = previous[todo_id]
+        new = current_lists[todo_id]
+
+        entry: dict[str, object] = {"id": todo_id}
+
+        if old.title != new.title:
+            entry["title_changed"] = {
+                "from": old.title,
+                "to": new.title,
+            }
+
+            parts.append(
+                f"todo_list[{todo_id}].title: "
+                + f"{old.title}->{new.title}"
+            )
+
+        if old.x != new.x or old.y != new.y:
+            entry["coordinates_changed"] = {
+                "from": {
+                    "x": old.x,
+                    "y": old.y,
+                },
+                "to": {
+                    "x": new.x,
+                    "y": new.y,
+                },
+            }
+
+            parts.append(
+                f"todo_list[{todo_id}].coordinates: "
+                + f"({old.x},{old.y})->({new.x},{new.y})"
+            )
+
+        old_tasks = {
+            task.id: task
+            for task in old.tasks
+        }
+        new_tasks = {
+            task.id: task
+            for task in new.tasks
+        }
+
+        task_added, task_removed, task_updated = _changed_ids(
+            old_tasks,
+            new_tasks,
+        )
+
+        if task_added:
+            entry["tasks_added"] = task_added
+            parts.append(
+                f"added todo tasks ({todo_id}): "
+                + ", ".join(task_added)
+            )
+
+        if task_removed:
+            entry["tasks_removed"] = task_removed
+            parts.append(
+                f"removed todo tasks ({todo_id}): "
+                + ", ".join(task_removed)
+            )
+
+        if task_updated:
+            entry["tasks_updated"] = task_updated
+            parts.append(
+                f"updated todo tasks ({todo_id}): "
+                + ", ".join(task_updated)
+            )
+
+        if len(entry) > 1:
+            updated_lists.append(entry)
+
+
+def _diff_tabs(
+    previous: ProcessGraph,
+    current: ProcessGraph,
+    payload: dict[str,object],
+    parts: list[str],
+) -> None:
+    if previous.tabs == current.tabs:
+        return
+
+    previous_tabs = {
+        tab.id: tab
+        for tab in previous.tabs or []
+    }
+    current_tabs = {
+        tab.id: tab
+        for tab in current.tabs or []
+    }
+
+    previous_ids = set(previous_tabs)
+    current_ids = set(current_tabs)
+
+    added = sorted(current_ids - previous_ids)
+    removed = sorted(previous_ids - current_ids)
+
+    payload["tabs_added"] = added
+    payload["tabs_removed"] = removed
+
+    if added:
+        parts.append("added tabs: " + ", ".join(added))
+
+    if removed:
+        parts.append("removed tabs: " + ", ".join(removed))
+
+    meta_changed: list[str] = []
+
+    for tab_id in sorted(previous_ids & current_ids):
+        old_tab = previous_tabs[tab_id]
+        new_tab = current_tabs[tab_id]
+
+        if (
+            old_tab.label != new_tab.label
+            or old_tab.disabled != new_tab.disabled
+        ):
+            meta_changed.append(tab_id)
+            parts.append(f"tab[{tab_id}] meta changed")
+
+        old_graph = ProcessGraph(
+            units=old_tab.units,
+            connections=old_tab.connections,
+        )
+        new_graph = ProcessGraph(
+            units=new_tab.units,
+            connections=new_tab.connections,
+        )
+
+        parts.extend(
+            _graph_parts(
+                old_graph,
+                new_graph,
+                prefix=f"tab[{tab_id}] ",
+            )
+        )
+
+    payload["tab_meta_changed"] = meta_changed
+
+# Main entry-point for the graph diff
 def graph_diff(
-    prev: ProcessGraph | dict[str, Any] | None,
-    current: ProcessGraph | dict[str, Any] | None,
+    prev: ProcessGraph | None,
+    current: ProcessGraph | None,
     format: DiffFormat = "str",
-) -> str | list[str] | dict[str, Any]:
-    prev_d = _as_dict(prev)
-    curr_d = _as_dict(current)
-    if prev_d is None or curr_d is None:
+) -> str | list[str] | dict[str, object]:
+    if prev is None or current is None:
         if format == "payload":
             return {}
-        return "" if format == "str" else []
 
-    # --- structured payload we want ---
-    payload: dict[str, Any] = {
-        "environment_type_changed": False,
-        "environments_changed": False,
-        "keep_alive_changed": False,
+        return [] if format == "array" else ""
 
-        # top-level (non-tab) diffs
+    environment_type_changed = (
+        prev.environment_type != current.environment_type
+    )
+    environments_changed = prev.environments != current.environments
+    keep_alive_changed = prev.keep_alive != current.keep_alive
+    layout_changed = prev.layout != current.layout
+    origin_changed = prev.origin != current.origin
+    metadata_changed = prev.metadata != current.metadata
+
+    payload: dict[str, object] = {
+        "environment_type_changed": environment_type_changed,
+        "environments_changed": environments_changed,
+        "keep_alive_changed": keep_alive_changed,
+
         "units_added": [],
         "units_removed": [],
         "units_updated": [],
@@ -251,450 +465,160 @@ def graph_diff(
         "code_blocks_removed": [],
         "code_blocks_updated": [],
 
-        "layout_changed": False,
+        "layout_changed": layout_changed,
 
         "comments_added": [],
         "comments_removed": [],
         "comments_updated": [],
 
-        "origin_changed": False,
+        "origin_changed": origin_changed,
 
-        # todo lists
-        "todo_lists_added": [],          # list[str] (todo list ids)
-        "todo_lists_removed": [],       # list[str]
-        "todo_lists_updated": [],       # list[{"id": str, "title_changed"?: {"from":..., "to":...}, "tasks_added"?: [...], "tasks_removed"?: [...], "tasks_updated"?: [...]}]
+        "todo_lists_added": [],
+        "todo_lists_removed": [],
+        "todo_lists_updated": [],
 
-        # tabs
         "tabs_added": [],
         "tabs_removed": [],
         "tab_meta_changed": [],
         "tabs": {},
 
-        "metadata_changed": False,
+        "metadata_changed": metadata_changed,
     }
 
-
-    # --- string parts for backward compat ---
     parts: list[str] = []
 
-    # environments
-    if prev_d.get("environment_type") != curr_d.get("environment_type"):
-        payload["environment_type_changed"] = True
-        if format != "payload":
-            parts.append(
-                f"environment_type: {prev_d.get('environment_type')}->{curr_d.get('environment_type')}"
-            )
-
-    if prev_d.get("environments") != curr_d.get("environments"):
-        payload["environments_changed"] = True
-        if format != "payload":
-            parts.append("environments changed")
-
-    # keep_alive
-    if prev_d.get("keep_alive", False) != curr_d.get("keep_alive", False):
-        payload["keep_alive_changed"] = True
-        if format != "payload":
-            parts.append(
-                "keep_alive: "
-                + str(prev_d.get("keep_alive", False))
-                + "->"
-                + str(curr_d.get("keep_alive", False))
-            )
-
-    # top-level units/connections:
-    # Instead of calling _graph_diff_for_units_and_conns (which emits strings),
-    # re-use its underlying logic but store structured results.
-    prev_units = _units_by_id(prev_d)
-    curr_units = _units_by_id(curr_d)
-
-    prev_ids = set(prev_units.keys())
-    curr_ids = set(curr_units.keys())
-
-    added_units = curr_ids - prev_ids
-    removed_units = prev_ids - curr_ids
-    updated_units = {
-        uid for uid in (curr_ids & prev_ids) if prev_units[uid] != curr_units[uid]
-    }
-
-    if added_units or removed_units or updated_units:
-        # need type lookup for added_units (mirrors original implementation)
-        id_to_type = {
-            str(u.get("id")): str(u.get("type") or "?")
-            for u in (curr_d.get("units") or [])
-            if isinstance(u, dict) and u.get("id") is not None
-        }
-
-        payload["units_added"] = [
-            {"id": uid, "type": id_to_type.get(uid, "?")} for uid in sorted(added_units)
-        ]
-        payload["units_removed"] = sorted(removed_units)
-        payload["units_updated"] = sorted(updated_units)
-
-        if format != "payload":
-            if added_units:
-                parts.append(
-                    f"added {len(added_units)} units: "
-                    + ", ".join(
-                        f"{uid} ({id_to_type.get(uid, '?')})"
-                        for uid in sorted(added_units)
-                    )
-                )
-            if removed_units:
-                parts.append(
-                    f"removed {len(removed_units)} units: "
-                    + ", ".join(sorted(removed_units))
-                )
-            if updated_units:
-                parts.append("updated units: " + ", ".join(sorted(updated_units)))
-
-    prev_conns = _conns_by_sig(prev_d)
-    curr_conns = _conns_by_sig(curr_d)
-
-    added_conns = curr_conns - prev_conns
-    removed_conns = prev_conns - curr_conns
-
-    if added_conns or removed_conns:
-        # convert sig->structured. _conn_signature uses from,to,ports,connection_type.
-        def sig_to_struct(sig: tuple[str, str, str, str, str | None]) -> dict[str, Any]:
-            fr, to, fp, tp, ct = sig
-            return {
-                "from": fr,
-                "to": to,
-                "from_port": fp,
-                "to_port": tp,
-                "connection_type": ct,
-            }
-
-        payload["connections_added"] = [sig_to_struct(s) for s in sorted(added_conns)]
-        payload["connections_removed"] = [
-            sig_to_struct(s) for s in sorted(removed_conns)
-        ]
-
-        if format != "payload":
-            if added_conns:
-                parts.append(
-                    f"connected {len(added_conns)}: "
-                    + ", ".join(_conn_pretty(s) for s in sorted(added_conns))
-                )
-            if removed_conns:
-                parts.append(
-                    f"disconnected {len(removed_conns)}: "
-                    + ", ".join(_conn_pretty(s) for s in sorted(removed_conns))
-                )
-
-    # code_blocks
-    prev_code = prev_d.get("code_blocks") or []
-    curr_code = curr_d.get("code_blocks") or []
-
-    prev_code_fp = _fingerprint_collection(
-        prev_code, "id", ["id", "language", "source"]
-    )
-    curr_code_fp = _fingerprint_collection(
-        curr_code, "id", ["id", "language", "source"]
-    )
-
-    prev_code_ids = set(prev_code_fp)
-    curr_code_ids = set(curr_code_fp)
-
-    code_added = curr_code_ids - prev_code_ids
-    code_removed = prev_code_ids - curr_code_ids
-    code_updated = {
-        cid
-        for cid in (curr_code_ids & prev_code_ids)
-        if prev_code_fp[cid] != curr_code_fp[cid]
-    }
-
-    payload["code_blocks_added"] = sorted(code_added)
-    payload["code_blocks_removed"] = sorted(code_removed)
-    payload["code_blocks_updated"] = sorted(code_updated)
-
-    if format != "payload":
-        if code_added:
-            parts.append("added code_blocks: " + ", ".join(sorted(code_added)))
-        if code_removed:
-            parts.append("removed code_blocks: " + ", ".join(sorted(code_removed)))
-        if code_updated:
-            parts.append("updated code_blocks: " + ", ".join(sorted(code_updated)))
-
-    # layout
-    if _json_dumps(prev_d.get("layout") or None) != _json_dumps(
-        curr_d.get("layout") or None
-    ):
-        payload["layout_changed"] = True
-        if format != "payload":
-            parts.append("layout changed")
-
-    # comments
-    prev_comments = prev_d.get("comments") or []
-    curr_comments = curr_d.get("comments") or []
-
-    prev_com_fp = _fingerprint_collection(
-        prev_comments, "id", ["id", "info", "commenter", "created_at", "x", "y"]
-    )
-    curr_com_fp = _fingerprint_collection(
-        curr_comments, "id", ["id", "info", "commenter", "created_at", "x", "y"]
-    )
-
-    prev_com_ids = set(prev_com_fp)
-    curr_com_ids = set(curr_com_fp)
-
-    com_added = curr_com_ids - prev_com_ids
-    com_removed = prev_com_ids - curr_com_ids
-    com_updated = {
-        cid
-        for cid in (curr_com_ids & prev_com_ids)
-        if prev_com_fp[cid] != curr_com_fp[cid]
-    }
-
-    payload["comments_added"] = sorted(com_added)
-    payload["comments_removed"] = sorted(com_removed)
-    payload["comments_updated"] = sorted(com_updated)
-
-    if format != "payload":
-        if com_added:
-            parts.append("added comments: " + ", ".join(sorted(com_added)))
-        if com_removed:
-            parts.append("removed comments: " + ", ".join(sorted(com_removed)))
-        if com_updated:
-            parts.append("updated comments: " + ", ".join(sorted(com_updated)))
-
-    # todo_lists (new shape)
-    prev_todos = prev_d.get("todo_lists") or []
-    curr_todos = curr_d.get("todo_lists") or []
-
-    def _by_id(lst):
-        return {x.get("id"): x for x in (lst or []) if x is not None and x.get("id") is not None}
-
-    prev_map = _by_id(prev_todos)
-    curr_map = _by_id(curr_todos)
-
-    prev_ids = set(prev_map.keys())
-    curr_ids = set(curr_map.keys())
-
-    # lists added/removed
-    if prev_ids != curr_ids or prev_todos != curr_todos:
-        payload["todo_lists_added"] = sorted(curr_ids - prev_ids)
-        payload["todo_lists_removed"] = sorted(prev_ids - curr_ids)
-
-    # lists title changed + tasks diff per list id
-    # lists title changed, coordinates changed, and tasks diff per list id
-    payload["todo_lists_updated"] = []  # list of dicts
-
-    for tl_id in sorted(curr_ids & prev_ids):
-        prev_tl = prev_map[tl_id] or {}
-        curr_tl = curr_map[tl_id] or {}
-
-        prev_title = prev_tl.get("title")
-        curr_title = curr_tl.get("title")
-        title_changed = prev_title != curr_title
-
-        prev_x = prev_tl.get("x")
-        curr_x = curr_tl.get("x")
-        prev_y = prev_tl.get("y")
-        curr_y = curr_tl.get("y")
-        coordinates_changed = prev_x != curr_x or prev_y != curr_y
-
-        prev_tasks = prev_tl.get("tasks") or []
-        curr_tasks = curr_tl.get("tasks") or []
-
-        # Task fingerprint
-        prev_task_fp = _fingerprint_collection(
-            prev_tasks,
-            "id",
-            [
-                "id",
-                "text",
-                "completed",
-                "created_at",
-                "implementer",
-                "curator",
-                "finished_at",
-                "deadline",
-            ],
-        )
-        curr_task_fp = _fingerprint_collection(
-            curr_tasks,
-            "id",
-            [
-                "id",
-                "text",
-                "completed",
-                "created_at",
-                "implementer",
-                "curator",
-                "finished_at",
-                "deadline",
-            ],
+    if environment_type_changed:
+        parts.append(
+            "environment_type: "
+            + f"{prev.environment_type.value}->{current.environment_type.value}"
         )
 
-        prev_task_ids = set(prev_task_fp)
-        curr_task_ids = set(curr_task_fp)
+    if environments_changed:
+        parts.append("environments changed")
 
-        tasks_added = sorted(curr_task_ids - prev_task_ids)
-        tasks_removed = sorted(prev_task_ids - curr_task_ids)
-        tasks_updated = sorted(
-            {
-                task_id
-                for task_id in (curr_task_ids & prev_task_ids)
-                if prev_task_fp[task_id] != curr_task_fp[task_id]
-            }
+    if keep_alive_changed:
+        parts.append(
+            f"keep_alive: {prev.keep_alive}->{current.keep_alive}"
         )
 
-        if (
-            title_changed
-            or coordinates_changed
-            or tasks_added
-            or tasks_removed
-            or tasks_updated
-        ):
-            entry: dict[str, Any] = {"id": tl_id}
+    previous_units = _collection_by_id(prev.units)
+    current_units = _collection_by_id(current.units)
 
-            if title_changed:
-                entry["title_changed"] = {
-                    "from": prev_title,
-                    "to": curr_title,
-                }
+    units_added, units_removed, units_updated = _changed_ids(
+        previous_units,
+        current_units,
+    )
 
-            if coordinates_changed:
-                entry["coordinates_changed"] = {
-                    "from": {"x": prev_x, "y": prev_y},
-                    "to": {"x": curr_x, "y": curr_y},
-                }
-
-            if tasks_added:
-                entry["tasks_added"] = tasks_added
-
-            if tasks_removed:
-                entry["tasks_removed"] = tasks_removed
-
-            if tasks_updated:
-                entry["tasks_updated"] = tasks_updated
-
-            payload["todo_lists_updated"].append(entry)
-
-    # optional: human-readable parts (only if format != "payload")
-    if format != "payload":
-        if payload.get("todo_lists_added"):
-            parts.append("added todo lists: " + ", ".join(payload["todo_lists_added"]))
-        if payload.get("todo_lists_removed"):
-            parts.append(
-                "removed todo lists: " + ", ".join(payload["todo_lists_removed"])
-            )
-        for updated_todo_list in payload.get("todo_lists_updated") or []:
-            tl_id = updated_todo_list["id"]
-
-            if "title_changed" in updated_todo_list:
-                title_change = updated_todo_list["title_changed"]
-                parts.append(f"todo_list[{tl_id}].title: {title_change['from']}->{title_change['to']}")
-
-            if "coordinates_changed" in updated_todo_list:
-                coordinate_change = updated_todo_list["coordinates_changed"]
-                previous_coordinates = coordinate_change["from"]
-                current_coordinates = coordinate_change["to"]
-
-                parts.append(
-                    f"todo_list[{tl_id}].coordinates: "
-                    + f"({previous_coordinates['x']},{previous_coordinates['y']})"
-                    + f"->({current_coordinates['x']},{current_coordinates['y']})"
-                )
-
-            if updated_todo_list.get("tasks_added"):
-                parts.append(
-                    f"added todo tasks ({tl_id}): "
-                    + ", ".join(updated_todo_list["tasks_added"])
-                )
-
-            if updated_todo_list.get("tasks_removed"):
-                parts.append(
-                    f"removed todo tasks ({tl_id}): "
-                    + ", ".join(updated_todo_list["tasks_removed"])
-                )
-
-            if updated_todo_list.get("tasks_updated"):
-                parts.append(
-                    f"updated todo tasks ({tl_id}): "
-                    + ", ".join(updated_todo_list["tasks_updated"])
-                )
-
-    # origin
-    if _json_dumps(prev_d.get("origin") or None) != _json_dumps(
-        curr_d.get("origin") or None
-    ):
-        payload["origin_changed"] = True
-        if format != "payload":
-            parts.append("origin changed")
-
-    # tabs
-    prev_tabs = prev_d.get("tabs")
-    curr_tabs = curr_d.get("tabs")
-    if prev_tabs != curr_tabs:
-        prev_tabs_list = prev_tabs or []
-        curr_tabs_list = curr_tabs or []
-
-        prev_tab_by_id = {
-            str(t.get("id")): t
-            for t in prev_tabs_list
-            if isinstance(t, dict) and t.get("id") is not None
+    payload["units_added"] = [
+        {
+            "id": unit_id,
+            "type": current_units[unit_id].type,
         }
-        curr_tab_by_id = {
-            str(t.get("id")): t
-            for t in curr_tabs_list
-            if isinstance(t, dict) and t.get("id") is not None
+        for unit_id in units_added
+    ]
+    payload["units_removed"] = units_removed
+    payload["units_updated"] = units_updated
+
+    parts.extend(_graph_parts(prev, current))
+
+    previous_connections = _connection_set(prev)
+    current_connections = _connection_set(current)
+
+    added_connections = sorted(
+        current_connections - previous_connections
+    )
+    removed_connections = sorted(
+        previous_connections - current_connections
+    )
+
+    payload["connections_added"] = [
+        {
+            "from": source,
+            "to": target,
+            "from_port": source_port,
+            "to_port": target_port,
+            "connection_type": connection_type,
         }
+        for source, target, source_port, target_port, connection_type
+        in added_connections
+    ]
 
-        prev_tab_ids = set(prev_tab_by_id)
-        curr_tab_ids = set(curr_tab_by_id)
+    payload["connections_removed"] = [
+        {
+            "from": source,
+            "to": target,
+            "from_port": source_port,
+            "to_port": target_port,
+            "connection_type": connection_type,
+        }
+        for source, target, source_port, target_port, connection_type
+        in removed_connections
+    ]
 
-        payload["tabs_added"] = sorted(curr_tab_ids - prev_tab_ids)
-        payload["tabs_removed"] = sorted(prev_tab_ids - curr_tab_ids)
+    code_added, code_removed, code_updated = _diff_collection(
+        prev.code_blocks,
+        current.code_blocks,
+    )
 
-        if format != "payload":
-            if payload["tabs_added"]:
-                parts.append("added tabs: " + ", ".join(payload["tabs_added"]))
-            if payload["tabs_removed"]:
-                parts.append("removed tabs: " + ", ".join(payload["tabs_removed"]))
+    payload["code_blocks_added"] = code_added
+    payload["code_blocks_removed"] = code_removed
+    payload["code_blocks_updated"] = code_updated
 
-        for tid in sorted(curr_tab_ids & prev_tab_ids):
-            pt = prev_tab_by_id[tid]
-            ct = curr_tab_by_id[tid]
+    if code_added:
+        parts.append(
+            "added code_blocks: " + ", ".join(code_added)
+        )
 
-            if {"label": pt.get("label"), "disabled": pt.get("disabled")} != {
-                "label": ct.get("label"),
-                "disabled": ct.get("disabled"),
-            }:
-                payload["tab_meta_changed"].append(tid)
-                if format != "payload":
-                    parts.append(f"tab[{tid}] meta changed")
+    if code_removed:
+        parts.append(
+            "removed code_blocks: " + ", ".join(code_removed)
+        )
 
-            # For simplicity you can skip per-tab structured unit/conn diffs
-            # unless your merge step needs them. If needed, mirror the same
-            # units/conns logic used for top-level but store under payload["tabs"][tid].
-            if format != "payload":
-                parts.extend(
-                    _graph_diff_for_units_and_conns(
-                        prev_g={
-                            "units": pt.get("units") or [],
-                            "connections": pt.get("connections") or [],
-                        },
-                        curr_g={
-                            "units": ct.get("units") or [],
-                            "connections": ct.get("connections") or [],
-                        },
-                        prefix=f"tab[{tid}] ",
-                    )
-                )
+    if code_updated:
+        parts.append(
+            "updated code_blocks: " + ", ".join(code_updated)
+        )
 
-    # metadata
-    if _json_dumps(prev_d.get("metadata") or None) != _json_dumps(
-        curr_d.get("metadata") or None
-    ):
-        payload["metadata_changed"] = True
-        if format != "payload":
-            parts.append("metadata changed")
+    if layout_changed:
+        parts.append("layout changed")
 
-    # return
+    comments_added, comments_removed, comments_updated = _diff_collection(
+        prev.comments,
+        current.comments,
+    )
+
+    payload["comments_added"] = comments_added
+    payload["comments_removed"] = comments_removed
+    payload["comments_updated"] = comments_updated
+
+    if comments_added:
+        parts.append(
+            "added comments: " + ", ".join(comments_added)
+        )
+
+    if comments_removed:
+        parts.append(
+            "removed comments: " + ", ".join(comments_removed)
+        )
+
+    if comments_updated:
+        parts.append(
+            "updated comments: " + ", ".join(comments_updated)
+        )
+
+    _diff_todo_lists(prev, current, payload, parts)
+    _diff_tabs(prev, current, payload, parts)
+
+    if origin_changed:
+        parts.append("origin changed")
+
+    if metadata_changed:
+        parts.append("metadata changed")
+
     if format == "payload":
         return payload
+
     if format == "array":
         return parts
-    return "; ".join(parts) if parts else ""
+
+    return "; ".join(parts)
