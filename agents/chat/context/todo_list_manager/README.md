@@ -40,7 +40,7 @@ To avoid cluttering the graph, the manager performs checks before adding any tas
 
 ### Key Functions
 - `augment_graph_with_client_tasks()`: The primary entry point for the Workflow Designer to add follow-up tasks after a round of edits.
-- `add_tasks_for_unhandled_tg_messages()`: The synchronization loop for Telegram-based task management.
+- `add_tasks_for_unhandled_messages()`: The synchronization loop for Telegram-based task management.
 - `_ensure_todo_list_exists()`: Guarantees that the required list (Graph or TG) is present before adding tasks.
 
 ## Configuration

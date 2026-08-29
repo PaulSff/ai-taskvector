@@ -12,7 +12,7 @@ from .todo_list_manager import (
     add_tasks_for_added_units,
     add_tasks_for_read_code_block,
     add_tasks_for_run_workflow,
-    add_tasks_for_unhandled_tg_messages,
+    add_tasks_for_unhandled_messages,
     augment_graph_with_client_tasks,
 )
 from .todo_state import (
@@ -30,7 +30,7 @@ __all__ = [
     "add_tasks_for_added_units",
     "add_tasks_for_read_code_block",
     "add_tasks_for_run_workflow",
-    "add_tasks_for_unhandled_tg_messages",
+    "add_tasks_for_unhandled_messages",
     "augment_graph_with_client_tasks",
     "ensure_todo_list_if_missing",
     "get_summary_params",
