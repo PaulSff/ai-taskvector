@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from agents.chat.context.todo_list_manager import (
     TodoEdit,
-    add_tasks_for_unhandled_tg_messages,
+    add_tasks_for_unhandled_messages,
     ensure_todo_list_if_missing,
     queue_add_task,
 )
@@ -148,7 +148,7 @@ async def run_agentic_loop(
             current_graph: ProcessGraph = graph
             edits_to_apply: list[TodoEdit] = []
 
-            updated_graph_dict = await add_tasks_for_unhandled_tg_messages(
+            updated_graph_dict = await add_tasks_for_unhandled_messages(
                 current=current_graph,
                 edits_to_apply=edits_to_apply,
                 ensure_todo_list_if_missing=ensure_todo_list_if_missing,
