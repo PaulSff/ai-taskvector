@@ -177,3 +177,9 @@ def serialize(value: object) -> str:
         return json.dumps(value, indent=2, default=str)
     except TypeError:
         return str(value)
+
+
+def as_object_dict(value: object) -> dict[object, object] | None:
+    if isinstance(value, dict):
+        return cast(dict[object, object], value)
+    return None
