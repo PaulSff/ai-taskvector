@@ -2,3 +2,14 @@ metadata_str_max: 400
 comments_max: 8
 comment_info_max: 200
 todo_tasks_max: 12
+valid_origin:
+  - node_red
+  - n8n
+  - dict
+  - canonical
+  - yaml
+  - template
+  - pyflow
+  - ryven
+  - idaes
+  - comfyui

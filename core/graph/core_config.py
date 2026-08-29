@@ -1,52 +1,98 @@
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 import yaml
 
+from core.schemas.primitives import is_string_keyed_dict
+
 SCRIPT_DIR = Path(__file__).resolve().parent
-default_conf = str(SCRIPT_DIR / "conf.yaml")
+default_conf = SCRIPT_DIR / "conf.yaml"
 
 
-def load_conf_yaml(path: str) -> dict[str, Any]:
+def load_conf_yaml(path: str | Path) -> dict[str, object]:
     with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        raise TypeError("conf.yaml must be a YAML mapping/object at the root")
-    return data
+        loaded: object = cast(object, yaml.safe_load(f))
+
+    if loaded is None:
+        return {}
+
+    if not is_string_keyed_dict(loaded):
+        raise TypeError(
+            "conf.yaml must be a YAML mapping with string keys at the root"
+        )
+
+    return loaded
 
 
-def get_conf_value(conf: dict[str, Any], key: str, default: Any = None) -> Any:
+def get_conf_value(
+    conf: dict[str, object],
+    key: str,
+    default: object | None = None,
+) -> object:
     if key in conf:
         return conf[key]
+
     if default is not None:
         return default
+
     raise KeyError(f"Missing required key in conf.yaml: {key}")
 
 
+def get_conf_int(conf: dict[str, object], key: str) -> int:
+    value = get_conf_value(conf, key)
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"Configuration key {key!r} must be an integer")
+
+    return value
+
+
+def get_conf_str_list(conf: dict[str, object], key: str) -> list[str]:
+    value = get_conf_value(conf, key)
+
+    if not isinstance(value, list):
+        raise TypeError(f"Configuration key {key!r} must be a list")
+
+    items = cast(list[object], value)
+
+    if not all(isinstance(item, str) for item in items):
+        raise TypeError(
+            f"Configuration key {key!r} must contain only strings"
+        )
+
+    return cast(list[str], items)
+
+
 def load_conf(
-    path: str | None = None,
+    path: str | Path | None = None,
     *,
     required_keys: list[str] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     conf_path = path or default_conf
     conf = load_conf_yaml(conf_path)
+
     if required_keys:
-        missing = [k for k in required_keys if k not in conf]
+        missing = [key for key in required_keys if key not in conf]
         if missing:
-            raise KeyError(f"Missing required keys in conf.yaml: {', '.join(missing)}")
+            raise KeyError(
+                f"Missing required keys in conf.yaml: {', '.join(missing)}"
+            )
+
     return conf
 
 
-# ---- usage: load and expose your constants from conf.yaml ----
+conf = load_conf(
+    required_keys=[
+        "metadata_str_max",
+        "comments_max",
+        "comment_info_max",
+        "todo_tasks_max",
+        "valid_origin",
+    ],
+)
 
-conf = load_conf(required_keys=[
-    "metadata_str_max",
-    "comments_max",
-    "comment_info_max",
-    "todo_tasks_max",
-])
-
-metadata_str_max: int = int(get_conf_value(conf, "metadata_str_max"))
-comments_max: int = int(get_conf_value(conf, "comments_max"))
-comment_info_max: int = int(get_conf_value(conf, "comment_info_max"))
-todo_tasks_max: int = int(get_conf_value(conf, "todo_tasks_max"))
+metadata_str_max = get_conf_int(conf, "metadata_str_max")
+comments_max = get_conf_int(conf, "comments_max")
+comment_info_max = get_conf_int(conf, "comment_info_max")
+todo_tasks_max = get_conf_int(conf, "todo_tasks_max")
+valid_origin = get_conf_str_list(conf, "valid_origin")
