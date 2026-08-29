@@ -7,7 +7,11 @@ type JsonValue = (
     | dict[str, JsonValue]
 )
 type JsonObject = dict[str, JsonValue]
+type JsonArray = list[JsonValue]
+type JsonDocument = JsonObject | JsonArray
+
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
+
 # Workflow output is always the JsonObject
 
 FormatProcess = Literal[
@@ -102,3 +106,30 @@ def safe_int(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError, OverflowError):
         return None
+
+def _is_json_value(value: object) -> bool:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+
+    if isinstance(value, list):
+        items = cast(list[object], value)
+        return all(_is_json_value(item) for item in items)
+
+    if isinstance(value, dict):
+        items = cast(dict[object, object], value)
+        return all(
+            isinstance(key, str) and _is_json_value(item)
+            for key, item in items.items()
+        )
+
+    return False
+
+
+def is_json_document(value: object) -> TypeGuard[JsonDocument]:
+    if isinstance(value, dict):
+        return _is_json_value(cast(dict[object, object], value))
+
+    if isinstance(value, list):
+        return _is_json_value(cast(list[object], value))
+
+    return False
