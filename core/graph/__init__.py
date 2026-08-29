@@ -2,7 +2,6 @@
 
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.diff import graph_diff
-from core.graph.graph_edit_api import GraphEdit, GraphEditAction, GraphEditUnit
 from core.graph.graph_edits import (
     PIPELINE_TYPES,
     apply_graph_edit,
@@ -25,6 +24,7 @@ from core.graph.todo_list import (
     set_deadline,
     set_implementer,
 )
+from core.schemas.graph_edit_api import GraphEdit, GraphEditAction, GraphEditUnit
 
 __all__ = [
     "PIPELINE_TYPES",
