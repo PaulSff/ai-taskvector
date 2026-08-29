@@ -8,6 +8,7 @@ For correct controllable detection when importing flows, ensure unit modules are
 """
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -789,3 +790,13 @@ def graph_to_json_object(value: object) -> JsonObject:
             return dumped
 
     return default_graph
+
+
+def as_process_graph(value: object) -> ProcessGraph:
+    if isinstance(value, ProcessGraph):
+        return value
+
+    if isinstance(value, Mapping):
+        return ProcessGraph.model_validate(value)
+
+    raise TypeError(f"Expected ProcessGraph or mapping, got {type(value).__name__}")
