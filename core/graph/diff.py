@@ -127,6 +127,7 @@ from core.schemas.process_graph import (
     Connection,
     ProcessGraph,
 )
+from core.schemas.process_graph_diff import GraphDiffPayload
 
 DiffFormat = Literal["str", "array", "payload"]
 
@@ -256,7 +257,7 @@ def _diff_collection[T: _HasId](
 def _diff_todo_lists(
     prev: ProcessGraph,
     current: ProcessGraph,
-    payload: dict[str, object],
+    payload: GraphDiffPayload,
     parts: list[str],
 ) -> None:
     previous = {
@@ -284,9 +285,6 @@ def _diff_todo_lists(
         parts.append("removed todo lists: " + ", ".join(removed))
 
     updated_lists_value = payload["todo_lists_updated"]
-
-    if not isinstance(updated_lists_value, list):
-        raise TypeError("payload['todo_lists_updated'] must be a list")
 
     updated_lists = cast(list[object], updated_lists_value)
 
@@ -365,79 +363,82 @@ def _diff_todo_lists(
 
 
 def _diff_tabs(
-    previous: ProcessGraph,
+    prev: ProcessGraph,
     current: ProcessGraph,
-    payload: dict[str,object],
+    payload: GraphDiffPayload,
     parts: list[str],
 ) -> None:
-    if previous.tabs == current.tabs:
-        return
+    previous_tabs = _collection_by_id(prev.tabs)
+    current_tabs = _collection_by_id(current.tabs)
 
-    previous_tabs = {
-        tab.id: tab
-        for tab in previous.tabs or []
+    tabs_added, tabs_removed, tabs_updated = _changed_ids(
+        previous_tabs,
+        current_tabs,
+    )
+
+    payload["tabs_added"] = tabs_added
+    payload["tabs_removed"] = tabs_removed
+    payload["tab_meta_changed"] = tabs_updated
+
+    if tabs_added:
+        parts.append(
+            "added tabs: " + ", ".join(tabs_added)
+        )
+
+    if tabs_removed:
+        parts.append(
+            "removed tabs: " + ", ".join(tabs_removed)
+        )
+
+    if tabs_updated:
+        parts.append(
+            "updated tab metadata: " + ", ".join(tabs_updated)
+        )
+
+    payload["tabs"] = {
+        tab_id: current_tabs[tab_id]
+        for tab_id in tabs_added
+        if tab_id in current_tabs
     }
-    current_tabs = {
-        tab.id: tab
-        for tab in current.tabs or []
+
+def _empty_diff_payload() -> GraphDiffPayload:
+    return {
+        "environment_type_changed": False,
+        "environments_changed": False,
+        "keep_alive_changed": False,
+        "units_added": [],
+        "units_removed": [],
+        "units_updated": [],
+        "connections_added": [],
+        "connections_removed": [],
+        "code_blocks_added": [],
+        "code_blocks_removed": [],
+        "code_blocks_updated": [],
+        "layout_changed": False,
+        "comments_added": [],
+        "comments_removed": [],
+        "comments_updated": [],
+        "origin_changed": False,
+        "todo_lists_added": [],
+        "todo_lists_removed": [],
+        "todo_lists_updated": [],
+        "tabs_added": [],
+        "tabs_removed": [],
+        "tab_meta_changed": [],
+        "tabs": {},
+        "metadata_changed": False,
     }
 
-    previous_ids = set(previous_tabs)
-    current_ids = set(current_tabs)
-
-    added = sorted(current_ids - previous_ids)
-    removed = sorted(previous_ids - current_ids)
-
-    payload["tabs_added"] = added
-    payload["tabs_removed"] = removed
-
-    if added:
-        parts.append("added tabs: " + ", ".join(added))
-
-    if removed:
-        parts.append("removed tabs: " + ", ".join(removed))
-
-    meta_changed: list[str] = []
-
-    for tab_id in sorted(previous_ids & current_ids):
-        old_tab = previous_tabs[tab_id]
-        new_tab = current_tabs[tab_id]
-
-        if (
-            old_tab.label != new_tab.label
-            or old_tab.disabled != new_tab.disabled
-        ):
-            meta_changed.append(tab_id)
-            parts.append(f"tab[{tab_id}] meta changed")
-
-        old_graph = ProcessGraph(
-            units=old_tab.units,
-            connections=old_tab.connections,
-        )
-        new_graph = ProcessGraph(
-            units=new_tab.units,
-            connections=new_tab.connections,
-        )
-
-        parts.extend(
-            _graph_parts(
-                old_graph,
-                new_graph,
-                prefix=f"tab[{tab_id}] ",
-            )
-        )
-
-    payload["tab_meta_changed"] = meta_changed
 
 # Main entry-point for the graph diff
 def graph_diff(
     prev: ProcessGraph | None,
     current: ProcessGraph | None,
     format: DiffFormat = "str",
-) -> str | list[str] | dict[str, object]:
+) -> str | list[str] | GraphDiffPayload:
     if prev is None or current is None:
         if format == "payload":
-            return {}
+            return _empty_diff_payload()
 
         return [] if format == "array" else ""
 
@@ -450,38 +451,30 @@ def graph_diff(
     origin_changed = prev.origin != current.origin
     metadata_changed = prev.metadata != current.metadata
 
-    payload: dict[str, object] = {
+    payload: GraphDiffPayload = {
         "environment_type_changed": environment_type_changed,
         "environments_changed": environments_changed,
         "keep_alive_changed": keep_alive_changed,
-
         "units_added": [],
         "units_removed": [],
         "units_updated": [],
         "connections_added": [],
         "connections_removed": [],
-
         "code_blocks_added": [],
         "code_blocks_removed": [],
         "code_blocks_updated": [],
-
         "layout_changed": layout_changed,
-
         "comments_added": [],
         "comments_removed": [],
         "comments_updated": [],
-
         "origin_changed": origin_changed,
-
         "todo_lists_added": [],
         "todo_lists_removed": [],
         "todo_lists_updated": [],
-
         "tabs_added": [],
         "tabs_removed": [],
         "tab_meta_changed": [],
         "tabs": {},
-
         "metadata_changed": metadata_changed,
     }
 
@@ -489,8 +482,7 @@ def graph_diff(
 
     if environment_type_changed:
         parts.append(
-            "environment_type: "
-            + f"{prev.environment_type.value}->{current.environment_type.value}"
+            "environment_type: {prev.environment_type.value}->{current.environment_type.value}"
         )
 
     if environments_changed:
@@ -565,19 +557,13 @@ def graph_diff(
     payload["code_blocks_updated"] = code_updated
 
     if code_added:
-        parts.append(
-            "added code_blocks: " + ", ".join(code_added)
-        )
+        parts.append("added code_blocks: " + ", ".join(code_added))
 
     if code_removed:
-        parts.append(
-            "removed code_blocks: " + ", ".join(code_removed)
-        )
+        parts.append("removed code_blocks: " + ", ".join(code_removed))
 
     if code_updated:
-        parts.append(
-            "updated code_blocks: " + ", ".join(code_updated)
-        )
+        parts.append("updated code_blocks: " + ", ".join(code_updated))
 
     if layout_changed:
         parts.append("layout changed")
@@ -592,19 +578,13 @@ def graph_diff(
     payload["comments_updated"] = comments_updated
 
     if comments_added:
-        parts.append(
-            "added comments: " + ", ".join(comments_added)
-        )
+        parts.append("added comments: " + ", ".join(comments_added))
 
     if comments_removed:
-        parts.append(
-            "removed comments: " + ", ".join(comments_removed)
-        )
+        parts.append("removed comments: " + ", ".join(comments_removed))
 
     if comments_updated:
-        parts.append(
-            "updated comments: " + ", ".join(comments_updated)
-        )
+        parts.append("updated comments: " + ", ".join(comments_updated))
 
     _diff_todo_lists(prev, current, payload, parts)
     _diff_tabs(prev, current, payload, parts)
