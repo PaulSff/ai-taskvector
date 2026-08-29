@@ -195,6 +195,8 @@ class GraphEdit(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(
             populate_by_name=True,
         )
+    origin: str | None = None
+    format: str | None = None
 
 
 class MultipleEditsSequential(BaseModel):
