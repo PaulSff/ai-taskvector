@@ -11,21 +11,21 @@ from typing import cast
 
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
-from core.normalizer import graph_to_json_object
+from core.normalizer import graph_to_json_object, to_process_graph
 from core.normalizer.shared import to_json_value
 from core.schemas.primitives import JsonObject, JsonValue, is_json_array, is_json_object
 from units.registry import UnitSpec, register_unit
 
 APPLY_EDITS_INPUT_PORTS = [
-    ("graph", "Any"),
-    ("edits", "Any"),
+    ("graph", "ProcessGraph"),
+    ("edits", "JsonObject"),
     ("graph_origin", "str"),
 ]
 
 APPLY_EDITS_OUTPUT_PORTS = [
-    ("result", "Any"),
-    ("status", "Any"),
-    ("graph", "Any"),
+    ("result", "JsonObject"),
+    ("status", "JsonObject"),
+    ("graph", "ProcessGraph"),
     ("error", "str"),
 ]
 
@@ -210,9 +210,16 @@ def _apply_edits_step(
     if not is_json_object(graph_after):
         graph_after = graph
 
+    graph_after_process_graph = to_process_graph(
+        graph_after,
+        format="dict",
+    )
+
     result["last_apply_result"] = {
         **apply_result,
-        "graph_after": graph_summary(graph_after),
+        "graph_after": to_json_value(
+            graph_summary(graph_after_process_graph)
+        ),
     }
 
     out_graph = result.get("graph")
