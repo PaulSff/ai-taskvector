@@ -380,12 +380,12 @@ async def add_review_workflow_task_after_import(
     )
 
 
-# ---- Add tasks for Telegram unhandled messages
+# ---- Add tasks for unhandled messages from messengers ---
 
-async def add_tasks_for_unhandled_tg_messages(
+async def add_tasks_for_unhandled_messages(
     *,
     current: ProcessGraph,
-    edits_to_apply: list[TodoEdit],
+    edits_to_apply: list[TodoEdit], # additional TODO list edits to apply
     ensure_todo_list_if_missing: EnsureTodoListIfMissing,
     queue_add_task: QueueAddTask,
     workflow_path: Path | None = None,
