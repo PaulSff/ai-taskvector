@@ -1,75 +1,120 @@
 """
-Centralized native vs external runtime detection from graph origin/origin_format.
-Rule: if the workflow is not canonical, it is external. No hardcoded list of external types.
-Accepts ProcessGraph or dict (e.g. graph summary with origin_format and origin).
+Centralized native versus external runtime detection from graph origin metadata.
+
+Rule: if the workflow is not canonical, it is external. No hardcoded list of
+external runtime types is required; the runtime type comes from the graph.
+
+Accepts a ProcessGraph, a JSON graph summary, or None.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from core.schemas.primitives import JsonObject, is_json_object
+from core.schemas.process_graph import ProcessGraph
 
-# Only canonical is named; anything else is external (type comes from the graph).
+# Only canonical formats are named. Anything else is external.
 _CANONICAL_ORIGIN_FORMATS = frozenset({"dict", "canonical"})
 
 
-def _get_origin_format_and_dict(graph_or_dict: Any) -> tuple[str | None, dict[str, Any]]:
-    """Extract origin_format and origin as dict from ProcessGraph or dict."""
-    if graph_or_dict is None:
+GraphInput = ProcessGraph | JsonObject | None
+OriginData = JsonObject
+
+
+def _origin_to_json_object(origin: object) -> OriginData:
+    if is_json_object(origin):
+        return origin
+
+    model_dump = getattr(origin, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if is_json_object(dumped) else {}
+
+    legacy_dict = getattr(origin, "dict", None)
+    if callable(legacy_dict):
+        dumped = legacy_dict()
+        return dumped if is_json_object(dumped) else {}
+
+    return {}
+
+
+def _get_origin_format_and_dict(
+    graph: GraphInput,
+) -> tuple[str | None, OriginData]:
+    """Extract origin_format and origin metadata from a graph or JSON summary."""
+
+    if graph is None:
         return None, {}
-    if hasattr(graph_or_dict, "origin_format") or hasattr(graph_or_dict, "origin"):
-        fmt = getattr(graph_or_dict, "origin_format", None)
-        origin = getattr(graph_or_dict, "origin", None)
-        if origin is not None:
-            if hasattr(origin, "model_dump") and callable(origin.model_dump):
-                origin = origin.model_dump()
-            elif hasattr(origin, "dict") and callable(origin.dict):
-                origin = origin.dict()
-            elif not isinstance(origin, dict):
-                origin = {}
-        else:
-            origin = {}
-        return (str(fmt) if fmt is not None else None), (origin if isinstance(origin, dict) else {})
-    if isinstance(graph_or_dict, dict):
-        fmt = graph_or_dict.get("origin_format")
-        origin = graph_or_dict.get("origin")
-        origin = origin if isinstance(origin, dict) else {}
-        return (str(fmt) if fmt is not None else None), origin
-    return None, {}
+
+    if isinstance(graph, ProcessGraph):
+        origin_format = graph.origin_format
+        origin = _origin_to_json_object(graph.origin)
+
+        return origin_format, origin
+
+    origin_format = graph.get("origin_format")
+    origin = _origin_to_json_object(graph.get("origin"))
+
+    return (
+        str(origin_format) if origin_format is not None else None,
+        origin,
+    )
 
 
-def is_canonical_runtime(graph_or_dict: Any) -> bool:
-    """True if graph is canonical (native); False if external. Not canonical => external."""
-    fmt, origin = _get_origin_format_and_dict(graph_or_dict)
-    if fmt is not None and fmt not in _CANONICAL_ORIGIN_FORMATS:
+def is_canonical_runtime(graph: GraphInput) -> bool:
+    """Return True for canonical/native graphs and False for external graphs."""
+
+    origin_format, origin = _get_origin_format_and_dict(graph)
+
+    if (
+        origin_format is not None
+        and origin_format not in _CANONICAL_ORIGIN_FORMATS
+    ):
         return False
-    if isinstance(origin, dict) and origin:
-        # Any truthy key other than "canonical" means external (type from graph).
-        for k, v in origin.items():
-            if k != "canonical" and v:
-                return False
-    return True
+
+    # Any truthy origin key other than "canonical" identifies an external
+    # runtime. The runtime name is preserved from the graph itself.
+    return not any(
+        key != "canonical" and bool(value)
+        for key, value in origin.items()
+    )
 
 
-def is_external_runtime(graph_or_dict: Any) -> bool:
-    """True if graph runs on an external runtime; False if canonical. Not canonical => external."""
-    return not is_canonical_runtime(graph_or_dict)
+def is_external_runtime(graph: GraphInput) -> bool:
+    """Return True when the graph targets an external runtime."""
+
+    return not is_canonical_runtime(graph)
 
 
-def runtime_label(graph_or_dict: Any) -> str:
-    """Runtime type from the graph: origin_format or first truthy origin key when external, else 'canonical'."""
-    if is_canonical_runtime(graph_or_dict):
+def runtime_label(graph: GraphInput) -> str:
+    """
+    Return the runtime label from the graph.
+
+    Canonical graphs return "canonical". External graphs use origin_format
+    first, followed by the first truthy origin metadata key.
+    """
+
+    if is_canonical_runtime(graph):
         return "canonical"
-    fmt, origin = _get_origin_format_and_dict(graph_or_dict)
-    if fmt and fmt not in _CANONICAL_ORIGIN_FORMATS:
-        return str(fmt)
-    if isinstance(origin, dict):
-        for k, v in origin.items():
-            if k != "canonical" and v:
-                return k
+
+    origin_format, origin = _get_origin_format_and_dict(graph)
+
+    if (
+        origin_format is not None
+        and origin_format not in _CANONICAL_ORIGIN_FORMATS
+    ):
+        return origin_format
+
+    for key, value in origin.items():
+        if key != "canonical" and bool(value):
+            return key
+
     return "canonical"
 
 
-def external_runtime_or_none(graph_or_dict: Any) -> str | None:
-    """Return the external runtime type from the graph if external, else None."""
-    if not is_external_runtime(graph_or_dict):
+def external_runtime_or_none(graph: GraphInput) -> str | None:
+    """Return the external runtime label, or None for canonical graphs."""
+
+    if not is_external_runtime(graph):
         return None
-    return runtime_label(graph_or_dict)
+
+    return runtime_label(graph)
