@@ -63,6 +63,28 @@ def get_conf_str_list(conf: dict[str, object], key: str) -> list[str]:
     return cast(list[str], items)
 
 
+def get_conf_str_dict(conf: dict[str, object], key: str) -> dict[str, str]:
+    value = get_conf_value(conf, key)
+
+    if not isinstance(value, dict):
+        raise TypeError(f"Configuration key {key!r} must be a mapping")
+
+    items = cast(dict[object, object], value)
+
+    if not all(
+        isinstance(item_key, str) and isinstance(item_value, str)
+        for item_key, item_value in items.items()
+    ):
+        raise TypeError(
+            f"Configuration key {key!r} must map strings to strings"
+        )
+
+    return {
+        cast(str, item_key): cast(str, item_value)
+        for item_key, item_value in items.items()
+    }
+
+
 def load_conf(
     path: str | Path | None = None,
     *,
@@ -88,6 +110,8 @@ conf = load_conf(
         "comment_info_max",
         "todo_tasks_max",
         "valid_origin",
+        "origin_language",
+        "custom_code_unit_types",
     ],
 )
 
@@ -96,3 +120,9 @@ comments_max = get_conf_int(conf, "comments_max")
 comment_info_max = get_conf_int(conf, "comment_info_max")
 todo_tasks_max = get_conf_int(conf, "todo_tasks_max")
 valid_origin = get_conf_str_list(conf, "valid_origin")
+
+CUSTOM_CODE_UNIT_TYPES = frozenset(
+    get_conf_str_list(conf, "custom_code_unit_types")
+)
+
+ORIGIN_LANGUAGE = get_conf_str_dict(conf, "origin_language")
