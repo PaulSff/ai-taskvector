@@ -8,6 +8,8 @@ Edit the constants below to change the messages shown to the user.
 """
 import datetime
 
+from core.schemas.primitives import JsonObject
+
 # Node-RED import: system comment text (id/commenter/created_at are set in node_red_import.py)
 NODE_RED_IMPORT_COMMENT_INFO = """# Units Interaction
 This is a workflow imported from Node-RED and is supposed to be exported as a Node-RED flow after the modifications.
@@ -206,3 +208,15 @@ COMFYUI_SYSTEM_COMMENT = {
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z"),
 }
+
+def make_canonical_system_comment() -> JsonObject:
+    return {
+        "id": "comment_system_canonical",
+        "info": CANONICAL_GRAPH_COMMENT_INFO,
+        "commenter": "System",
+        "created_at": (
+            datetime.datetime.now(datetime.UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        ),
+    }

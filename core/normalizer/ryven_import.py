@@ -1,127 +1,445 @@
 """
 Ryven project import: map Ryven project JSON to canonical process graph dict.
 """
-import copy
-from typing import Any
 
 from core.normalizer.shared import ensure_list_connections
 from core.normalizer.system_comments import RYVEN_SYSTEM_COMMENT
+from core.schemas.primitives import (
+    JsonArray,
+    JsonObject,
+    JsonValue,
+    is_json_array,
+    is_json_object,
+)
 
-# Keys used for graph structure / identity; do not store in unit.params.
-_RYVEN_STRUCTURE_KEYS = frozenset({"id", "name", "type", "title", "identifier", "GID", "__class__"})
+_RYVEN_STRUCTURE_KEYS = frozenset(
+    {
+        "id",
+        "name",
+        "type",
+        "title",
+        "identifier",
+        "GID",
+        "__class__",
+        "node_type",
+    }
+)
+
+_RYVEN_PRESENTATION_KEYS = frozenset(
+    {
+        "x",
+        "y",
+        "position",
+        "pos",
+        "geometry",
+        "selected",
+        "collapsed",
+    }
+)
 
 
-def _ryven_flow_and_nodes(raw: dict[str, Any]) -> tuple[dict[str, Any] | None, list[Any]]:
-    """Extract flow dict and nodes list from a Ryven project (scripts[].flow or top-level flow)."""
+def _first_present(
+    value: JsonObject,
+    *keys: str,
+) -> JsonValue:
+    for key in keys:
+        candidate = value.get(key)
+        if candidate is not None:
+            return candidate
+
+    return None
+
+
+def _string_value(
+    value: JsonValue,
+    default: str = "",
+) -> str:
+    if value is None:
+        return default
+
+    return str(value)
+
+
+def _node_id(node: JsonObject) -> str | None:
+    value = _first_present(
+        node,
+        "id",
+        "name",
+        "identifier",
+        "GID",
+    )
+
+    if value is None:
+        return None
+
+    return str(value)
+
+
+def _node_type(node: JsonObject) -> str:
+    value = _first_present(
+        node,
+        "type",
+        "title",
+        "node_type",
+        "identifier",
+        "__class__",
+    )
+
+    if is_json_object(value):
+        value = value.get("name") or "Node"
+
+    return str(value or "Node").split(".")[-1]
+
+
+def _nodes_from_flow(flow: JsonObject) -> list[JsonObject]:
+    nodes = _first_present(
+        flow,
+        "nodes",
+        "node_list",
+        "nodes_list",
+    )
+
+    if not is_json_array(nodes):
+        return []
+
+    return [
+        value
+        for value in nodes
+        if is_json_object(value)
+    ]
+
+
+def _ryven_flow_and_nodes(
+    raw: JsonObject,
+) -> tuple[JsonObject | None, list[JsonObject]]:
+    """Extract the first Ryven flow and its nodes."""
+
     scripts = raw.get("scripts")
-    if isinstance(scripts, list) and scripts and isinstance(scripts[0], dict):
-        flow = scripts[0].get("flow")
-        if isinstance(flow, dict):
-            nodes = flow.get("nodes") or flow.get("node_list") or flow.get("nodes_list") or []
-            return flow, nodes if isinstance(nodes, list) else []
+
+    if is_json_array(scripts) and scripts:
+        first_script = scripts[0]
+
+        if is_json_object(first_script):
+            flow = first_script.get("flow")
+
+            if is_json_object(flow):
+                return flow, _nodes_from_flow(flow)
+
     flow = raw.get("flow")
-    if isinstance(flow, dict):
-        nodes = flow.get("nodes") or flow.get("node_list") or []
-        return flow, nodes if isinstance(nodes, list) else []
-    nodes = raw.get("nodes") or raw.get("node_list") or []
-    return raw, nodes if isinstance(nodes, list) else []
+
+    if is_json_object(flow):
+        return flow, _nodes_from_flow(flow)
+
+    nodes = _nodes_from_flow(raw)
+
+    return raw, nodes
 
 
-def _ryven_connections_list(flow: dict[str, Any] | None, node_ids: set[str]) -> list[dict[str, Any]]:
-    """Extract connections from Ryven flow. Parse nodeId:port for from_port/to_port when present."""
+def _split_endpoint(
+    value: JsonValue,
+) -> tuple[str, str]:
+    text = str(value)
+    parts = text.split(":", 1)
+
+    node_id = parts[0]
+    port = parts[1] if len(parts) == 2 and parts[1] else "0"
+
+    return node_id, port
+
+
+def _connection_endpoint(
+    connection: JsonObject,
+    *keys: str,
+) -> JsonValue:
+    return _first_present(connection, *keys)
+
+
+def _ryven_connections_list(
+    flow: JsonObject | None,
+    node_ids: set[str],
+) -> JsonArray:
     if flow is None:
         return []
-    conns = flow.get("connections") or flow.get("links") or flow.get("edges") or flow.get("wires") or []
-    if not isinstance(conns, list):
+
+    connections = _first_present(
+        flow,
+        "connections",
+        "links",
+        "edges",
+        "wires",
+    )
+
+    if not is_json_array(connections):
         return []
-    out: list[dict[str, Any]] = []
-    for c in conns:
-        if not isinstance(c, dict):
+
+    output: JsonArray = []
+
+    for value in connections:
+        if not is_json_object(value):
             continue
-        from_raw = c.get("from") or c.get("from_node") or c.get("from_id") or c.get("source")
-        to_raw = c.get("to") or c.get("to_node") or c.get("to_id") or c.get("target")
-        if from_raw is None or to_raw is None:
+
+        from_value = _connection_endpoint(
+            value,
+            "from",
+            "from_node",
+            "from_id",
+            "source",
+        )
+        to_value = _connection_endpoint(
+            value,
+            "to",
+            "to_node",
+            "to_id",
+            "target",
+        )
+
+        if from_value is None or to_value is None:
             continue
-        from_id, from_port = (str(from_raw).split(":", 1) + ["0"])[:2]
-        to_id, to_port = (str(to_raw).split(":", 1) + ["0"])[:2]
-        from_port = from_port or "0"
-        to_port = to_port or "0"
-        if from_id in node_ids and to_id in node_ids:
-            out.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
-    return out
+
+        from_id, embedded_from_port = _split_endpoint(from_value)
+        to_id, embedded_to_port = _split_endpoint(to_value)
+
+        if from_id not in node_ids or to_id not in node_ids:
+            continue
+
+        from_port = _first_present(
+            value,
+            "from_port",
+            "from_slot",
+            "out_port",
+            "out_slot",
+        )
+        to_port = _first_present(
+            value,
+            "to_port",
+            "to_slot",
+            "in_port",
+            "in_slot",
+        )
+
+        output.append(
+            {
+                "from": from_id,
+                "to": to_id,
+                "from_port": (
+                    embedded_from_port
+                    if from_port is None
+                    else str(from_port)
+                ),
+                "to_port": (
+                    embedded_to_port
+                    if to_port is None
+                    else str(to_port)
+                ),
+            }
+        )
+
+    return output
 
 
-def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+def _ryven_node_params(node: JsonObject) -> JsonObject:
+    params: JsonObject = {}
+
+    for key, value in node.items():
+        if value is None:
+            continue
+
+        if key in _RYVEN_STRUCTURE_KEYS:
+            continue
+
+        if key in _RYVEN_PRESENTATION_KEYS:
+            continue
+
+        params[key] = value
+
+    return params
+
+
+def _as_bool(
+    value: JsonValue,
+    default: bool = True,
+) -> bool:
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+
+    return bool(value)
+
+
+def _nested_object(
+    value: JsonValue,
+) -> JsonObject | None:
+    return value if is_json_object(value) else None
+
+
+def _code_source(
+    node: JsonObject,
+    params: JsonObject,
+) -> tuple[str, str] | None:
+    data = _nested_object(node.get("data"))
+
+    source = _first_present(
+        node,
+        "source",
+        "code",
+        "script",
+    )
+
+    if source is None and data is not None:
+        source = _first_present(
+            data,
+            "source",
+            "code",
+            "script",
+        )
+
+    if source is None:
+        source = _first_present(
+            params,
+            "source",
+            "code",
+        )
+
+    if not isinstance(source, str) or not source.strip():
+        return None
+
+    language = _first_present(node, "language")
+
+    if language is None and data is not None:
+        language = data.get("language")
+
+    if language is None:
+        language = params.get("language") or "python"
+
+    return str(language), source
+
+
+def _unique_connections(
+    connections: JsonArray,
+) -> JsonArray:
+    output: JsonArray = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    for value in connections:
+        if not is_json_object(value):
+            continue
+
+        from_id = value.get("from")
+        to_id = value.get("to")
+
+        if not isinstance(from_id, str) or not isinstance(to_id, str):
+            continue
+
+        from_port = str(value.get("from_port", "0"))
+        to_port = str(value.get("to_port", "0"))
+
+        key = (
+            from_id,
+            to_id,
+            from_port,
+            to_port,
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        output.append(
+            {
+                "from": from_id,
+                "to": to_id,
+                "from_port": from_port,
+                "to_port": to_port,
+            }
+        )
+
+    return output
+
+
+def to_canonical_dict(raw: JsonObject) -> JsonObject:
     """
-    Map Ryven project JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
-    Ryven layout: scripts[].flow with nodes and connections/links; or top-level flow/nodes.
+    Map a Ryven project JSON object to the canonical process graph format.
     """
+
     flow, nodes = _ryven_flow_and_nodes(raw)
-    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
+
+    environment_value = _first_present(
+        raw,
+        "environment_type",
+        "process_environment_type",
+    )
+    environment_type = _string_value(environment_value).strip()
+
+    units: JsonArray = []
+    code_blocks: JsonArray = []
     unit_ids: set[str] = set()
-    units: list[dict[str, Any]] = []
-    code_blocks: list[dict[str, Any]] = []
+    accepted_nodes: list[tuple[JsonObject, str]] = []
 
-    for n in nodes:
-        if not isinstance(n, dict):
+    for node in nodes:
+        node_id = _node_id(node)
+
+        if node_id is None or node_id in unit_ids:
             continue
-        nid = n.get("id") or n.get("name") or n.get("identifier") or n.get("GID")
-        if nid is None:
-            continue
-        nid = str(nid)
-        ntype = n.get("type") or n.get("title") or n.get("node_type") or n.get("identifier") or n.get("__class__") or "Node"
-        if isinstance(ntype, dict):
-            ntype = ntype.get("name", "Node")
-        ntype = str(ntype).split(".")[-1]
-        unit_ids.add(nid)
-        # Preserve all Ryven node keys as params (data, params, parameters, etc.)
-        params: dict[str, Any] = {}
-        for key, val in n.items():
-            if key in _RYVEN_STRUCTURE_KEYS or val is None:
-                continue
-            try:
-                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-            except (TypeError, ValueError):
-                params[key] = val
-        controllable = n.get("controllable")
-        if controllable is None:
-            controllable = True  # default True on import
-        else:
-            controllable = bool(controllable)
-        unit_rv: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
-        rv_name = n.get("title") or n.get("name")
-        if isinstance(rv_name, str) and rv_name.strip():
-            unit_rv["name"] = rv_name.strip()
-        units.append(unit_rv)
 
-        # Extract code for code_blocks.
-        # Ryven often stores code under node["data"]["source"] or similar, so look there as well.
-        data = n.get("data") if isinstance(n.get("data"), dict) else None
-        source = n.get("source") or n.get("code") or n.get("script")
-        if source is None and isinstance(data, dict):
-            source = data.get("source") or data.get("code") or data.get("script")
-        if source is None:
-            source = params.get("source") or params.get("code")
-        if source is not None and isinstance(source, str) and source.strip():
-            lang = n.get("language")
-            if lang is None and isinstance(data, dict):
-                lang = data.get("language")
-            if lang is None:
-                lang = params.get("language") or "python"
-            code_blocks.append({
-                "id": nid,
-                "language": str(lang),
-                "source": source,
-            })
+        unit_ids.add(node_id)
+        accepted_nodes.append((node, node_id))
 
-    connections = _ryven_connections_list(flow, unit_ids)
-    result: dict[str, Any] = {
-        "environment_type": env_type,
+        params = _ryven_node_params(node)
+
+        unit: JsonObject = {
+            "id": node_id,
+            "type": _node_type(node),
+            "controllable": _as_bool(node.get("controllable")),
+            "params": params,
+        }
+
+        display_name = _first_present(
+            node,
+            "title",
+            "name",
+        )
+
+        if isinstance(display_name, str) and display_name.strip():
+            unit["name"] = display_name.strip()
+
+        units.append(unit)
+
+        code = _code_source(node, params)
+
+        if code is not None:
+            language, source = code
+            code_blocks.append(
+                {
+                    "id": node_id,
+                    "language": language,
+                    "source": source,
+                }
+            )
+
+    connections = _unique_connections(
+        _ryven_connections_list(flow, unit_ids)
+    )
+
+    result: JsonObject = {
+        "environment_type": environment_type,
         "units": units,
-        "connections": ensure_list_connections(connections) if connections else [],
+        "connections": ensure_list_connections(connections),
+        "origin": {"ryven": {}},
+        "comments": [dict(RYVEN_SYSTEM_COMMENT)],
     }
+
     if code_blocks:
         result["code_blocks"] = code_blocks
-    result["origin"] = {"ryven": {}}
-    result["comments"] = [dict(RYVEN_SYSTEM_COMMENT)]
+
     return result

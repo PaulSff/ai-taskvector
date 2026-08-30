@@ -1,155 +1,301 @@
 """
 n8n workflow import: map n8n workflow JSON to canonical process graph dict.
 """
-import copy
-from typing import Any
 
 from core.normalizer.shared import ensure_list_connections
 from core.normalizer.system_comments import N8N_SYSTEM_COMMENT
+from core.schemas.primitives import (
+    JsonArray,
+    JsonObject,
+    is_json_array,
+    is_json_object,
+)
 
-# Keys used for graph structure / identity; do not store in unit.params.
 _N8N_STRUCTURE_KEYS = frozenset({"id", "name", "type", "position"})
 
 
-def _n8n_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract nodes array from n8n workflow JSON (top-level 'nodes')."""
+def _n8n_nodes_list(raw: JsonObject) -> list[JsonObject]:
+    """Extract the nodes array from an n8n workflow object."""
     nodes = raw.get("nodes")
-    return nodes if isinstance(nodes, list) else []
+
+    if not is_json_array(nodes):
+        return []
+
+    return [node for node in nodes if is_json_object(node)]
 
 
-def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[dict[str, Any]]:
+def _n8n_connections_to_list(
+    raw: JsonObject,
+    node_names: set[str],
+) -> JsonArray:
     """
-    Flatten n8n connections to list of { from, to, from_port, to_port, connection_type? }.
-    n8n: { "SourceName": { "main": [[ { "node": "Target", "type": "main", "index": 0 } ], ...] }, "ai_tool": [...] } }.
-    The key (main, ai_tool, ai_languageModel, etc.) is the connection type; preserved as connection_type for roundtrip.
+    Flatten n8n connections into connection objects.
+
+    n8n connections are keyed by source node name and connection type:
+
+        {
+            "SourceName": {
+                "main": [
+                    [
+                        {
+                            "node": "TargetName",
+                            "type": "main",
+                            "index": 0
+                        }
+                    ]
+                ]
+            }
+        }
     """
-    out: list[dict[str, Any]] = []
+
+    out: JsonArray = []
     conns = raw.get("connections")
-    if not isinstance(conns, dict):
+
+    if not is_json_object(conns):
         return out
+
     for source_name, outputs in conns.items():
-        if source_name not in node_names or not isinstance(outputs, dict):
+        if source_name not in node_names or not is_json_object(outputs):
             continue
+
         for output_type, indices_list in outputs.items():
-            if not isinstance(indices_list, list):
+            if not is_json_array(indices_list):
                 continue
-            conn_type = str(output_type) if output_type else None
+
+            connection_type = str(output_type) if output_type else None
+
             for from_port_idx, targets in enumerate(indices_list):
-                if not isinstance(targets, list):
+                if not is_json_array(targets):
                     continue
-                for t in targets:
-                    if isinstance(t, dict) and "node" in t:
-                        to_name = t.get("node")
-                        to_port = t.get("index", 0)
-                        if to_name and to_name in node_names and to_name != source_name:
-                            item: dict[str, Any] = {
-                                "from": source_name,
-                                "to": str(to_name),
-                                "from_port": str(from_port_idx),
-                                "to_port": str(to_port),
-                            }
-                            if conn_type:
-                                item["connection_type"] = conn_type
-                            out.append(item)
+
+                for target in targets:
+                    if not is_json_object(target):
+                        continue
+
+                    to_name = target.get("node")
+                    to_port = target.get("index", 0)
+
+                    if (
+                        not to_name
+                        or not isinstance(to_name, (str, int, float, bool))
+                        or str(to_name) not in node_names
+                        or str(to_name) == source_name
+                    ):
+                        continue
+
+                    connection: JsonObject = {
+                        "from": source_name,
+                        "to": str(to_name),
+                        "from_port": str(from_port_idx),
+                        "to_port": str(to_port),
+                    }
+
+                    if connection_type:
+                        connection["connection_type"] = connection_type
+
+                    out.append(connection)
+
     return out
 
 
-def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+def _n8n_code_source(node: JsonObject) -> str | None:
+    """Extract JavaScript source from an n8n Code or Function node."""
+    parameters = node.get("parameters")
+
+    if not is_json_object(parameters):
+        return None
+
+    source = parameters.get("jsCode") or parameters.get("code")
+
+    if isinstance(source, str) and source.strip():
+        return source
+
+    return None
+
+
+def _n8n_node_params(node: JsonObject) -> JsonObject:
+    """Preserve non-structural n8n node fields as unit parameters."""
+    params: JsonObject = {}
+
+    for key, value in node.items():
+        if key in _N8N_STRUCTURE_KEYS or value is None:
+            continue
+
+        params[key] = value
+
+    full_type = node.get("type")
+    if isinstance(full_type, str) and full_type.strip():
+        params["_n8n_type"] = full_type.strip()
+
+    return params
+
+
+def _n8n_layout(nodes: list[JsonObject], unit_ids: set[str]) -> JsonObject:
+    """Extract n8n node positions into canonical layout objects."""
+    layout: JsonObject = {}
+
+    for node in nodes:
+        node_id = node.get("name") or node.get("id")
+        if node_id is None or str(node_id) not in unit_ids:
+            continue
+
+        position = node.get("position")
+
+        if is_json_array(position) and len(position) >= 2:
+            x = position[0]
+            y = position[1]
+
+            if (
+                isinstance(x, (int, float))
+                and not isinstance(x, bool)
+                and isinstance(y, (int, float))
+                and not isinstance(y, bool)
+            ):
+                layout[str(node_id)] = {
+                    "x": float(x),
+                    "y": float(y),
+                }
+
+
+        elif is_json_object(position):
+            x = position.get("x")
+            y = position.get("y")
+
+            if (
+                isinstance(x, (int, float))
+                and not isinstance(x, bool)
+                and isinstance(y, (int, float))
+                and not isinstance(y, bool)
+            ):
+                layout[str(node_id)] = {
+                    "x": float(x),
+                    "y": float(y),
+                }
+
+
+    return layout
+
+
+def to_canonical_dict(raw: JsonObject) -> JsonObject:
     """
-    Map n8n workflow JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
-    n8n format: nodes (array with id, name, type, typeVersion, position, parameters), connections (object
-    keyed by node name). We use node name as unit id so connections match. Code from Code node parameters.jsCode → code_blocks.
+    Map n8n workflow JSON to a canonical process graph object.
+
+    n8n node names are used as canonical unit IDs so that connection references
+    remain stable. JavaScript code is preserved in code_blocks.
     """
     nodes = _n8n_nodes_list(raw)
-    env_type = str(raw.get("environment_type") or raw.get("process_environment_type") or "").strip()
+
+    environment_value = (
+        raw.get("environment_type")
+        or raw.get("process_environment_type")
+        or ""
+    )
+    environment_type = str(environment_value).strip()
 
     unit_ids: set[str] = set()
-    units: list[dict[str, Any]] = []
-    code_blocks: list[dict[str, Any]] = []
+    units: JsonArray = []
+    code_blocks: JsonArray = []
 
-    for n in nodes:
-        if not isinstance(n, dict):
-            continue
-        nid = n.get("name") or n.get("id")
-        if nid is None:
-            continue
-        nid = str(nid)
-        ntype = n.get("type") or "node"
-        if isinstance(ntype, str) and "." in ntype:
-            ntype = ntype.split(".")[-1]
-        ntype = str(ntype)
-        unit_ids.add(nid)
-        # Preserve all n8n node keys as params (typeVersion, parameters, disabled, notes, etc.)
-        params: dict[str, Any] = {}
-        for key, val in n.items():
-            if key in _N8N_STRUCTURE_KEYS or val is None:
-                continue
-            try:
-                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-            except (TypeError, ValueError):
-                params[key] = val
-        controllable = n.get("controllable")
-        if controllable is None:
-            controllable = True  # default True on import
-        else:
-            controllable = bool(controllable)
-        # Preserve full n8n type for roundtrip (export uses _n8n_type when present)
-        full_type = n.get("type")
-        if isinstance(full_type, str) and full_type.strip():
-            params["_n8n_type"] = full_type.strip()
-        unit_n8n: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
-        n8n_name = n.get("name")
-        if isinstance(n8n_name, str) and n8n_name.strip():
-            unit_n8n["name"] = n8n_name.strip()
-        units.append(unit_n8n)
 
-        code_source = (n.get("parameters") or {}).get("jsCode") or (n.get("parameters") or {}).get("code")
-        if code_source is not None and isinstance(code_source, str) and code_source.strip():
-            code_blocks.append({"id": nid, "language": "javascript", "source": code_source})
+    for node in nodes:
+        node_id = node.get("name") or node.get("id")
+        if node_id is None:
+            continue
+
+        unit_id = str(node_id)
+        unit_ids.add(unit_id)
+
+        node_type = node.get("type") or "node"
+        node_type_string = str(node_type)
+
+        if "." in node_type_string:
+            node_type_string = node_type_string.rsplit(".", 1)[-1]
+
+        controllable_value = node.get("controllable")
+        controllable = (
+            True
+            if controllable_value is None
+            else bool(controllable_value)
+        )
+
+        unit: JsonObject = {
+            "id": unit_id,
+            "type": node_type_string,
+            "controllable": controllable,
+            "params": _n8n_node_params(node),
+        }
+
+        node_name = node.get("name")
+        if isinstance(node_name, str) and node_name.strip():
+            unit["name"] = node_name.strip()
+
+        units.append(unit)
+
+        code_source = _n8n_code_source(node)
+        if code_source is not None:
+            code_blocks.append(
+                {
+                    "id": unit_id,
+                    "language": "javascript",
+                    "source": code_source,
+                }
+            )
 
     connections = _n8n_connections_to_list(raw, unit_ids)
-    # Infer output_ports per unit: one entry per connection type (main, ai_tool, etc.) for roundtrip/UI
-    out_types_by_node: dict[str, list[str]] = {}
-    for c in connections:
-        uid = c.get("from")
-        if uid not in unit_ids:
+
+    output_types_by_node: dict[str, list[str]] = {}
+
+    for connection in connections:
+        if not is_json_object(connection):
             continue
-        ct = c.get("connection_type") or "main"
-        if uid not in out_types_by_node:
-            out_types_by_node[uid] = []
-        if ct not in out_types_by_node[uid]:
-            out_types_by_node[uid].append(ct)
-    for u in units:
-        types_list = out_types_by_node.get(u["id"])
-        if types_list:
-            u["output_ports"] = [{"name": ct, "type": ct} for ct in sorted(types_list)]
-    result: dict[str, Any] = {
-        "environment_type": env_type,
+
+        unit_id = connection.get("from")
+        if not isinstance(unit_id, str) or unit_id not in unit_ids:
+            continue
+
+        connection_type = connection.get("connection_type") or "main"
+        connection_type_string = str(connection_type)
+
+        node_types = output_types_by_node.setdefault(unit_id, [])
+        if connection_type_string not in node_types:
+            node_types.append(connection_type_string)
+
+    for value in units:
+        if not is_json_object(value):
+            continue
+
+        unit_id = value.get("id")
+        if not isinstance(unit_id, str):
+            continue
+
+        output_types = output_types_by_node.get(unit_id)
+        if output_types:
+            value["output_ports"] = [
+                {
+                    "name": connection_type,
+                    "type": connection_type,
+                }
+                for connection_type in sorted(output_types)
+            ]
+
+
+    result: JsonObject = {
+        "environment_type": environment_type,
         "units": units,
         "connections": ensure_list_connections(connections),
+        "origin": {
+            "n8n": {},
+        },
+        "comments": [
+            dict(N8N_SYSTEM_COMMENT),
+        ],
     }
+
     if code_blocks:
         result["code_blocks"] = code_blocks
-    layout: dict[str, dict[str, float]] = {}
-    for n in nodes:
-        if not isinstance(n, dict):
-            continue
-        nid = n.get("name") or n.get("id")
-        if nid is None or nid not in unit_ids:
-            continue
-        pos = n.get("position")
-        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-            try:
-                layout[str(nid)] = {"x": float(pos[0]), "y": float(pos[1])}
-            except (TypeError, ValueError):
-                pass
-        elif isinstance(pos, dict) and "x" in pos and "y" in pos:
-            try:
-                layout[str(nid)] = {"x": float(pos["x"]), "y": float(pos["y"])}
-            except (TypeError, ValueError):
-                pass
+
+    layout = _n8n_layout(nodes, unit_ids)
     if layout:
         result["layout"] = layout
-    result["origin"] = {"n8n": {}}
-    result["comments"] = [dict(N8N_SYSTEM_COMMENT)]
+
     return result

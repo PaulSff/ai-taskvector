@@ -12,30 +12,42 @@ type JsonDocument = JsonObject | JsonArray
 
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
 
+RawProcessInput = JsonDocument | str
+
+
 # Workflow output is always the JsonObject
 
 FormatProcess = Literal[
-    "yaml",
-    "dict",
-    "node_red",
-    "template",
-    "pyflow",
+   "yaml",
+   "dict",
+   "node_red",
+   "template",
+   "pyflow",
+   "ryven",
+   "idaes",
+   "n8n",
+   "comfyui"
 ]
+
+FormatTraining = Literal["yaml", "dict"]
+
 
 @runtime_checkable
 class ModelDumpable(Protocol):
     def model_dump(self, *, by_alias: bool = ...) -> JsonObject:
         ...
 
-def is_format_process(
-    value: object,
-) -> TypeGuard[FormatProcess]:
+def is_format_process(value: object) -> TypeGuard[FormatProcess]:
     return value in {
         "yaml",
         "dict",
         "node_red",
         "template",
         "pyflow",
+        "ryven",
+        "idaes",
+        "n8n",
+        "comfyui",
     }
 
 def is_json_value(value: object) -> TypeGuard[JsonValue]:

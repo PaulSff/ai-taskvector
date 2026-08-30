@@ -12,10 +12,16 @@ Port resolution (Node-RED semantics):
 
 import copy
 import re
-from typing import Any
 
 from core.normalizer.system_comments import (
     NODE_RED_SYSTEM_COMMENT,
+)
+from core.schemas.primitives import (
+    JsonArray,
+    JsonObject,
+    JsonValue,
+    is_json_array,
+    is_json_object,
 )
 
 # Keys that define graph structure; do not store in unit.params (handled separately).
@@ -27,43 +33,71 @@ _NODE_RED_STRUCTURE_KEYS = frozenset(
 _NODE_RED_MSG_TYPE = "JavaScript(object)"
 
 
-def _node_red_output_port_count(node: dict[str, Any]) -> int:
-    """Return number of output ports from wires. wires[i] = destinations for port i."""
+def _node_red_output_port_count(node: JsonObject) -> int:
+    """Return the number of output ports defined by wires."""
     wires = node.get("wires")
-    if not isinstance(wires, list):
+    if not is_json_array(wires):
         return 0
+
     return len(wires)
 
 
 def _node_red_switch_output_ports(
-    node: dict[str, Any], num_ports: int
-) -> list[dict[str, str]] | None:
+    node: JsonObject,
+    num_ports: int,
+) -> list[JsonValue] | None:
     """
-    Return output port specs for a switch node from rules (doc + 10-switch_spec.js)
-    or from switch parameters (e.g. time-range-switch: startTime, endTime values as port names).
+    Return output port specifications for a switch node.
+
+    Rule-based switches map rules[i] to output port i. Parameter-based
+    switches, such as time-range-switch, use parameter values as port names.
     """
-    # 1) Rule-based switch: rules[i] maps to output port i
     rules = node.get("rules")
-    if isinstance(rules, list) and len(rules) == num_ports:
-        out: list[dict[str, str]] = []
-        for r in rules:
-            if not isinstance(r, dict):
-                out.append({"name": str(len(out)), "type": _NODE_RED_MSG_TYPE})
+
+    if is_json_array(rules) and len(rules) == num_ports:
+        output_ports: list[JsonValue] = []
+
+        for rule in rules:
+            if not is_json_object(rule):
+                output_ports.append(
+                    {
+                        "name": str(len(output_ports)),
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
+                )
                 continue
-            t = r.get("t") or "eq"
-            if t == "else":
-                out.append({"name": "else", "type": _NODE_RED_MSG_TYPE})
+
+            rule_type = rule.get("t") or "eq"
+
+            if rule_type == "else":
+                output_ports.append(
+                    {
+                        "name": "else",
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
+                )
+                continue
+
+            value = rule.get("v", "")
+            value_2 = rule.get("v2")
+
+            if value_2 is not None and str(value_2) != "":
+                label = f"Rule: {rule_type} {value}..{value_2}"
+            elif value != "":
+                label = f"Rule: {rule_type} {value}"
             else:
-                v = r.get("v", "")
-                v2 = r.get("v2")
-                if v2 is not None and str(v2) != "":
-                    label = f"Rule: {t} {v}..{v2}"
-                else:
-                    label = f"Rule: {t} {v}" if v != "" else f"Rule: {t}"
-                out.append({"name": label.strip(), "type": _NODE_RED_MSG_TYPE})
-        if out:
-            return out
-    # 2) Param-based switch (e.g. time-range-switch): port names = param values
+                label = f"Rule: {rule_type}"
+
+            output_ports.append(
+                {
+                    "name": label.strip(),
+                    "type": _NODE_RED_MSG_TYPE,
+                }
+            )
+
+        if output_ports:
+            return output_ports
+
     if (
         num_ports == 2
         and node.get("startTime") is not None
@@ -74,544 +108,965 @@ def _node_red_switch_output_ports(
                 "name": str(node.get("startTime", "startTime")),
                 "type": _NODE_RED_MSG_TYPE,
             },
-            {"name": str(node.get("endTime", "endTime")), "type": _NODE_RED_MSG_TYPE},
+            {
+                "name": str(node.get("endTime", "endTime")),
+                "type": _NODE_RED_MSG_TYPE,
+            },
         ]
+
     return None
 
 
 def _node_red_trigger_output_ports(
-    node: dict[str, Any], num_ports: int
-) -> list[dict[str, str]] | None:
+    node: JsonObject,
+    num_ports: int,
+) -> list[JsonValue] | None:
     """
-    Return output port specs for a trigger node (doc + 89-trigger_spec.js).
-    Output 0 = immediate (op1), Output 1 = delayed (op2) when outputs: 2.
-    Port names from op1/op2; type is always JavaScript(object) (msg).
+    Return output port specifications for a trigger node.
+
+    With one output, the port represents the immediate operation. With two
+    outputs, the ports represent the immediate and delayed operations.
     """
-    if num_ports == 1:
-        op1 = node.get("op1")
-        name = str(op1) if op1 is not None else "immediate"
-        return [{"name": name, "type": _NODE_RED_MSG_TYPE}]
+    if num_ports not in (1, 2):
+        return None
+
+    operation_1 = node.get("op1")
+    operation_2 = node.get("op2")
+
+    ports: list[JsonValue] = [
+        {
+            "name": (
+                str(operation_1)
+                if operation_1 is not None
+                else "immediate"
+            ),
+            "type": _NODE_RED_MSG_TYPE,
+        }
+    ]
+
     if num_ports == 2:
-        op1 = node.get("op1")
-        op2 = node.get("op2")
-        return [
+        ports.append(
             {
-                "name": str(op1) if op1 is not None else "immediate",
+                "name": (
+                    str(operation_2)
+                    if operation_2 is not None
+                    else "delayed"
+                ),
                 "type": _NODE_RED_MSG_TYPE,
-            },
-            {
-                "name": str(op2) if op2 is not None else "delayed",
-                "type": _NODE_RED_MSG_TYPE,
-            },
-        ]
-    return None
+            }
+        )
+
+    return ports
 
 
-def _node_red_inject_output_port(node: dict[str, Any]) -> dict[str, str]:
+def _node_red_inject_output_port() -> JsonObject:
     """
-    Return output port spec for an inject node.
-    Inject always outputs one message; port is msg.payload, type JavaScript(object).
+    Return the output port specification for an inject node.
+
+    Inject nodes always produce one message through ``msg.payload``.
     """
-    return {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
+    return {
+        "name": "msg.payload",
+        "type": _NODE_RED_MSG_TYPE,
+    }
 
 
-def _node_red_parse_msg_property_paths(func_source: str) -> list[str]:
+def _node_red_parse_msg_property_paths(
+    func_source: str,
+) -> list[str]:
     """
-    Extract msg property paths from function code in order of first occurrence.
-    e.g. msg.payload[0].feedback -> "msg.payload[0].feedback". msg.payload is the message body.
-    Returns unique full paths (msg.<path>) suitable for port names.
+    Extract unique msg property paths in order of first occurrence.
+
+    For example, ``msg.payload[0].feedback`` becomes the port name
+    ``msg.payload[0].feedback``.
     """
-    if not func_source or not isinstance(func_source, str):
+    if not func_source:
         return []
-    # Match msg.<ident>, msg.payload[0], msg.payload[0].feedback, etc.
+
     pattern = r"msg\.(\w+(?:\[\d+\])?(?:\.\w+)*)"
+
     seen: set[str] = set()
     result: list[str] = []
-    for m in re.finditer(pattern, func_source):
-        path = m.group(1)
-        full = "msg." + path
-        if full not in seen:
-            seen.add(full)
-            result.append(full)
+
+    for match in re.finditer(pattern, func_source):
+        path = match.group(1)
+        full_path = f"msg.{path}"
+
+        if full_path not in seen:
+            seen.add(full_path)
+            result.append(full_path)
+
     return result
 
 
-def _node_red_parse_function_return_ports(
-    func_source: str, num_ports: int
-) -> list[str] | None:
+def _node_red_nodes_list(
+    raw: JsonValue,
+) -> list[JsonObject]:
     """
-    Parse function node code for return [...]; pattern. Array index = output port index.
-    Returns list of port semantic hints ("msg" or "skip") for which ports carry a message.
+    Extract a flat list of Node-RED nodes.
+
+    Supported formats include:
+
+    - A root node array.
+    - ``{"nodes": [...]}``.
+    - ``{"flows": [{"nodes": [...]}]}``.
+    - ``{"flows": [[...]]}``.
+    - ``{"flow": {"nodes": [...]}}``.
+    - ``{"tab": {"nodes": [...]}}``.
+    - ``{"flow": [...]}``.
+    - ``{"tab": [...]}``.
     """
-    if not func_source or num_ports <= 0:
-        return None
-    # Match return [ ... ]; (single-line or multi-line; capture content between brackets)
-    m = re.search(r"return\s*\[(.*?)\]\s*;", func_source, re.DOTALL)
-    if not m:
-        # Single return: return msg; → one output
-        if re.search(r"return\s+\w+\s*;", func_source) and num_ports == 1:
-            return ["msg"]
-        return None
-    inner = m.group(1)
-    # Split by comma, but be naive (no nested brackets); good enough for return [msg,null]; etc.
-    parts = re.split(r",", inner)
-    names: list[str] = []
-    for i, part in enumerate(parts):
-        if i >= num_ports:
-            break
-        part = part.strip()
-        if re.match(r"null\s*$", part) or part == "":
-            names.append("skip")
-        else:
-            names.append("msg")
-    while len(names) < num_ports:
-        names.append("msg")
-    return names[:num_ports]
+    if is_json_array(raw):
+        return [
+            node
+            for node in raw
+            if is_json_object(node)
+        ]
 
+    if not is_json_object(raw):
+        return []
 
-def _node_red_nodes_list(raw: Any) -> list[dict[str, Any]]:
-    """Extract flat list of nodes from Node-RED flow (array of nodes, or flows[].nodes, or {nodes})."""
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        nodes = raw.get("nodes")
-        if nodes is not None:
-            return nodes
-        flows = raw.get("flows")
-        if isinstance(flows, list) and flows:
-            first = flows[0]
-            if isinstance(first, dict) and "nodes" in first:
-                return first["nodes"]
-            if isinstance(first, list):
-                return first
-        for key in ("flow", "tab"):
-            tab = raw.get(key)
-            if isinstance(tab, dict) and "nodes" in tab:
-                return tab["nodes"]
-            # Library / gist format: "flow" is the nodes array directly
-            if isinstance(tab, list) and tab:
-                return tab
+    nodes = raw.get("nodes")
+    if is_json_array(nodes):
+        return [
+            node
+            for node in nodes
+            if is_json_object(node)
+        ]
+
+    flows = raw.get("flows")
+    if is_json_array(flows) and flows:
+        first_flow = flows[0]
+
+        if is_json_object(first_flow):
+            flow_nodes = first_flow.get("nodes")
+            if is_json_array(flow_nodes):
+                return [
+                    node
+                    for node in flow_nodes
+                    if is_json_object(node)
+                ]
+
+        if is_json_array(first_flow):
+            return [
+                node
+                for node in first_flow
+                if is_json_object(node)
+            ]
+
+    for key in ("flow", "tab"):
+        tab = raw.get(key)
+
+        if is_json_object(tab):
+            tab_nodes = tab.get("nodes")
+            if is_json_array(tab_nodes):
+                return [
+                    node
+                    for node in tab_nodes
+                    if is_json_object(node)
+                ]
+
+        # Library / gist format: "flow" or "tab" is the nodes array.
+        if is_json_array(tab):
+            return [
+                node
+                for node in tab
+                if is_json_object(node)
+            ]
+
     return []
 
 
-def _node_red_flows_list(raw: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """If raw has flows[] (list of flow dicts with id/label/nodes), return that list for multi-tab import. Else None."""
-    flows = raw.get("flows")
-    if not isinstance(flows, list) or not flows:
-        return None
-    out: list[dict[str, Any]] = []
-    for i, f in enumerate(flows):
-        if isinstance(f, dict) and ("nodes" in f or isinstance(f.get("nodes"), list)):
-            out.append(f)
-        elif isinstance(f, list):
-            out.append({"id": f"flow_{i}", "label": None, "nodes": f})
-    return out if out else None
+def _node_red_flows_list(
+    raw: JsonObject,
+) -> list[JsonObject] | None:
+    """
+    Return flow definitions for multi-tab imports.
 
+    Each returned object contains the original flow definition, or a
+    synthesized definition for a flow represented directly as a node array.
+    """
+    flows = raw.get("flows")
+
+    if not is_json_array(flows) or not flows:
+        return None
+
+    output: list[JsonObject] = []
+
+    for index, flow in enumerate(flows):
+        if is_json_object(flow):
+            nodes = flow.get("nodes")
+
+            if is_json_array(nodes):
+                output.append(flow)
+
+            continue
+
+        if is_json_array(flow):
+            output.append(
+                {
+                    "id": f"flow_{index}",
+                    "label": None,
+                    "nodes": [
+                        node
+                        for node in flow
+                        if is_json_object(node)
+                    ],
+                }
+            )
+
+    return output or None
 
 def _node_red_units_connections_from_nodes(
-    nodes: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Build units, connections, and code_blocks from a list of Node-RED flow nodes (no tab/group nodes). Returns (units, connections, code_blocks)."""
-    unit_ids: set[str] = set()
-    units: list[dict[str, Any]] = []
-    code_blocks: list[dict[str, Any]] = []
+    nodes: list[JsonObject],
+) -> tuple[JsonArray, JsonArray, JsonArray]:
+    """
+    Build units, connections, and code blocks from Node-RED flow nodes.
 
-    for n in nodes:
-        if not isinstance(n, dict):
+    Tab and group nodes are excluded from the returned units.
+    """
+    unit_ids: set[str] = set()
+    units: JsonArray = []
+    code_blocks: JsonArray = []
+
+    for node in nodes:
+        node_id_value = node.get("id") or node.get("name")
+        if node_id_value is None:
             continue
-        nid = n.get("id") or n.get("name")
-        if nid is None:
+
+        node_id = str(node_id_value)
+        raw_type = node.get("type")
+
+        if (
+            isinstance(raw_type, str)
+            and raw_type.lower() in ("tab", "group")
+        ):
             continue
-        nid = str(nid)
-        raw_type = n.get("type")
-        if isinstance(raw_type, str) and raw_type.lower() in ("tab", "group"):
-            continue
-        ntype = n.get("unitType") or n.get("processType") or raw_type or "node"
-        ntype = str(ntype)
-        unit_ids.add(nid)
-        # Preserve all Node-RED config as params (repeat, crontab, url, method, initialize, finalize, props, etc.),
-        # but skip structural keys and code fields (func/code/template/command) since code goes to code_blocks.
-        params: dict[str, Any] = {}
-        for key, val in n.items():
-            if key in _NODE_RED_STRUCTURE_KEYS or key in (
-                "func",
-                "code",
-                "template",
-                "command",
-            ):
+
+        node_type = str(
+            node.get("unitType")
+            or node.get("processType")
+            or raw_type
+            or "node"
+        )
+
+        unit_ids.add(node_id)
+
+        params: JsonObject = {}
+
+        for key, value in node.items():
+            if key in _NODE_RED_STRUCTURE_KEYS:
                 continue
-            if val is None:
+
+            if key in ("func", "code", "template", "command"):
                 continue
-            try:
-                params[key] = (
-                    copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-                )
-            except (TypeError, ValueError):
-                params[key] = val
-        controllable = n.get("controllable")
-        if controllable is None:
-            controllable = True  # default True on import
-        else:
-            controllable = bool(controllable)
-        # Trigger nodes are controllable (timing / on-off control)
-        if isinstance(raw_type, str) and raw_type.lower() == "trigger":
+
+            if value is None:
+                continue
+
+            params[key] = copy.deepcopy(value)
+
+        controllable_value = node.get("controllable")
+        controllable = (
+            True
+            if controllable_value is None
+            else bool(controllable_value)
+        )
+
+        if (
+            isinstance(raw_type, str)
+            and raw_type.lower() == "trigger"
+        ):
             controllable = True
-        # Network "..in" nodes are not controllable (triggered by external requests)
-        if isinstance(raw_type, str) and raw_type.lower().endswith(" in"):
+
+        if (
+            isinstance(raw_type, str)
+            and raw_type.lower().endswith(" in")
+        ):
             controllable = False
-        unit: dict[str, Any] = {
-            "id": nid,
-            "type": ntype,
+
+        unit: JsonObject = {
+            "id": node_id,
+            "type": node_type,
             "controllable": controllable,
             "params": params,
         }
-        label_or_name = n.get("label") or n.get("name")
-        if isinstance(label_or_name, str) and label_or_name.strip():
+
+        label_or_name = node.get("label") or node.get("name")
+        if (
+            isinstance(label_or_name, str)
+            and label_or_name.strip()
+        ):
             unit["name"] = label_or_name.strip()
-        # Preserve subflow definition (in, out, configs, nodes) for roundtrip
-        if isinstance(raw_type, str) and raw_type.lower() == "subflow":
-            subflow_def: dict[str, Any] = {}
+
+        # Preserve subflow definitions for round-trip support.
+        if (
+            isinstance(raw_type, str)
+            and raw_type.lower() == "subflow"
+        ):
+            subflow_definition: JsonObject = {}
+
             for key in ("in", "out", "configs", "nodes"):
-                val = n.get(key)
-                if val is not None:
-                    subflow_def[key] = copy.deepcopy(val)
+                value = node.get(key)
+                if value is not None:
+                    subflow_definition[key] = copy.deepcopy(value)
+
             for key in ("name", "info", "env", "meta"):
-                val = n.get(key)
-                if val is not None:
-                    subflow_def[key] = (
-                        copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-                    )
-            if subflow_def:
-                unit["params"]["_node_red_subflow"] = subflow_def
-        # Resolve output_ports from wires: wires[i] = destinations for port i. Type = JavaScript(object); names = msg property paths.
-        num_out = _node_red_output_port_count(n)
-        if num_out == 1:
-            if isinstance(raw_type, str) and raw_type.lower() == "inject":
-                unit["output_ports"] = [_node_red_inject_output_port(n)]
-            elif isinstance(raw_type, str) and raw_type.lower() == "split":
-                # Split: single output with msg.parts metadata (doc + 17-split_spec.js); type remains JavaScript(object)
+                value = node.get(key)
+                if value is not None:
+                    subflow_definition[key] = copy.deepcopy(value)
+
+            if subflow_definition:
+                params["_node_red_subflow"] = subflow_definition
+
+        num_outputs = _node_red_output_port_count(node)
+
+        if num_outputs == 1:
+            if (
+                isinstance(raw_type, str)
+                and raw_type.lower() == "inject"
+            ):
                 unit["output_ports"] = [
-                    {"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}
+                    _node_red_inject_output_port()
                 ]
-            elif isinstance(raw_type, str) and raw_type.lower() == "sort":
-                # Sort: input and output are msg.parts (sequence of messages; see flowfuse.com/node-red/core-nodes/sort)
+
+            elif (
+                isinstance(raw_type, str)
+                and raw_type.lower() in ("split", "sort")
+            ):
                 unit["output_ports"] = [
-                    {"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}
+                    {
+                        "name": "msg.parts",
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
                 ]
+
             elif raw_type == "function":
-                func_src = n.get("func") or ""
-                if isinstance(func_src, str):
-                    paths = _node_red_parse_msg_property_paths(func_src)
-                    if paths:
-                        # Name from first msg property path (e.g. msg.parts); type always JavaScript(object)
-                        unit["output_ports"] = [
-                            {"name": paths[0], "type": _NODE_RED_MSG_TYPE}
-                        ]
-                    else:
-                        unit["output_ports"] = [
-                            {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
-                        ]
-                else:
-                    unit["output_ports"] = [
-                        {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
-                    ]
-            elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
-                trigger_ports = _node_red_trigger_output_ports(n, 1)
+                function_source = node.get("func") or ""
+
+                paths = (
+                    _node_red_parse_msg_property_paths(function_source)
+                    if isinstance(function_source, str)
+                    else []
+                )
+
+                unit["output_ports"] = [
+                    {
+                        "name": (
+                            paths[0]
+                            if paths
+                            else "msg.payload"
+                        ),
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
+                ]
+
+            elif (
+                isinstance(raw_type, str)
+                and raw_type.lower() == "trigger"
+            ):
+                trigger_ports = _node_red_trigger_output_ports(
+                    node,
+                    1,
+                )
+
                 unit["output_ports"] = (
                     trigger_ports
                     if trigger_ports
-                    else [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                    else [
+                        {
+                            "name": "msg.payload",
+                            "type": _NODE_RED_MSG_TYPE,
+                        }
+                    ]
                 )
+
             else:
                 unit["output_ports"] = [
-                    {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
+                    {
+                        "name": "msg.payload",
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
                 ]
-        elif num_out > 1:
-            port_specs: list[dict[str, str]] | None = None
-            if isinstance(raw_type, str) and "switch" in raw_type.lower():
-                port_specs = _node_red_switch_output_ports(n, num_out)
-            elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
-                port_specs = _node_red_trigger_output_ports(n, num_out)
+
+        elif num_outputs > 1:
+            port_specs: list[JsonValue] | None = None
+
+            if (
+                isinstance(raw_type, str)
+                and "switch" in raw_type.lower()
+            ):
+                port_specs = _node_red_switch_output_ports(
+                    node,
+                    num_outputs,
+                )
+
+            elif (
+                isinstance(raw_type, str)
+                and raw_type.lower() == "trigger"
+            ):
+                port_specs = _node_red_trigger_output_ports(
+                    node,
+                    num_outputs,
+                )
+
             if port_specs is not None:
                 unit["output_ports"] = port_specs
+
             else:
-                port_names = [str(i) for i in range(num_out)]
+                port_names = [
+                    str(index)
+                    for index in range(num_outputs)
+                ]
+
                 if raw_type == "function":
-                    func_src = n.get("func") or ""
-                    if isinstance(func_src, str):
-                        paths = _node_red_parse_msg_property_paths(func_src)
+                    function_source = node.get("func") or ""
+
+                    if isinstance(function_source, str):
+                        paths = _node_red_parse_msg_property_paths(
+                            function_source
+                        )
+
                         if paths:
                             port_names = [
-                                paths[i] if i < len(paths) else "msg.payload"
-                                for i in range(num_out)
+                                (
+                                    paths[index]
+                                    if index < len(paths)
+                                    else "msg.payload"
+                                )
+                                for index in range(num_outputs)
                             ]
                         else:
-                            port_names = ["msg.payload"] * num_out
-                unit["output_ports"] = [
-                    {"name": name, "type": _NODE_RED_MSG_TYPE} for name in port_names
-                ]
-        units.append(unit)
-        source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
-        if source is not None and isinstance(source, str) and source.strip():
-            lang = "shell" if ntype == "exec" else "javascript"
-            code_blocks.append({"id": nid, "language": lang, "source": source})
+                            port_names = [
+                                "msg.payload"
+                                for _ in range(num_outputs)
+                            ]
 
-    connections: list[dict[str, Any]] = []
-    for n in nodes:
-        if not isinstance(n, dict):
+                unit["output_ports"] = [
+                    {
+                        "name": name,
+                        "type": _NODE_RED_MSG_TYPE,
+                    }
+                    for name in port_names
+                ]
+
+        units.append(unit)
+
+        source = (
+            node.get("func")
+            or node.get("code")
+            or node.get("template")
+            or node.get("command")
+        )
+
+        if isinstance(source, str) and source.strip():
+            language = (
+                "shell"
+                if node_type == "exec"
+                else "javascript"
+            )
+
+            code_blocks.append(
+                {
+                    "id": node_id,
+                    "language": language,
+                    "source": source,
+                }
+            )
+
+    connections: JsonArray = []
+
+    for node in nodes:
+        from_value = node.get("id") or node.get("name")
+        if from_value is None:
             continue
-        from_id = n.get("id") or n.get("name")
-        if from_id is None:
+
+        from_id = str(from_value)
+        if from_id not in unit_ids:
             continue
-        from_id = str(from_id)
-        wires = n.get("wires") or []
-        for out_idx, out_ports in enumerate(wires):
-            if not isinstance(out_ports, list):
+
+        wires = node.get("wires")
+        if not is_json_array(wires):
+            continue
+
+        for output_index, output_targets in enumerate(wires):
+            if not is_json_array(output_targets):
                 continue
-            for to_id in out_ports:
-                if to_id is None:
+
+            for target in output_targets:
+                if target is None:
                     continue
-                to_id = str(to_id)
-                if to_id in unit_ids:
-                    connections.append(
-                        {
-                            "from": from_id,
-                            "to": to_id,
-                            "from_port": str(out_idx),
-                            "to_port": "0",
-                        }
+
+                to_id = str(target)
+                if to_id not in unit_ids:
+                    continue
+
+                connections.append(
+                    {
+                        "from": from_id,
+                        "to": to_id,
+                        "from_port": str(output_index),
+                        "to_port": "0",
+                    }
+                )
+
+    def _input_port_name(unit_type: JsonValue) -> str:
+        if (
+            isinstance(unit_type, str)
+            and unit_type.lower() in ("join", "sort")
+        ):
+            return "msg.parts"
+
+        return "msg"
+
+    to_ids_with_input: set[str] = set()
+
+    for connection_value in connections:
+        if not is_json_object(connection_value):
+            continue
+
+        to_value = connection_value.get("to")
+        if isinstance(to_value, str):
+            to_ids_with_input.add(to_value)
+
+    for unit_value in units:
+        if not is_json_object(unit_value):
+            continue
+
+        params_value = unit_value.get("params")
+
+        unit_params: JsonObject = {}
+        if is_json_object(params_value):
+            unit_params = params_value
+
+        num_inputs = unit_params.get("inputs")
+        input_name = _input_port_name(unit_value.get("type"))
+        unit_id = unit_value.get("id")
+
+        if not isinstance(unit_id, str):
+            continue
+
+        if num_inputs is not None:
+            try:
+                if isinstance(num_inputs, bool):
+                    raise TypeError("Boolean input count is invalid")
+
+                if isinstance(num_inputs, (int, float, str)):
+                    input_count = int(num_inputs)
+                else:
+                    raise TypeError(
+                        "Input count must be a number or numeric string"
                     )
 
-    # Resolve input_ports from node "inputs" property (21-mqtt_spec: inputs 0 = source, 1 = one msg port)
-    # When inputs is absent, infer from incoming connections (backward compatibility).
-    # Join and Sort expect msg.parts (see core nodes join/sort); others use msg.
-    def _input_port_name(unit_type: Any) -> str:
-        return (
-            "msg.parts"
-            if isinstance(unit_type, str) and unit_type.lower() in ("join", "sort")
-            else "msg"
-        )
+                if input_count < 0:
+                    raise ValueError(
+                        "Input count cannot be negative"
+                    )
 
-    to_ids_with_input: set[str] = {c["to"] for c in connections}
-    for u in units:
-        params = u.get("params") or {}
-        num_in = params.get("inputs")
-        inp_name = _input_port_name(u.get("type"))
-        if num_in is not None:
-            try:
-                n = int(num_in)
-                if n == 0:
-                    u["input_ports"] = []
+                if input_count == 0:
+                    unit_value["input_ports"] = []
                 else:
-                    u["input_ports"] = [
-                        {"name": inp_name, "type": _NODE_RED_MSG_TYPE} for _ in range(n)
+                    unit_value["input_ports"] = [
+                        {
+                            "name": input_name,
+                            "type": _NODE_RED_MSG_TYPE,
+                        }
+                        for _ in range(input_count)
                     ]
-            except (TypeError, ValueError):
-                if u["id"] in to_ids_with_input:
-                    u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE}]
-        elif u["id"] in to_ids_with_input:
-            u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE}]
-    return (units, connections, code_blocks)
+
+            except (TypeError, ValueError, OverflowError):
+                if unit_id in to_ids_with_input:
+                    unit_value["input_ports"] = [
+                        {
+                            "name": input_name,
+                            "type": _NODE_RED_MSG_TYPE,
+                        }
+                    ]
+
+        elif unit_id in to_ids_with_input:
+            unit_value["input_ports"] = [
+                {
+                    "name": input_name,
+                    "type": _NODE_RED_MSG_TYPE,
+                }
+            ]
+
+    return units, connections, code_blocks
 
 
-def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
+def normalize_disabled(value: JsonValue) -> JsonValue:
+    if value is None:
+        return None
+
+    return bool(value)
+
+
+def to_canonical_dict(
+    raw: JsonValue,
+) -> JsonObject:
     """
-    Map Node-RED flow JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
-    Supports multi-tab: one flow per tab (tabs[].units, tabs[].connections). Top-level units/connections
+    Map Node-RED flow JSON to the canonical process graph dictionary.
+
+    Supports multi-tab imports. The top-level ``units`` and ``connections``
     mirror the first tab for backward compatibility.
     """
-    env_type = str(
-        (
-            isinstance(raw, dict)
-            and (raw.get("environment_type") or raw.get("process_environment_type"))
+    env_type = ""
+
+    if is_json_object(raw):
+        environment_value = (
+            raw.get("environment_type")
+            or raw.get("process_environment_type")
+            or ""
         )
-        or ""
-    ).strip()
+        env_type = str(environment_value).strip()
 
-    all_code_blocks: list[dict[str, Any]] = []
-    tab_meta_for_origin: list[dict[str, Any]] = []
-    tabs_list: list[dict[str, Any]] = []
-    layout: dict[str, dict[str, float]] = {}
+    all_code_blocks: JsonArray = []
+    tab_meta_for_origin: JsonArray = []
+    tabs_list: JsonArray = []
+    layout: JsonObject = {}
 
-    flows_list = _node_red_flows_list(raw) if isinstance(raw, dict) else None
+    primary_units: JsonArray = []
+    primary_connections: JsonArray = []
+
+    def append_tab(
+        tab_id: str,
+        label: JsonValue,
+        disabled: JsonValue,
+        units: JsonArray,
+        connections: JsonArray,
+    ) -> None:
+        tab_metadata: JsonObject = {
+            "id": tab_id,
+            "label": label,
+            "disabled": disabled,
+        }
+        tab_meta_for_origin.append(tab_metadata)
+
+        tab_data: JsonObject = {
+            "id": tab_id,
+            "label": label,
+            "disabled": disabled,
+            "units": units,
+            "connections": connections,
+        }
+        tabs_list.append(tab_data)
+
+    def set_primary_from_first_tab() -> None:
+        nonlocal primary_units
+        nonlocal primary_connections
+
+        if not tabs_list:
+            return
+
+        first_tab_value = tabs_list[0]
+
+        if not is_json_object(first_tab_value):
+            return
+
+        units_value: JsonValue = first_tab_value.get("units", [])
+        connections_value: JsonValue = first_tab_value.get(
+            "connections",
+            [],
+        )
+
+        if is_json_array(units_value):
+            primary_units = units_value
+
+        if is_json_array(connections_value):
+            primary_connections = connections_value
+
+    flows_list = (
+        _node_red_flows_list(raw)
+        if is_json_object(raw)
+        else None
+    )
+
     if flows_list is not None:
-        for i, flow in enumerate(flows_list):
-            tab_id = str(flow.get("id") or f"flow_{i}")
+        for index, flow in enumerate(flows_list):
+            tab_id = str(flow.get("id") or f"flow_{index}")
+
             label = flow.get("label")
             if isinstance(label, str) and not label.strip():
                 label = None
-            disabled = flow.get("disabled")
-            if disabled is not None:
-                disabled = bool(disabled)
-            tab_meta_for_origin.append(
-                {"id": tab_id, "label": label, "disabled": disabled}
-            )
+
+            tab_disabled = normalize_disabled(flow.get("disabled"))
+
             raw_nodes = flow.get("nodes")
-            if isinstance(raw_nodes, list):
-                flow_nodes = raw_nodes  # no type redeclaration
-                for n in flow_nodes:
-                    if isinstance(n, dict):
-                        nid = n.get("id") or n.get("name")
-                        x, y = n.get("x"), n.get("y")
-                        if nid is not None and x is not None and y is not None:
-                            try:
-                                layout[str(nid)] = {"x": float(x), "y": float(y)}
-                            except (TypeError, ValueError):
-                                pass
-                u, c, cb = _node_red_units_connections_from_nodes(flow_nodes)
-                all_code_blocks.extend(cb)
-                tabs_list.append(
-                    {
-                        "id": tab_id,
-                        "label": label,
-                        "disabled": disabled,
-                        "units": u,
-                        "connections": c,
-                    }
+
+            if is_json_array(raw_nodes):
+                nested_flow_nodes: list[JsonObject] = [
+                    node
+                    for node in raw_nodes
+                    if is_json_object(node)
+                ]
+
+                for node in nested_flow_nodes:
+                    node_id_value = node.get("id") or node.get("name")
+                    x = node.get("x")
+                    y = node.get("y")
+
+                    if (
+                        node_id_value is None
+                        or x is None
+                        or y is None
+                        or isinstance(x, bool)
+                        or isinstance(y, bool)
+                        or not isinstance(x, (str, int, float))
+                        or not isinstance(y, (str, int, float))
+                    ):
+                        continue
+
+                    try:
+                        layout[str(node_id_value)] = {
+                            "x": float(x),
+                            "y": float(y),
+                        }
+                    except (
+                        TypeError,
+                        ValueError,
+                        OverflowError,
+                    ):
+                        pass
+
+                (
+                    units,
+                    connections,
+                    code_blocks,
+                ) = _node_red_units_connections_from_nodes(
+                    nested_flow_nodes,
                 )
+
+                for code_block in code_blocks:
+                    if is_json_object(code_block):
+                        all_code_blocks.append(code_block)
+
+                append_tab(
+                    tab_id=tab_id,
+                    label=label,
+                    disabled=tab_disabled,
+                    units=units,
+                    connections=connections,
+                )
+
             else:
-                tabs_list.append(
-                    {
-                        "id": tab_id,
-                        "label": label,
-                        "disabled": disabled,
-                        "units": [],
-                        "connections": [],
-                    }
+                append_tab(
+                    tab_id=tab_id,
+                    label=label,
+                    disabled=tab_disabled,
+                    units=[],
+                    connections=[],
                 )
-        primary_units = tabs_list[0]["units"] if tabs_list else []
-        primary_connections = tabs_list[0]["connections"] if tabs_list else []
+
+        set_primary_from_first_tab()
+
     else:
         nodes = _node_red_nodes_list(raw)
-        tab_nodes_ordered: list[dict[str, Any]] = []
-        flow_nodes: list[dict[str, Any]] = []
-        for n in nodes:
-            if not isinstance(n, dict):
-                continue
-            raw_type = n.get("type")
-            if isinstance(raw_type, str) and raw_type.lower() in ("tab", "group"):
-                tab_nodes_ordered.append(n)
+
+        tab_nodes_ordered: list[JsonObject] = []
+        flow_nodes: list[JsonObject] = []
+
+        for node in nodes:
+            raw_type = node.get("type")
+
+            if (
+                isinstance(raw_type, str)
+                and raw_type.lower() in ("tab", "group")
+            ):
+                tab_nodes_ordered.append(node)
             else:
-                flow_nodes.append(n)
+                flow_nodes.append(node)
 
         if not tab_nodes_ordered:
-            primary_units, primary_connections, all_code_blocks = (
-                _node_red_units_connections_from_nodes(flow_nodes)
+            (
+                primary_units,
+                primary_connections,
+                node_code_blocks,
+            ) = _node_red_units_connections_from_nodes(flow_nodes)
+
+            all_code_blocks.extend(node_code_blocks)
+
+            append_tab(
+                tab_id="flow_main",
+                label="Process",
+                disabled=None,
+                units=primary_units,
+                connections=primary_connections,
             )
-            tabs_list = [
-                {
-                    "id": "flow_main",
-                    "label": None,
-                    "disabled": None,
-                    "units": primary_units,
-                    "connections": primary_connections,
-                }
-            ]
-            tab_meta_for_origin = [
-                {"id": "flow_main", "label": "Process", "disabled": None}
-            ]
+
         else:
             tab_id_order = [
-                str(t.get("id") or t.get("name") or "")
-                for t in tab_nodes_ordered
-                if t.get("id") or t.get("name")
+                str(node.get("id") or node.get("name"))
+                for node in tab_nodes_ordered
+                if node.get("id") or node.get("name")
             ]
-            default_z = tab_id_order[0] if tab_id_order else "flow_main"
-            by_z: dict[str, list[dict[str, Any]]] = {}
-            for n in flow_nodes:
-                z = str(n.get("z") or default_z)
-                if z not in by_z:
-                    by_z[z] = []
-                by_z[z].append(n)
-            for t in tab_nodes_ordered:
-                tid = str(t.get("id") or t.get("name") or "")
-                if not tid:
+
+            default_zone = (
+                tab_id_order[0]
+                if tab_id_order
+                else "flow_main"
+            )
+
+            nodes_by_zone: dict[str, list[JsonObject]] = {}
+
+            for node in flow_nodes:
+                zone = str(node.get("z") or default_zone)
+                nodes_by_zone.setdefault(zone, []).append(node)
+
+            for tab_node in tab_nodes_ordered:
+                tab_id_value = (
+                    tab_node.get("id")
+                    or tab_node.get("name")
+                )
+
+                if tab_id_value is None:
                     continue
-                label = t.get("label") or t.get("name")
+
+                tab_id = str(tab_id_value)
+
+                label = (
+                    tab_node.get("label")
+                    or tab_node.get("name")
+                )
+
                 if isinstance(label, str) and not label.strip():
                     label = None
-                disabled = t.get("disabled")
-                if disabled is not None:
-                    disabled = bool(disabled)
-                tab_meta_for_origin.append(
-                    {"id": tid, "label": label, "disabled": disabled}
-                )
-                tab_nodes = by_z.get(tid, [])
-                u, c, cb = _node_red_units_connections_from_nodes(tab_nodes)
-                all_code_blocks.extend(cb)
-                tabs_list.append(
-                    {
-                        "id": tid,
-                        "label": label,
-                        "disabled": disabled,
-                        "units": u,
-                        "connections": c,
-                    }
-                )
-            for z, tab_nodes in by_z.items():
-                if z not in tab_id_order:
-                    tab_meta_for_origin.append(
-                        {"id": z, "label": None, "disabled": None}
-                    )
-                    u, c, cb = _node_red_units_connections_from_nodes(tab_nodes)
-                    all_code_blocks.extend(cb)
-                    tabs_list.append(
-                        {
-                            "id": z,
-                            "label": None,
-                            "disabled": None,
-                            "units": u,
-                            "connections": c,
-                        }
-                    )
-            primary_units = tabs_list[0]["units"] if tabs_list else []
-            primary_connections = tabs_list[0]["connections"] if tabs_list else []
-        unit_ids_flat = {str(u["id"]) for u in primary_units}
-        for n in flow_nodes:
-            if not isinstance(n, dict):
-                continue
-            nid = n.get("id") or n.get("name")
-            if nid is None or nid not in unit_ids_flat:
-                continue
-            x, y = n.get("x"), n.get("y")
-            if x is not None and y is not None:
-                try:
-                    layout[str(nid)] = {"x": float(x), "y": float(y)}
-                except (TypeError, ValueError):
-                    pass
 
-    result: dict[str, Any] = {
+                disabled_value = tab_node.get("disabled")
+                tab_disabled: JsonValue = (
+                    bool(disabled_value)
+                    if disabled_value is not None
+                    else None
+                )
+
+                tab_nodes = nodes_by_zone.get(tab_id, [])
+
+                (
+                    units,
+                    connections,
+                    code_blocks,
+                ) = _node_red_units_connections_from_nodes(tab_nodes)
+
+                all_code_blocks.extend(code_blocks)
+
+                append_tab(
+                    tab_id=tab_id,
+                    label=label,
+                    disabled=tab_disabled,
+                    units=units,
+                    connections=connections,
+                )
+
+            for zone, zone_nodes in nodes_by_zone.items():
+                if zone in tab_id_order:
+                    continue
+
+                (
+                    units,
+                    connections,
+                    code_blocks,
+                ) = _node_red_units_connections_from_nodes(zone_nodes)
+
+                all_code_blocks.extend(code_blocks)
+
+                append_tab(
+                    tab_id=zone,
+                    label=None,
+                    disabled=None,
+                    units=units,
+                    connections=connections,
+                )
+
+            set_primary_from_first_tab()
+
+        primary_unit_ids = {
+            str(unit["id"])
+            for unit in primary_units
+            if (
+                is_json_object(unit)
+                and isinstance(unit.get("id"), str)
+            )
+        }
+
+        for node in flow_nodes:
+            node_id_value = node.get("id") or node.get("name")
+
+            if node_id_value is None:
+                continue
+
+            node_id = str(node_id_value)
+
+            if node_id not in primary_unit_ids:
+                continue
+
+            x = node.get("x")
+            y = node.get("y")
+
+            if (
+                x is None
+                or y is None
+                or isinstance(x, bool)
+                or isinstance(y, bool)
+                or not isinstance(x, (str, int, float))
+                or not isinstance(y, (str, int, float))
+            ):
+                continue
+
+            try:
+                layout[node_id] = {
+                    "x": float(x),
+                    "y": float(y),
+                }
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                pass
+
+    result: JsonObject = {
         "environment_type": env_type,
         "units": primary_units,
         "connections": primary_connections,
     }
+
     if all_code_blocks:
         result["code_blocks"] = all_code_blocks
+
     if tab_meta_for_origin:
-        result["origin"] = {"node_red": {"tabs": tab_meta_for_origin}}
+        result["origin"] = {
+            "node_red": {
+                "tabs": tab_meta_for_origin,
+            },
+        }
+
     if tabs_list:
         result["tabs"] = tabs_list
+
     if layout:
         result["layout"] = layout
-    # System comment documenting Node-RED msg structure and code_blocks (agents see it in graph summary)
-    result["comments"] = [dict(NODE_RED_SYSTEM_COMMENT)]
-    # Preserve graph-level metadata (readme, summary, gitOwners, etc.) for roundtrip
-    if isinstance(raw, dict):
-        _skip = {
+
+    result["comments"] = [
+        dict(NODE_RED_SYSTEM_COMMENT),
+    ]
+
+    if is_json_object(raw):
+        skip_keys = {
             "flow",
             "flows",
             "nodes",
             "environment_type",
             "process_environment_type",
         }
-        meta = {}
-        for k, v in raw.items():
-            if k in _skip or v is None:
+
+        metadata: JsonObject = {}
+
+        for key, value in raw.items():
+            if key in skip_keys or value is None:
                 continue
-            try:
-                meta[k] = copy.deepcopy(v) if isinstance(v, (dict, list)) else v
-            except (TypeError, ValueError):
-                meta[k] = v
-        if meta:
-            result["metadata"] = meta
+
+            metadata[key] = copy.deepcopy(value)
+
+        if metadata:
+            result["metadata"] = metadata
+
     return result

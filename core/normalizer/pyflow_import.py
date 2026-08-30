@@ -1,169 +1,356 @@
 """PyFlow graph import: map PyFlow graph JSON to canonical process graph dict."""
-import copy
-from typing import Any
 
 from core.normalizer.shared import ensure_list_connections
 from core.normalizer.system_comments import PYFLOW_SYSTEM_COMMENT
+from core.schemas.primitives import (
+    JsonArray,
+    JsonObject,
+    JsonValue,
+    is_json_array,
+    is_json_object,
+)
 
-# Keys used for graph structure / identity; do not store in unit.params.
-_PYFLOW_STRUCTURE_KEYS = frozenset({"id", "name", "type", "uuid", "nodeType", "__class__"})
+_PYFLOW_STRUCTURE_KEYS = frozenset(
+    {"id", "name", "type", "uuid", "nodeType", "__class__"}
+)
 
 
-def _pyflow_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
+def _pyflow_nodes_list(raw: JsonObject) -> list[JsonObject]:
     nodes = raw.get("nodes")
-    if isinstance(nodes, list):
-        return nodes
+    if is_json_array(nodes):
+        return [node for node in nodes if is_json_object(node)]
+
     graphs = raw.get("graphs")
-    if isinstance(graphs, list) and graphs and isinstance(graphs[0], dict):
-        n = graphs[0].get("nodes")
-        if isinstance(n, list):
-            return n
-    gm = raw.get("graphManager") or raw.get("graph_manager")
-    if isinstance(gm, dict):
-        graphs = gm.get("graphs")
-        if isinstance(graphs, list) and graphs and isinstance(graphs[0], dict):
-            n = graphs[0].get("nodes")
-            if isinstance(n, list):
-                return n
+    if is_json_array(graphs) and graphs:
+        first_graph = graphs[0]
+        if is_json_object(first_graph):
+            nodes = first_graph.get("nodes")
+            if is_json_array(nodes):
+                return [node for node in nodes if is_json_object(node)]
+
+    graph_manager = raw.get("graphManager") or raw.get("graph_manager")
+    if is_json_object(graph_manager):
+        graphs = graph_manager.get("graphs")
+        if is_json_array(graphs) and graphs:
+            first_graph = graphs[0]
+            if is_json_object(first_graph):
+                nodes = first_graph.get("nodes")
+                if is_json_array(nodes):
+                    return [node for node in nodes if is_json_object(node)]
+
     return []
 
 
-def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    conns = raw.get("connections") or raw.get("edges") or raw.get("wires")
-    if not isinstance(conns, list):
+def _pyflow_connections_list(
+    raw: JsonObject,
+    node_ids: set[str],
+) -> JsonArray:
+    out: JsonArray = []
+
+    connections: JsonValue = (
+        raw.get("connections")
+        or raw.get("edges")
+        or raw.get("wires")
+    )
+
+    if not is_json_array(connections):
         graphs = raw.get("graphs")
-        if isinstance(graphs, list) and graphs and isinstance(graphs[0], dict):
-            conns = graphs[0].get("connections") or graphs[0].get("edges") or graphs[0].get("wires")
-    if isinstance(conns, list):
-        for c in conns:
-            if not isinstance(c, dict):
-                continue
-            from_id = c.get("from") or c.get("from_id") or c.get("out") or c.get("source")
-            to_id = c.get("to") or c.get("to_id") or c.get("in") or c.get("target")
-            if from_id is None or to_id is None:
-                continue
-            from_id, to_id = str(from_id), str(to_id)
-            from_port = str(c.get("from_port") or c.get("from_slot") or "0")
-            to_port = str(c.get("to_port") or c.get("to_slot") or "0")
-            if ":" in from_id:
-                from_id = from_id.split(":")[0]
-            if ":" in to_id:
-                to_id = to_id.split(":")[0]
-            if from_id in node_ids and to_id in node_ids:
-                out.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
+        if is_json_array(graphs) and graphs:
+            first_graph = graphs[0]
+            if is_json_object(first_graph):
+                connections = (
+                    first_graph.get("connections")
+                    or first_graph.get("edges")
+                    or first_graph.get("wires")
+                )
+
+    if not is_json_array(connections):
+        return out
+
+    for value in connections:
+        if not is_json_object(value):
+            continue
+
+        from_value = (
+            value.get("from")
+            or value.get("from_id")
+            or value.get("out")
+            or value.get("source")
+        )
+        to_value = (
+            value.get("to")
+            or value.get("to_id")
+            or value.get("in")
+            or value.get("target")
+        )
+
+        if from_value is None or to_value is None:
+            continue
+
+        from_id = str(from_value).split(":", 1)[0]
+        to_id = str(to_value).split(":", 1)[0]
+
+        if from_id not in node_ids or to_id not in node_ids:
+            continue
+
+        from_port = (
+            value.get("from_port")
+            or value.get("from_slot")
+            or "0"
+        )
+        to_port = value.get("to_port") or value.get("to_slot") or "0"
+
+        out.append(
+            {
+                "from": from_id,
+                "to": to_id,
+                "from_port": str(from_port),
+                "to_port": str(to_port),
+            }
+        )
+
     return out
 
 
-def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
-    nodes = _pyflow_nodes_list(raw)
-    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
-    unit_ids: set[str] = set()
-    units: list[dict[str, Any]] = []
-    code_blocks: list[dict[str, Any]] = []
+def _pyflow_node_params(node: JsonObject) -> JsonObject:
+    return {
+        key: value
+        for key, value in node.items()
+        if key not in _PYFLOW_STRUCTURE_KEYS and value is not None
+    }
 
-    for n in nodes:
-        if not isinstance(n, dict):
+
+def _pyflow_position(value: JsonValue) -> tuple[float, float] | None:
+    if is_json_array(value) and len(value) >= 2:
+        x, y = value[0], value[1]
+        if (
+            isinstance(x, (int, float))
+            and not isinstance(x, bool)
+            and isinstance(y, (int, float))
+            and not isinstance(y, bool)
+        ):
+            return float(x), float(y)
+
+    if is_json_object(value):
+        x, y = value.get("x"), value.get("y")
+        if (
+            isinstance(x, (int, float))
+            and not isinstance(x, bool)
+            and isinstance(y, (int, float))
+            and not isinstance(y, bool)
+        ):
+            return float(x), float(y)
+
+    return None
+
+
+def to_canonical_dict(raw: JsonObject) -> JsonObject:
+    nodes = _pyflow_nodes_list(raw)
+
+    environment_value = (
+        raw.get("environment_type")
+        or raw.get("process_environment_type")
+        or ""
+    )
+    environment_type = str(environment_value).strip()
+
+    unit_ids: set[str] = set()
+    units: JsonArray = []
+    code_blocks: JsonArray = []
+
+    for node in nodes:
+        node_value = (
+            node.get("id")
+            or node.get("name")
+            or node.get("uuid")
+        )
+        if node_value is None:
             continue
-        nid = n.get("id") or n.get("name") or n.get("uuid")
-        if nid is None:
-            continue
-        nid = str(nid)
-        ntype = n.get("type") or n.get("nodeType") or n.get("__class__") or n.get("name") or "Node"
-        if isinstance(ntype, dict):
-            ntype = ntype.get("name", "Node")
-        ntype = str(ntype).split(".")[-1]
-        unit_ids.add(nid)
-        # Preserve all PyFlow node keys as params (params, data, payload, pins, x, y, etc.)
-        params: dict[str, Any] = {}
-        for key, val in n.items():
-            if key in _PYFLOW_STRUCTURE_KEYS or val is None:
-                continue
-            try:
-                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-            except (TypeError, ValueError):
-                params[key] = val
-        controllable = n.get("controllable")
-        if controllable is None:
-            controllable = True  # default True on import
-        else:
-            controllable = bool(controllable)
-        unit_py: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
-        py_name = n.get("name") or n.get("title")
-        if isinstance(py_name, str) and py_name.strip():
-            unit_py["name"] = py_name.strip()
-        units.append(unit_py)
-        source = n.get("code") or n.get("script") or n.get("source") or n.get("expression")
-        if source is not None and isinstance(source, str) and source.strip():
-            code_blocks.append({"id": nid, "language": str(n.get("language", "python")), "source": source})
+
+        node_id = str(node_value)
+
+        node_type_value = (
+            node.get("type")
+            or node.get("nodeType")
+            or node.get("__class__")
+            or node.get("name")
+            or "Node"
+        )
+
+        if is_json_object(node_type_value):
+            node_type_value = node_type_value.get("name") or "Node"
+
+        node_type = str(node_type_value).split(".")[-1]
+        unit_ids.add(node_id)
+
+        controllable_value = node.get("controllable")
+        controllable = (
+            True
+            if controllable_value is None
+            else bool(controllable_value)
+        )
+
+        unit: JsonObject = {
+            "id": node_id,
+            "type": node_type,
+            "controllable": controllable,
+            "params": _pyflow_node_params(node),
+        }
+
+        display_name = node.get("name") or node.get("title")
+        if isinstance(display_name, str) and display_name.strip():
+            unit["name"] = display_name.strip()
+
+        units.append(unit)
+
+        source = (
+            node.get("code")
+            or node.get("script")
+            or node.get("source")
+            or node.get("expression")
+        )
+
+        if isinstance(source, str) and source.strip():
+            language = node.get("language", "python")
+            code_blocks.append(
+                {
+                    "id": node_id,
+                    "language": str(language),
+                    "source": source,
+                }
+            )
 
     connections = _pyflow_connections_list(raw, unit_ids)
+
     if not connections and nodes:
-        for n in nodes:
-            if not isinstance(n, dict):
+        for node in nodes:
+            from_value = node.get("id") or node.get("name")
+            if from_value is None:
                 continue
-            from_id = str(n.get("id") or n.get("name") or "")
+
+            from_id = str(from_value)
             if from_id not in unit_ids:
                 continue
-            pins = n.get("pins") or []
-            for out_idx, pin in enumerate(pins if isinstance(pins, list) else []):
-                if not isinstance(pin, dict):
+
+            pins = node.get("pins")
+            if not is_json_array(pins):
+                continue
+
+            for output_index, pin_value in enumerate(pins):
+                if not is_json_object(pin_value):
                     continue
-                links = pin.get("connections") or pin.get("links") or pin.get("wires") or []
-                for link in links if isinstance(links, list) else []:
-                    to_id = link if isinstance(link, str) else (link.get("to") or link.get("node") or link.get("target"))
-                    if to_id is None:
+
+                links = (
+                    pin_value.get("connections")
+                    or pin_value.get("links")
+                    or pin_value.get("wires")
+                )
+                if not is_json_array(links):
+                    continue
+
+                for link in links:
+                    if isinstance(link, str):
+                        to_value: JsonValue = link
+                        to_port = "0"
+                    elif is_json_object(link):
+                        to_value = (
+                            link.get("to")
+                            or link.get("node")
+                            or link.get("target")
+                        )
+                        to_port = str(
+                            link.get("index")
+                            or link.get("to_slot")
+                            or "0"
+                        )
+                    else:
                         continue
-                    to_id = str(to_id)
-                    if ":" in to_id:
-                        to_id = to_id.split(":")[0]
-                    if to_id in unit_ids and to_id != from_id:
-                        to_port = str(link.get("index", link.get("to_slot", 0))) if isinstance(link, dict) else "0"
-                        connections.append({"from": from_id, "to": to_id, "from_port": str(out_idx), "to_port": to_port})
+
+                    if to_value is None:
+                        continue
+
+                    to_id = str(to_value).split(":", 1)[0]
+                    if to_id not in unit_ids or to_id == from_id:
+                        continue
+
+                    connections.append(
+                        {
+                            "from": from_id,
+                            "to": to_id,
+                            "from_port": str(output_index),
+                            "to_port": to_port,
+                        }
+                    )
+
+    unique_connections: JsonArray = []
     seen: set[tuple[str, str]] = set()
-    unique_conns: list[dict[str, str]] = []
-    for c in connections:
-        key = (c["from"], c["to"])
+
+    for value in connections:
+        if not is_json_object(value):
+            continue
+
+        from_id = value.get("from")
+        to_id = value.get("to")
+
+        if not isinstance(from_id, str) or not isinstance(to_id, str):
+            continue
+
+        key = (from_id, to_id)
         if key not in seen:
             seen.add(key)
-            unique_conns.append(c)
-    connections = unique_conns
+            unique_connections.append(value)
 
-    result: dict[str, Any] = {
-        "environment_type": env_type,
+    result: JsonObject = {
+        "environment_type": environment_type,
         "units": units,
-        "connections": ensure_list_connections(connections) if connections else [],
+        "connections": ensure_list_connections(unique_connections),
+        "origin": {"pyflow": {}},
+        "comments": [dict(PYFLOW_SYSTEM_COMMENT)],
     }
+
     if code_blocks:
         result["code_blocks"] = code_blocks
-    layout: dict[str, dict[str, float]] = {}
-    for n in nodes:
-        if not isinstance(n, dict):
+
+    layout: JsonObject = {}
+
+    for node in nodes:
+        node_value = (
+            node.get("id")
+            or node.get("name")
+            or node.get("uuid")
+        )
+        if node_value is None:
             continue
-        nid = n.get("id") or n.get("name") or n.get("uuid")
-        if nid is None or str(nid) not in unit_ids:
+
+        node_id = str(node_value)
+        if node_id not in unit_ids:
             continue
-        nid = str(nid)
-        x, y = n.get("x"), n.get("y")
-        if x is not None and y is not None:
-            try:
-                layout[nid] = {"x": float(x), "y": float(y)}
-            except (TypeError, ValueError):
-                pass
-        else:
-            pos = n.get("position") or n.get("pos")
-            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                try:
-                    layout[nid] = {"x": float(pos[0]), "y": float(pos[1])}
-                except (TypeError, ValueError):
-                    pass
-            elif isinstance(pos, dict) and "x" in pos and "y" in pos:
-                try:
-                    layout[nid] = {"x": float(pos["x"]), "y": float(pos["y"])}
-                except (TypeError, ValueError):
-                    pass
+
+        x = node.get("x")
+        y = node.get("y")
+
+        if (
+            isinstance(x, (int, float))
+            and not isinstance(x, bool)
+            and isinstance(y, (int, float))
+            and not isinstance(y, bool)
+        ):
+            layout[node_id] = {
+                "x": float(x),
+                "y": float(y),
+            }
+            continue
+
+        position = node.get("position") or node.get("pos")
+        coordinates = _pyflow_position(position)
+
+        if coordinates is not None:
+            layout[node_id] = {
+                "x": coordinates[0],
+                "y": coordinates[1],
+            }
+
     if layout:
         result["layout"] = layout
-    result["origin"] = {"pyflow": {}}
-    result["comments"] = [dict(PYFLOW_SYSTEM_COMMENT)]
+
     return result

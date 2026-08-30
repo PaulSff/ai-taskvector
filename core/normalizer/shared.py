@@ -3,12 +3,14 @@ Shared canonicalization for the normalizer pipeline.
 Import modules produce dicts; to_process_graph uses these helpers to build ProcessGraph.
 """
 import json
-from typing import Any, cast
+from typing import cast
 
 from core.schemas.primitives import (
+    JsonArray,
     JsonObject,
     JsonValue,
     WorkflowInputs,
+    is_json_array,
     is_json_object,
     is_model_dumpable,
 )
@@ -61,25 +63,39 @@ def canonical_unit_type(typ: str) -> str:
     return key
 
 
-def ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
-    """Ensure each connection has 'from', 'to', 'from_port', 'to_port'. Port indices default to '0' when missing. Preserves connection_type when present."""
-    out: list[dict[str, Any]] = []
-    for c in raw:
-        if isinstance(c, dict):
-            from_id = c.get("from") or c.get("from_id")
-            to_id = c.get("to") or c.get("to_id")
-            if from_id is not None and to_id is not None:
-                from_port = c.get("from_port")
-                to_port = c.get("to_port")
-                entry: dict[str, Any] = {
-                    "from": str(from_id),
-                    "to": str(to_id),
-                    "from_port": str(from_port) if from_port is not None else "0",
-                    "to_port": str(to_port) if to_port is not None else "0",
-                }
-                if c.get("connection_type") is not None:
-                    entry["connection_type"] = str(c["connection_type"])
-                out.append(entry)
+def ensure_list_connections(raw: JsonValue) -> JsonArray:
+    """Normalize connection objects and fill missing port indexes with '0'."""
+    out: JsonArray = []
+
+    if not is_json_array(raw):
+        return out
+
+    for value in raw:
+        if not is_json_object(value):
+            continue
+
+        from_value = value.get("from") or value.get("from_id")
+        to_value = value.get("to") or value.get("to_id")
+
+        if from_value is None or to_value is None:
+            continue
+
+        from_port = value.get("from_port")
+        to_port = value.get("to_port")
+
+        entry: JsonObject = {
+            "from": str(from_value),
+            "to": str(to_value),
+            "from_port": str(from_port) if from_port is not None else "0",
+            "to_port": str(to_port) if to_port is not None else "0",
+        }
+
+        connection_type = value.get("connection_type")
+        if connection_type is not None:
+            entry["connection_type"] = str(connection_type)
+
+        out.append(entry)
+
     return out
 
 
@@ -198,3 +214,13 @@ def dump_json_object(value: object) -> JsonObject:
         raise TypeError("model_dump() did not return a JSON object")
 
     return dumped
+
+
+def as_object(value: JsonValue | None, field_name: str) -> JsonObject:
+    if value is None:
+        return {}
+
+    if not is_json_object(value):
+        raise ValueError(f"{field_name} must be a mapping")
+
+    return value

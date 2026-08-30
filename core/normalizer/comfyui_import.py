@@ -1,190 +1,374 @@
 """
 ComfyUI workflow import: map ComfyUI workflow JSON to canonical process graph dict.
 """
+
 import copy
-from typing import Any
 
 from core.normalizer.shared import ensure_list_connections
 from core.normalizer.system_comments import COMFYUI_SYSTEM_COMMENT
+from core.schemas.primitives import (
+    JsonArray,
+    JsonObject,
+    is_json_array,
+    is_json_object,
+)
 
 # Keys used for graph structure / identity; do not store in unit.params.
 _COMFYUI_STRUCTURE_KEYS = frozenset({"id", "type", "pos", "class_type"})
 
 
-def _comfyui_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract nodes array from ComfyUI workflow (top-level 'nodes')."""
+def _comfyui_nodes_list(raw: JsonObject) -> list[JsonObject]:
+    """Extract valid node objects from the top-level ``nodes`` array."""
     nodes = raw.get("nodes")
-    return nodes if isinstance(nodes, list) else []
+
+    if not is_json_array(nodes):
+        return []
+
+    return [node for node in nodes if is_json_object(node)]
 
 
-def _comfyui_links_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract links array from ComfyUI workflow (top-level 'links')."""
+def _comfyui_links_list(raw: JsonObject) -> list[JsonObject]:
+    """Extract valid link objects from the top-level ``links`` array."""
     links = raw.get("links")
-    return links if isinstance(links, list) else []
+
+    if not is_json_array(links):
+        return []
+
+    return [link for link in links if is_json_object(link)]
 
 
 def _comfyui_connections_from_links(
-    links: list[dict[str, Any]], node_ids: set[str]
-) -> list[dict[str, Any]]:
-    """Build canonical connections from ComfyUI links. Preserves link type as connection_type for roundtrip."""
-    out: list[dict[str, Any]] = []
-    for lnk in links:
-        if not isinstance(lnk, dict):
+    links: list[JsonObject],
+    node_ids: set[str],
+) -> JsonArray:
+    """
+    Build canonical connections from ComfyUI links.
+
+    The ComfyUI link type is preserved as ``connection_type`` when present.
+    """
+    out: JsonArray = []
+
+    for link in links:
+        origin_id = link.get("origin_id")
+        target_id = link.get("target_id")
+
+        if origin_id is None or target_id is None:
             continue
-        oid = lnk.get("origin_id")
-        tid = lnk.get("target_id")
-        if oid is None or tid is None:
+
+        origin_id_string = str(origin_id)
+        target_id_string = str(target_id)
+
+        if (
+            origin_id_string not in node_ids
+            or target_id_string not in node_ids
+            or origin_id_string == target_id_string
+        ):
             continue
-        oid = str(oid)
-        tid = str(tid)
-        if oid not in node_ids or tid not in node_ids or oid == tid:
-            continue
-        oslot = lnk.get("origin_slot")
-        tslot = lnk.get("target_slot")
-        entry: dict[str, Any] = {
-            "from": oid,
-            "to": tid,
-            "from_port": str(oslot) if oslot is not None else "0",
-            "to_port": str(tslot) if tslot is not None else "0",
+
+        origin_slot = link.get("origin_slot")
+        target_slot = link.get("target_slot")
+
+        connection: JsonObject = {
+            "from": origin_id_string,
+            "to": target_id_string,
+            "from_port": (
+                str(origin_slot) if origin_slot is not None else "0"
+            ),
+            "to_port": str(target_slot) if target_slot is not None else "0",
         }
-        link_type = lnk.get("type")
+
+        link_type = link.get("type")
         if link_type is not None:
-            if isinstance(link_type, (list, tuple)):
-                entry["connection_type"] = ",".join(str(x) for x in link_type)
+            if is_json_array(link_type):
+                connection["connection_type"] = ",".join(
+                    str(value) for value in link_type
+                )
             else:
-                entry["connection_type"] = str(link_type)
-        out.append(entry)
+                connection["connection_type"] = str(link_type)
+
+        out.append(connection)
+
     return out
 
 
-def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+def _comfyui_port_type(value: object) -> str | None:
+    """Convert a ComfyUI port type to its canonical string representation."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value
+
+    if is_json_array(value):
+        if not value:
+            return None
+        return str(value[0])
+
+    return str(value)
+
+
+def _comfyui_node_params(node: JsonObject) -> JsonObject:
     """
-    Map ComfyUI workflow JSON to canonical process graph dict (environment_type, units, connections).
-    Supports ComfyUI workflow format v1.0: nodes (id, type, pos, size, inputs, outputs, widgets_values),
-    links (id, origin_id, origin_slot, target_id, target_slot). Node type = class_type (e.g. KSampler).
+    Preserve non-structural ComfyUI node fields as unit parameters.
+
+    The duplicated ``_comfy_*`` fields are retained for exporter compatibility.
+    """
+    params: JsonObject = {}
+
+    for key, value in node.items():
+        if key in _COMFYUI_STRUCTURE_KEYS or value is None:
+            continue
+
+        params[key] = copy.deepcopy(value)
+
+    size = params.get("size")
+    if (
+        "_comfy_size" not in params
+        and is_json_array(size)
+        and len(size) >= 2
+    ):
+        width, height = size[0], size[1]
+
+        if (
+            isinstance(width, (int, float, str))
+            and not isinstance(width, bool)
+            and isinstance(height, (int, float, str))
+            and not isinstance(height, bool)
+        ):
+            try:
+                params["_comfy_size"] = [
+                    float(width),
+                    float(height),
+                ]
+            except ValueError:
+                pass
+
+    flags = params.get("flags")
+    if "_comfy_flags" not in params and is_json_object(flags):
+        params["_comfy_flags"] = copy.deepcopy(flags)
+
+    order = params.get("order")
+
+    if (
+        "_comfy_order" not in params
+        and isinstance(order, (str, int, float))
+        and not isinstance(order, bool)
+    ):
+        try:
+            params["_comfy_order"] = int(order)
+        except ValueError:
+            pass
+
+    mode = params.get("mode")
+
+    if (
+        "_comfy_mode" not in params
+        and isinstance(mode, (str, int, float))
+        and not isinstance(mode, bool)
+    ):
+        try:
+            params["_comfy_mode"] = int(mode)
+        except ValueError:
+            pass
+
+    properties = params.get("properties")
+    if (
+        "_comfy_properties" not in params
+        and is_json_object(properties)
+    ):
+        params["_comfy_properties"] = copy.deepcopy(properties)
+
+    return params
+
+
+def _comfyui_position(node: JsonObject) -> tuple[float, float] | None:
+    """Extract a valid two-dimensional node position."""
+    position = node.get("pos")
+
+    if is_json_array(position) and len(position) >= 2:
+        x, y = position[0], position[1]
+    elif is_json_object(position):
+        x = position.get("0")
+        y = position.get("1")
+    else:
+        return None
+
+    if (
+        not isinstance(x, (int, float))
+        or isinstance(x, bool)
+        or not isinstance(y, (int, float))
+        or isinstance(y, bool)
+    ):
+        return None
+
+    return float(x), float(y)
+
+
+def _comfyui_layout(
+    nodes: list[JsonObject],
+    node_ids: set[str],
+) -> JsonObject:
+    """Extract ComfyUI node positions into canonical layout objects."""
+    layout: JsonObject = {}
+
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id is None or str(node_id) not in node_ids:
+            continue
+
+        position = _comfyui_position(node)
+        if position is None:
+            continue
+
+        x, y = position
+        layout[str(node_id)] = {"x": x, "y": y}
+
+    return layout
+
+
+def _comfyui_controllable(node: JsonObject) -> bool:
+    """Normalize the optional controllable flag."""
+    value = node.get("controllable")
+
+    if value is None:
+        return True
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "no"}
+
+    return bool(value)
+
+
+def to_canonical_dict(raw: JsonObject) -> JsonObject:
+    """
+    Map ComfyUI workflow JSON to a canonical process graph object.
+
+    Supports the ComfyUI workflow format containing ``nodes`` and ``links``.
+    ComfyUI node IDs are used as canonical unit IDs.
     """
     nodes = _comfyui_nodes_list(raw)
     links = _comfyui_links_list(raw)
-    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
+
+    environment_value = (
+        raw.get("environment_type")
+        or raw.get("process_environment_type")
+        or ""
+    )
+    environment_type = str(environment_value).strip()
 
     unit_ids: set[str] = set()
-    units: list[dict[str, Any]] = []
-    code_blocks: list[dict[str, Any]] = []
+    units: JsonArray = []
+    code_blocks: JsonArray = []
 
-    for n in nodes:
-        if not isinstance(n, dict):
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id is None:
             continue
-        nid = n.get("id")
-        if nid is None:
+
+        unit_id = str(node_id)
+        if unit_id in unit_ids:
             continue
-        nid = str(nid)
-        ntype = n.get("type") or n.get("class_type") or "Node"
-        ntype = str(ntype)
-        unit_ids.add(nid)
 
-        # Preserve all ComfyUI node keys as params (size, flags, order, mode, properties, inputs, outputs, widgets_values, etc.)
-        params: dict[str, Any] = {}
-        for key, val in n.items():
-            if key in _COMFYUI_STRUCTURE_KEYS or val is None:
-                continue
-            try:
-                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
-            except (TypeError, ValueError):
-                params[key] = val
-        # Export expects _comfy_* keys; set from top-level for backward compat
-        if "_comfy_size" not in params and isinstance(params.get("size"), (list, tuple)) and len(params["size"]) >= 2:
-            try:
-                params["_comfy_size"] = [float(params["size"][0]), float(params["size"][1])]
-            except (TypeError, ValueError):
-                pass
-        if "_comfy_flags" not in params and isinstance(params.get("flags"), dict):
-            params["_comfy_flags"] = dict(params["flags"])
-        if "_comfy_order" not in params and params.get("order") is not None:
-            try:
-                params["_comfy_order"] = int(params["order"])
-            except (TypeError, ValueError):
-                pass
-        if "_comfy_mode" not in params and params.get("mode") is not None:
-            try:
-                params["_comfy_mode"] = int(params["mode"])
-            except (TypeError, ValueError):
-                pass
-        if "_comfy_properties" not in params and isinstance(params.get("properties"), dict):
-            params["_comfy_properties"] = dict(params["properties"])
+        unit_ids.add(unit_id)
 
-        controllable = n.get("controllable")
-        if controllable is None:
-            controllable = True  # default True on import
-        else:
-            controllable = bool(controllable)
-        unit_cfy: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
-        cfy_name = n.get("title") or n.get("name")
-        if isinstance(cfy_name, str) and cfy_name.strip():
-            unit_cfy["name"] = cfy_name.strip()
+        node_type = node.get("type") or node.get("class_type") or "Node"
 
-        def _port_type_str(t: Any) -> str | None:
-            if t is None:
-                return None
-            if isinstance(t, str):
-                return t
-            if isinstance(t, (list, tuple)) and t:
-                return str(t[0])
-            return str(t)
+        unit: JsonObject = {
+            "id": unit_id,
+            "type": str(node_type),
+            "controllable": _comfyui_controllable(node),
+            "params": _comfyui_node_params(node),
+        }
 
-        inputs_raw = n.get("inputs")
-        if isinstance(inputs_raw, list) and inputs_raw:
-            unit_cfy["input_ports"] = [
-                {"name": str(inp.get("name", f"input_{i}")), "type": _port_type_str(inp.get("type"))}
-                for i, inp in enumerate(inputs_raw) if isinstance(inp, dict)
-            ]
-        outputs_raw = n.get("outputs")
-        if isinstance(outputs_raw, list) and outputs_raw:
-            unit_cfy["output_ports"] = [
-                {"name": str(out.get("name", f"output_{i}")), "type": _port_type_str(out.get("type"))}
-                for i, out in enumerate(outputs_raw) if isinstance(out, dict)
-            ]
-        units.append(unit_cfy)
+        title = node.get("title") or node.get("name")
+        if isinstance(title, str) and title.strip():
+            unit["name"] = title.strip()
 
-        source = n.get("source") or n.get("code") or (params.get("source") if isinstance(params.get("source"), str) else None)
-        if source and isinstance(source, str) and source.strip():
-            code_blocks.append({
-                "id": nid,
-                "language": str(n.get("language", "python")),
-                "source": source,
-            })
+        inputs = node.get("inputs")
+        if is_json_array(inputs) and inputs:
+            input_ports: JsonArray = []
+
+            for index, value in enumerate(inputs):
+                if not is_json_object(value):
+                    continue
+
+                input_ports.append(
+                    {
+                        "name": str(
+                            value.get("name", f"input_{index}")
+                        ),
+                        "type": _comfyui_port_type(value.get("type")),
+                    }
+                )
+
+            if input_ports:
+                unit["input_ports"] = input_ports
+
+        outputs = node.get("outputs")
+        if is_json_array(outputs) and outputs:
+            output_ports: JsonArray = []
+
+            for index, value in enumerate(outputs):
+                if not is_json_object(value):
+                    continue
+
+                output_ports.append(
+                    {
+                        "name": str(
+                            value.get("name", f"output_{index}")
+                        ),
+                        "type": _comfyui_port_type(value.get("type")),
+                    }
+                )
+
+            if output_ports:
+                unit["output_ports"] = output_ports
+
+        units.append(unit)
+
+        parameters = node.get("parameters")
+        source = node.get("source") or node.get("code")
+
+        if not isinstance(source, str) and is_json_object(parameters):
+            parameter_source = parameters.get("source")
+            if isinstance(parameter_source, str):
+                source = parameter_source
+
+        if isinstance(source, str) and source.strip():
+            language = node.get("language", "python")
+            code_blocks.append(
+                {
+                    "id": unit_id,
+                    "language": str(language),
+                    "source": source,
+                }
+            )
 
     connections = _comfyui_connections_from_links(links, unit_ids)
-    result: dict[str, Any] = {
-        "environment_type": env_type,
+
+    result: JsonObject = {
+        "environment_type": environment_type,
         "units": units,
         "connections": ensure_list_connections(connections),
+        "origin": {
+            "comfyui": {},
+        },
+        "comments": [
+            dict(COMFYUI_SYSTEM_COMMENT),
+        ],
     }
+
     if code_blocks:
         result["code_blocks"] = code_blocks
 
-    layout: dict[str, dict[str, float]] = {}
-    for n in nodes:
-        if not isinstance(n, dict):
-            continue
-        nid = n.get("id")
-        if nid is None or str(nid) not in unit_ids:
-            continue
-        nid = str(nid)
-        pos = n.get("pos")
-        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-            try:
-                layout[nid] = {"x": float(pos[0]), "y": float(pos[1])}
-            except (TypeError, ValueError):
-                pass
-        elif isinstance(pos, dict) and ("0" in pos or 0 in pos):
-            try:
-                x = pos.get(0, pos.get("0", 0))
-                y = pos.get(1, pos.get("1", 0))
-                layout[nid] = {"x": float(x), "y": float(y)}
-            except (TypeError, ValueError):
-                pass
+    layout = _comfyui_layout(nodes, unit_ids)
     if layout:
         result["layout"] = layout
-    result["origin"] = {"comfyui": {}}
-    result["comments"] = [dict(COMFYUI_SYSTEM_COMMENT)]
+
     return result
