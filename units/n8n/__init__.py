@@ -12,12 +12,22 @@ Reference: https://docs.n8n.io/integrations/builtin/node-types/
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
 
 from units.registry import UnitSpec, register_unit
 
-# Type name aligns with n8n (e.g. "Code", "HTTP Request"). code_template: JS for Code node; empty for others.
-N8N_NODE_CATALOG: dict[str, dict[str, Any]] = {
+Port = tuple[str, str]
+
+
+class N8nTemplate(TypedDict):
+    input_ports: list[Port]
+    output_ports: list[Port]
+    code_template: str
+
+# Type name aligns with n8n, e.g. "Code" or "HTTP Request".
+# code_template is JavaScript for the Code node and empty for config-only nodes.
+
+N8N_NODE_CATALOG: dict[str, N8nTemplate] = {
     "Code": {
         "input_ports": [("in", "Any")],
         "output_ports": [("out", "Any")],
@@ -55,11 +65,9 @@ N8N_NODE_CATALOG: dict[str, dict[str, Any]] = {
     },
 }
 
-
-def get_n8n_template(type_name: str) -> dict[str, Any] | None:
-    """Return catalog entry for type_name (input_ports, output_ports, code_template) or None."""
+def get_n8n_template(type_name: str) -> N8nTemplate | None:
+    """Return the n8n catalog entry for type_name."""
     return N8N_NODE_CATALOG.get(type_name)
-
 
 def get_n8n_types() -> set[str]:
     """Return set of type names in the n8n catalog (for add_unit → canonical + code_block)."""
@@ -89,7 +97,7 @@ def _register_n8n_env_loader() -> None:
         from units.env_loaders import register_env_loader
 
         register_env_loader("n8n", register_n8n_units)
-    except Exception:
+    except ImportError:
         pass
 
 

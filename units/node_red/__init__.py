@@ -16,9 +16,17 @@ Reference: https://nodered.org/docs/user-guide/nodes
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
 
 from units.registry import UnitSpec, get_unit_spec, register_unit
+
+Port = tuple[str, str]
+
+
+class NodeRedTemplate(TypedDict):
+    input_ports: list[Port]
+    output_ports: list[Port]
+    code_template: str
 
 # Prefer generated catalog from @node-red/nodes package when present.
 try:
@@ -26,17 +34,17 @@ try:
         NODE_RED_NODE_CATALOG,
     )
 except ImportError:
-    # Type name matches Node-RED (e.g. "inject", "function"). code_template: JS for export; empty for config-only nodes.
-    NODE_RED_NODE_CATALOG = {
+    # Type name matches Node-RED, e.g. "inject" or "function".
+    NODE_RED_NODE_CATALOG: dict[str, NodeRedTemplate] = {
         "inject": {
             "input_ports": [],
             "output_ports": [("out", "Any")],
-            "code_template": "",  # config-only (topic, payload, repeat)
+            "code_template": "",
         },
         "debug": {
             "input_ports": [("in", "Any")],
             "output_ports": [],
-            "code_template": "",  # config-only (console output)
+            "code_template": "",
         },
         "function": {
             "input_ports": [("in", "Any")],
@@ -46,34 +54,35 @@ except ImportError:
         "change": {
             "input_ports": [("in", "Any")],
             "output_ports": [("out", "Any")],
-            "code_template": "",  # config-only (set/move/delete rules)
+            "code_template": "",
         },
         "switch": {
             "input_ports": [("in", "Any")],
-            "output_ports": [
-                ("out", "Any")
-            ],  # multiple in Node-RED; we use single for simplicity
-            "code_template": "",  # config-only (rules)
+            "output_ports": [("out", "Any")],
+            "code_template": "",
         },
         "split": {
             "input_ports": [("in", "Any")],
             "output_ports": [("out", "Any")],
-            "code_template": "",  # config: split by string/array/etc.
+            "code_template": "",
         },
         "join": {
             "input_ports": [("in", "Any")],
             "output_ports": [("out", "Any")],
-            "code_template": "",  # config: join mode
+            "code_template": "",
         },
         "template": {
             "input_ports": [("in", "Any")],
             "output_ports": [("out", "Any")],
-            "code_template": "// Mustache/Handlebars template in params.template\nreturn msg;",
+            "code_template": (
+                "// Mustache/Handlebars template in params.template\n"
+                "return msg;"
+            ),
         },
     }
 
 
-def get_node_red_template(type_name: str) -> dict[str, Any] | None:
+def get_node_red_template(type_name: str) -> NodeRedTemplate | None:
     """Return catalog entry for type_name (input_ports, output_ports, code_template) or None."""
     return NODE_RED_NODE_CATALOG.get(type_name)
 
@@ -111,7 +120,7 @@ def _register_node_red_env_loader() -> None:
         from units.env_loaders import register_env_loader
 
         register_env_loader("node_red", register_node_red_units)
-    except Exception:
+    except ImportError:
         pass
 
 
