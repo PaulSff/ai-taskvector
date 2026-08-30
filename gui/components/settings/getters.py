@@ -514,7 +514,7 @@ def get_llm_provider(*, agent: str) -> str:
     )
 
 
-def get_llm_provider_config(*, agent: str) -> dict:
+def get_llm_provider_config(*, agent: str) -> dict[str, object]:
     """
     Return provider config dict passed into `llm_integrations.client.chat`.
     If config JSON is empty and provider=='ollama', derive from agent-specific ollama_host/ollama_model.
