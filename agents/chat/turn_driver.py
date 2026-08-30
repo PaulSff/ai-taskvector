@@ -124,9 +124,14 @@ def _schedule_name_from_first_message_async(
         base = ""
         try:
             provider = get_llm_provider(agent="default")
-            cfg = cast(dict[str, object], get_llm_provider_config(agent="default") or {})
+            cfg = get_llm_provider_config(agent="default") or {}
+
             resp = await asyncio.to_thread(
-                run_create_filename_workflow, first_message, provider, cfg, 60.0
+                run_create_filename_workflow,
+                first_message,
+                provider,
+                cfg,
+                60.0,
             )
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
 
@@ -162,10 +167,7 @@ def _schedule_name_from_first_message_async(
                         chat_history_dir=_chat_history_dir,
                         messages=snapshot["history"],
                         get_llm_provider=lambda a: get_llm_provider(agent=a),
-                        # FIX 3: Cast inside the lambda to avoid "Unknown" error
-                        get_llm_provider_config=lambda a: cast(
-                            dict[str, object], get_llm_provider_config(agent=a) or {}
-                        ),
+                        get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
                     )
                     _ = write_chat_payload(new_path, payload)
                 except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
@@ -284,9 +286,7 @@ def persist_session(session_id: str, *, agent_selected: str | None = None) -> bo
             chat_history_dir=_chat_history_dir,
             messages=snapshot["history"],
             get_llm_provider=lambda a: get_llm_provider(agent=a),
-            get_llm_provider_config=lambda a: cast(
-                dict[str, object], get_llm_provider_config(agent=a) or {}
-            ),
+            get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
         )
 
         return write_chat_payload(s.chat_path, payload)
