@@ -1,6 +1,6 @@
 from typing import Any
 
-from agents.chat.parser_follow_up.chain import (
+from agents.chat.context.follow_up_context import (
     PostApplyFollowUpContext,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (

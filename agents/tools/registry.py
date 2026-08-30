@@ -1,23 +1,52 @@
 """
 Register follow-up tool implementations by stable id (Phase 2+).
 
-Follow-up runners are async callables::
-    async def run(ctx, po, *, language_hint) -> FollowUpContribution
+Follow-up runners have this signature::
+
+    async def run(
+        ctx,
+        po,
+        *,
+        language_hint,
+    ) -> FollowUpContribution
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Protocol
 
-# Maps tool_id -> follow-up coroutine (populated when builtins load).
-TOOL_RUNNERS: dict[str, Any] = {}
-_bulitin_tools_loaded = False
+if TYPE_CHECKING:
+    from agents.chat.context.follow_up_context import (
+        ParserFollowUpContext,
+    )
+    from agents.tools.types import (
+        FollowUpContribution,
+    )
+
+
+class FollowUpRunner(Protocol):
+    def __call__(
+        self,
+        ctx: ParserFollowUpContext,
+        po: dict[str, object],
+        *,
+        language_hint: Callable[[], str],
+    ) -> Awaitable[FollowUpContribution]:
+        ...
+
+# Maps tool_id -> follow-up coroutine.
+TOOL_RUNNERS: dict[str, FollowUpRunner] = {}
+
+_builtin_tools_loaded = False
 
 
 def _ensure_builtin_follow_up_tools() -> None:
-    global _bulitin_tools_loaded
-    if _bulitin_tools_loaded:
+    global _builtin_tools_loaded
+
+    if _builtin_tools_loaded:
         return
+
     from agents.tools.add_comment import run_add_comment_follow_up
     from agents.tools.browse import run_browse_follow_up
     from agents.tools.calendar import run_calendar_follow_up
@@ -33,7 +62,9 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.new_file import run_new_file_follow_up
     from agents.tools.rag_search import run_rag_search_follow_up
     from agents.tools.read_code_block import run_read_code_block_follow_up
-    from agents.tools.read_current_workflow import run_read_current_workflow_follow_up
+    from agents.tools.read_current_workflow import (
+        run_read_current_workflow_follow_up,
+    )
     from agents.tools.read_file import run_read_file_follow_up
     from agents.tools.rename import run_rename_follow_up
     from agents.tools.report import run_report_follow_up
@@ -42,54 +73,62 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.todo_manager import run_todo_manager_follow_up
     from agents.tools.web_search import run_web_search_follow_up
 
-    TOOL_RUNNERS["read_code_block"] = run_read_code_block_follow_up
-    TOOL_RUNNERS["read_current_workflow"] = run_read_current_workflow_follow_up
-    TOOL_RUNNERS["run_workflow"] = run_run_workflow_follow_up
-    TOOL_RUNNERS["grep"] = run_grep_follow_up
-    TOOL_RUNNERS["read_file"] = run_read_file_follow_up
-    TOOL_RUNNERS["formulas_calc"] = run_formulas_calc_follow_up
-    TOOL_RUNNERS["rag_search"] = run_rag_search_follow_up
-    TOOL_RUNNERS["web_search"] = run_web_search_follow_up
-    TOOL_RUNNERS["browse"] = run_browse_follow_up
-    TOOL_RUNNERS["github"] = run_github_follow_up
-    TOOL_RUNNERS["report"] = run_report_follow_up
-    TOOL_RUNNERS["add_comment"] = run_add_comment_follow_up
-    TOOL_RUNNERS["todo_manager"] = run_todo_manager_follow_up
-    TOOL_RUNNERS["get_chats"] = run_get_chats_follow_up
-    TOOL_RUNNERS["send_message"] = run_send_message_follow_up
-    TOOL_RUNNERS["calendar"] = run_calendar_follow_up
-    TOOL_RUNNERS["clone_role"] = run_clone_role_follow_up
-    TOOL_RUNNERS["list_dir"] = run_list_dir_follow_up
-    TOOL_RUNNERS["new_file"] = run_new_file_follow_up
-    TOOL_RUNNERS["edit_file"] = run_edit_file_follow_up
-    TOOL_RUNNERS["delete"] = run_delete_file_follow_up
-    TOOL_RUNNERS["make_dir"] = run_make_dir_follow_up
-    TOOL_RUNNERS["rename"] = run_rename_follow_up
-    _bulitin_tools_loaded = True
+    TOOL_RUNNERS.update(
+        {
+            "read_code_block": run_read_code_block_follow_up,
+            "read_current_workflow": run_read_current_workflow_follow_up,
+            "run_workflow": run_run_workflow_follow_up,
+            "grep": run_grep_follow_up,
+            "read_file": run_read_file_follow_up,
+            "formulas_calc": run_formulas_calc_follow_up,
+            "rag_search": run_rag_search_follow_up,
+            "web_search": run_web_search_follow_up,
+            "browse": run_browse_follow_up,
+            "github": run_github_follow_up,
+            "report": run_report_follow_up,
+            "add_comment": run_add_comment_follow_up,
+            "todo_manager": run_todo_manager_follow_up,
+            "get_chats": run_get_chats_follow_up,
+            "send_message": run_send_message_follow_up,
+            "calendar": run_calendar_follow_up,
+            "clone_role": run_clone_role_follow_up,
+            "list_dir": run_list_dir_follow_up,
+            "new_file": run_new_file_follow_up,
+            "edit_file": run_edit_file_follow_up,
+            "delete": run_delete_file_follow_up,
+            "make_dir": run_make_dir_follow_up,
+            "rename": run_rename_follow_up,
+        }.items()
+    )
 
 
-def get_follow_up_runner(tool_id: str) -> Any:
-    """Return registered follow-up coroutine function, or None."""
+    _builtin_tools_loaded = True
+
+
+def get_follow_up_runner(tool_id: str) -> FollowUpRunner | None:
+    """Return the registered follow-up coroutine, or None."""
     _ensure_builtin_follow_up_tools()
-    impl = TOOL_RUNNERS.get((tool_id or "").strip())
-    return impl if callable(impl) else None
+    return TOOL_RUNNERS.get((tool_id or "").strip())
 
 
-def register_tool(tool_id: str, impl: Any) -> None:
-    """Register or replace a tool implementation."""
-    tid = (tool_id or "").strip()
+def register_tool(tool_id: str, impl: FollowUpRunner) -> None:
+    """Register or replace a follow-up tool implementation."""
+    tid = tool_id.strip()
+
     if not tid:
         raise ValueError("tool_id is required")
+
     TOOL_RUNNERS[tid] = impl
 
 
 def list_tool_ids() -> tuple[str, ...]:
     _ensure_builtin_follow_up_tools()
-    return tuple(sorted(TOOL_RUNNERS.keys()))
+    return tuple(sorted(TOOL_RUNNERS))
 
 
 def clear_tool_registry_for_tests() -> None:
-    """Drop builtins so tests can isolate registry state (tests only)."""
-    global _bulitin_tools_loaded
+    """Drop builtins so tests can isolate registry state."""
+    global _builtin_tools_loaded
+
     TOOL_RUNNERS.clear()
-    _bulitin_tools_loaded = False
+    _builtin_tools_loaded = False

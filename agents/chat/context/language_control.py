@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Protocol
 
 
 class _SessionLanguageSink(Protocol):
@@ -41,7 +41,7 @@ def parse_session_language_command(text: str) -> str | None:
 
 def maybe_pin_session_language_from_workflow_response(
     state: _SessionLanguageSink,
-    response: dict[str, Any] | None,
+    response: dict[str, object] | None,
 ) -> bool:
     """
     If ``response`` includes a non-empty ``language`` field and the session has no
@@ -58,7 +58,7 @@ def maybe_pin_session_language_from_workflow_response(
 
 def finalize_workflow_designer_turn_session_language(
     state: _SessionLanguageSink,
-    response: dict[str, Any] | None,
+    response: dict[str, object] | None,
     *,
     debug_log: Callable[[str], None] | None = None,
 ) -> None:
@@ -74,5 +74,5 @@ def finalize_workflow_designer_turn_session_language(
     elif debug_log:
         debug_log(
             "session_language unchanged "
-            f"(pinned={state.session_language!r}, detected={detected!r})"
+            + f"(pinned={state.session_language!r}, detected={detected!r})"
         )

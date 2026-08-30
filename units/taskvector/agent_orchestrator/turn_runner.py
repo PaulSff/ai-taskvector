@@ -15,8 +15,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from agents.chat.parser_follow_up.chain import (
+from agents.chat.context.follow_up_context import (
     PostApplyFlags,
+)
+from agents.chat.parser_follow_up.chain import (
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )

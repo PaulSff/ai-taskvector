@@ -145,3 +145,7 @@ def is_json_document(value: object) -> TypeGuard[JsonDocument]:
         return _is_json_value(cast(list[object], value))
 
     return False
+
+
+def is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)

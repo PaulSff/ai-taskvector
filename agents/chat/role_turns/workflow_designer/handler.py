@@ -17,6 +17,11 @@ from agents.chat.agent_workflow import (
     run_agent_workflow,
 )
 from agents.chat.agent_workflow.helpers import validate_graph_to_apply_for_canvas_async
+from agents.chat.context.follow_up_context import (
+    ParserFollowUpContext,
+    PostApplyFlags,
+    PostApplyFollowUpContext,
+)
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
@@ -29,9 +34,6 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    ParserFollowUpContext,
-    PostApplyFlags,
-    PostApplyFollowUpContext,
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )

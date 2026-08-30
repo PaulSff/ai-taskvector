@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from agents.chat.parser_follow_up.chain import (
+from agents.chat.context.follow_up_context import (
     ParserFollowUpContext,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (

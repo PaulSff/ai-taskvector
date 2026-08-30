@@ -6,18 +6,17 @@ Kept under ``agents/roles/rl_coach`` so headless code and tests do not depend on
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
 )
+from core.schemas import ProcessGraph
 
 
 def build_rl_coach_training_inject_updates(
     training_config: str,
     training_results: str,
-    training_config_dict: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
+    training_config_dict: dict[str, object],
+) -> dict[str, dict[str, object]]:
     """Inject ports for training summary, results snippet, and full config dict (ApplyTrainingConfigEdits)."""
     return {
         "inject_training_config": {"data": (training_config or "").strip()},
@@ -29,14 +28,14 @@ def build_rl_coach_training_inject_updates(
 
 def build_rl_coach_agent_aligned_initial_inputs(
     user_message: str,
-    graph: Any,
-    last_apply_result: dict[str, Any] | None,
+    graph: ProcessGraph,
+    last_apply_result: dict[str, object] | None,
     recent_changes: str | None,
     *,
     training_config: str,
     training_results: str,
     previous_turn: str,
-    training_config_dict: dict[str, Any],
+    training_config_dict: dict[str, object],
     follow_up_context: str = "",
     runtime: str = "external",
     coding_is_allowed: bool = True,
@@ -44,7 +43,7 @@ def build_rl_coach_agent_aligned_initial_inputs(
     language_hint: str | None = None,
     session_language: str = "",
     analyst_mode: bool = True,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, dict[str, object]]:
     """
     Merge Workflow-Designer-style injects (graph, follow-up context, session language, …)
     with RL-specific training injects for ``rl_coach_workflow.json``.
@@ -76,8 +75,8 @@ def build_rl_coach_initial_inputs(
     training_config: str = "",
     training_results: str = "",
     previous_turn: str = "",
-    training_config_dict: dict[str, Any] | None = None,
-) -> dict[str, dict[str, Any]]:
+    training_config_dict: dict[str, object] | None = None,
+) -> dict[str, dict[str, object]]:
     """
     Build initial_inputs for run_workflow(rl_coach_workflow.json).
     Same pattern as Workflow Designer: separate injects for user_message (string, also drives RAG),
@@ -86,7 +85,7 @@ def build_rl_coach_initial_inputs(
     is produced inside the workflow (inject_user_message → RagSearch → Filter → FormatRagPrompt → Aggregate).
     """
     user_message = (user_message or "").strip() or "(No message provided.)"
-    out: dict[str, dict[str, Any]] = {
+    out: dict[str, dict[str, object]] = {
         "inject_user_message": {"data": user_message},
         "inject_training_config": {"data": (training_config or "").strip()},
         "inject_training_results": {"data": (training_results or "").strip()},

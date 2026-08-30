@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from agents.chat.agent_workflow import get_runtime_for_prompts
+from agents.chat.context.follow_up_context import (
+    ParserFollowUpContext,
+)
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
@@ -17,7 +20,6 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    ParserFollowUpContext,
     run_parser_output_follow_up_chain_async,
 )
 from agents.chat.role_turns.rl_coach.workflow_runner import (

@@ -10,21 +10,19 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-import traceback
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
-
-from core.schemas import ProcessGraph
-
-if TYPE_CHECKING:
-    import flet as ft
+from typing import Any, cast
 
 import agents.follow_ups as agents_follow_ups
 from agents.chat.agent_workflow import (
     refresh_last_apply_result_after_canvas_apply,
     run_agent_workflow,
+)
+from agents.chat.context.follow_up_context import (
+    ParserFollowUpContext,
+    PostApplyFlags,
+    PostApplyFollowUpContext,
+    WDFollowUpAcc,
 )
 from agents.chat.context.language_control import (
     maybe_pin_session_language_from_workflow_response,
@@ -51,7 +49,6 @@ from agents.roles.workflow_designer.workflow_inputs import (
     default_wf_language_hint,
 )
 from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
-from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.clone_role.follow_ups import CLONE_ROLE_FOLLOW_UP_USER_MESSAGE
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
@@ -64,242 +61,22 @@ from agents.tools.read_code_block.follow_ups import (
 from agents.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE,
 )
-from agents.tools.registry import get_follow_up_runner
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
-from agents.tools.types import (
-    FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
-    FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP,
-    FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
-    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
-    FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP,
-    FOLLOW_UP_EXTRA_READ_CODE_IDS,
-    FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP,
-    FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
-    FollowUpContribution,
-)
+from core.schemas import ProcessGraph
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 
-
-def _follow_up_tool_enabled(ctx: ParserFollowUpContext, tool_id: str) -> bool:
-    """If ``follow_up_tool_ids`` is set, only listed tools run; empty tuple disables all tools."""
-    allowed = ctx.follow_up_tool_ids
-    if allowed is None:
-        return True
-    return tool_id in allowed
-
-
-def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
-    """True when ApplyEdits reported a failed apply (merge_response result/status from process unit)."""
-    r = (resp.get("result") or {})
-    st = resp.get("status")
-
-    return (
-        r.get("kind") == "apply_failed"
-        or (
-            isinstance(st, dict)
-            and st.get("attempted") is True
-            and st.get("success") is False
-        )
-    )
-
-
-def merge_preserved_apply_failure_into_response(
-    response: dict[str, Any],
-    preserved: dict[str, Any],
-) -> dict[str, Any]:
-    """Restore result/status/workflow_errors from an earlier run in the same follow-up chain."""
-    out = dict(response)
-    out["result"] = dict(preserved.get("result") or {})
-    st = preserved.get("status")
-    out["status"] = dict(st) if isinstance(st, dict) else st
-    merged_errs = list(response.get("workflow_errors") or [])
-    for e in preserved.get("workflow_errors") or []:
-        if e not in merged_errs:
-            merged_errs.append(e)
-    out["workflow_errors"] = merged_errs
-    return out
-
-
-def workflow_response_is_question(resp: dict[str, Any]) -> bool:
-    """True when agent workflow classified the current reply as a user question."""
-    v = resp.get("is_question")
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, (int, float)):
-        return bool(v)
-    if isinstance(v, str):
-        return v.strip().lower() in ("1", "true", "yes", "y")
-    return False
-
-
-@dataclass
-class ParserFollowUpContext:
-    """Bindings for run_parser_output_follow_up_chain (GUI + session state)."""
-
-    page: ft.Page | None  # quoted forward ref so runtime doesn't need ft
-    graph_ref: list[Any]
-    state: Any
-    token: Any
-    turn_id: str
-    agent_label: str
-    follow_up_contexts: list[str]
-    max_rounds: int
-    wf_language_hint: list[str]
-    is_current_run: Callable[[Any], bool]
-    toast: Callable[[str], Awaitable[None]]
-    set_inline_status: Callable[[str | None], None]
-    append_message: Callable[..., None]
-    prepare_stream_row: Callable[[], None]
-    normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[Any]
-    get_recent_changes: Callable[[], str | None] | None
-    overrides: dict[str, Any]
-    run_workflow_streaming: Callable[..., Awaitable[Any]]
-    get_runtime_for_prompts: Callable[[Any], Awaitable[Literal["native", "external"]]]
-    format_previous_turn: Callable[[list[dict[str, Any]]], Awaitable[str]]
-    on_show_run_console: Callable[..., None] | None = None
-    # None = all Workflow Designer follow-up tools; else allowlist (tool ids from catalog / role.yaml)
-    follow_up_tool_ids: tuple[str, ...] | None = None
-    # Workflow response dict for the current follow-up round (grep_output, run_output, …).
-    follow_up_source_response: dict[str, Any] | None = None
-    # ``agents.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
-    agent_role_id: str | None = None
-    # When set, ``run_agent_workflow`` uses this JSON instead of the Workflow Designer default.
-    agent_workflow_path: Path | None = None
-    # Analyst chat: slimmer injects + hidden graph structure in summary overrides.
-    analyst_mode: bool = False
-    # When set, only these (tool_id, parser_key) pairs run in follow-up order; else WD catalog order.
-    ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None
-    # Dev: optional callback with response dict (llm_system_prompt / llm_user_message).
-    record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
-    # RL Coach (and similar): merge training injects after ``build_agent_workflow_initial_inputs``.
-    extend_agent_initial_inputs_async: (
-        Callable[[dict[str, dict[str, Any]]], Awaitable[dict[str, dict[str, Any]]]]
-        | None
-    ) = None
-
-
-@dataclass
-class WDFollowUpAcc:
-    """Mutable accumulators for one parser follow-up round (ordered tool loop)."""
-
-    context_chunks: list[str] = field(default_factory=list)
-    any_empty_tool: bool = False
-    read_code_ids_for_msg: list[str] = field(default_factory=list)
-    implementation_links_for_types: list[str] = field(default_factory=list)
-    report_follow_up: bool = False
-    formulas_calc_follow_up: bool = False
-    calendar_follow_up: bool = False
-    clone_role_follow_up: bool = False
-    list_dir_follow_up: bool = False
-    read_file_follow_up: bool = False
-
-
-def _merge_follow_up_contribution_into_acc(
-    acc: WDFollowUpAcc, contrib: FollowUpContribution
-) -> None:
-    acc.context_chunks.extend(contrib.context_chunks)
-    if contrib.any_empty_tool:
-        acc.any_empty_tool = True
-    ex = contrib.extra
-    if FOLLOW_UP_EXTRA_READ_CODE_IDS in ex:
-        v = ex[FOLLOW_UP_EXTRA_READ_CODE_IDS]
-        if isinstance(v, list):
-            acc.read_code_ids_for_msg = [str(x) for x in v]
-    if FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES in ex:
-        v = ex[FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES]
-        if isinstance(v, list):
-            acc.implementation_links_for_types = [str(x) for x in v]
-    if ex.get(FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP):
-        acc.report_follow_up = True
-    if ex.get(FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP):
-        acc.formulas_calc_follow_up = True
-    if ex.get(FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP):
-        acc.calendar_follow_up = True
-    if ex.get(FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP):
-        acc.clone_role_follow_up = True
-    if ex.get(FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP):
-        acc.list_dir_follow_up = True
-    if ex.get(FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP):
-        acc.read_file_follow_up = True
-
-
-async def _run_role_ordered_follow_ups(
-    ctx: ParserFollowUpContext,
-    po: dict[str, Any],
-    response: dict[str, Any],
-    hint: Callable[[], str],
-    acc: WDFollowUpAcc,
-) -> None:
-    ordered = getattr(ctx, "ordered_follow_up_tools", None) or ordered_tools_for_role_id(ctx.agent_role_id)
-
-    # print("DEBUG ordered:", ordered)
-    # print("DEBUG ctx.agent_role_id:", ctx.agent_role_id)
-
-    for tool_id, parser_key in ordered:
-        if not _follow_up_tool_enabled(ctx, tool_id):
-            continue
-
-        grey = "\033[38;5;245m"  # 256-color grey
-        reset = "\033[0m"
-
-        print(
-            f"{grey}[parser_follow_up_chain] followup_tool_enabled tool_id={tool_id}{reset}",
-            flush=True,
-        )
-
-
-        if not po.get(parser_key):
-            continue
-
-        val = po.get(parser_key)
-        print(
-            f"[parser_follow_up_chain] gate parser_key={parser_key} val={type(val).__name__} truth={bool(val)} repr={repr(val)[:400]}",
-            flush=True,
-        )
-
-        runner = get_follow_up_runner(tool_id)
-        if not callable(runner):
-            continue
-
-        green = "\033[92m"  # 256-color green
-        reset = "\033[0m"
-
-        print(
-            f"{green}[parser_follow_up_chain] followup_runner_start tool_id={tool_id} parser_key={parser_key}{reset}",
-            flush=True,
-        )
-
-
-        result = runner(ctx, po, language_hint=hint)
-
-        try:
-            if inspect.isawaitable(result):
-                print(
-                    f"[parser_follow_up_chain] waiting tool_id={tool_id} parser_key={parser_key}",
-                    flush=True,
-                )
-                contrib = await result
-            else:
-                contrib = result
-        except Exception as e:
-            print(
-                f"[parser_follow_up_chain] followup_runner_await_failed tool_id={tool_id} parser_key={parser_key}: {type(e).__name__}: {e}",
-                flush=True,
-            )
-            traceback.print_exc()
-            raise
-
-        if contrib is not None:
-            _merge_follow_up_contribution_into_acc(
-                acc, cast("FollowUpContribution", contrib)
-            )
-
+from .context_mergers import (
+    merge_preserved_apply_failure_into_response,
+)
+from .context_signals import (
+    workflow_merge_response_apply_failed,
+    workflow_response_is_question,
+)
+from .role_follow_ups_runner import run_role_ordered_follow_ups
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  Parser follow-up chain
+#  PHASE 1: Pre-apply follow-up chain
 # ─────────────────────────────────────────────────────────────────────────────────
-
 
 async def run_parser_output_follow_up_chain_async(
     ctx: ParserFollowUpContext,
@@ -381,7 +158,7 @@ async def run_parser_output_follow_up_chain_async(
         ctx.follow_up_source_response = response
 
         await _checkpoint(f"before_ordered_followups:{i}")
-        await _run_role_ordered_follow_ups(ctx, po, response, _hint, acc)
+        await run_role_ordered_follow_ups(ctx, po, response, _hint, acc)
         await _checkpoint(f"after_ordered_followups:{i}")
 
         context_chunks = acc.context_chunks
@@ -607,52 +384,9 @@ async def run_parser_output_follow_up_chain_async(
     return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────────
-#  Post-apply follow-up rounds
-# ─────────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class PostApplyFollowUpContext:
-    graph_ref: list[Any]
-    state: Any
-    token: Any
-    turn_id: str
-    agent_role_id: str
-    agent_label: str
-    max_rounds: int
-    wf_language_hint: list[str]
-    is_current_run: Callable[[Any], bool]
-    toast: Callable[[str], Awaitable[None]]
-    set_inline_status: Callable[[str | None], None]
-    append_message: Callable[..., None]
-    prepare_stream_row: Callable[[], None]
-    normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[Any]
-    get_recent_changes: Callable[[], str | None] | None
-    overrides: dict[str, Any]
-    run_workflow_streaming: Callable[..., Awaitable[Any]]
-    get_runtime_for_prompts: Callable[[Any], Awaitable[Literal["native", "external"]]]
-    format_previous_turn: Callable[[list[dict[str, Any]]], Awaitable[str]]
-    replace_agent_message_row: Callable[[dict[str, Any]], None]
-    stream_buffer_ref: list[str]
-    apply_fn: Callable[[Any], None]
-    agent_workflow_path: Path | None = None
-    analyst_mode: bool = False
-    record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
-        default=None, kw_only=True
-    )
-
-
-@dataclass
-class PostApplyFlags:
-    had_import_workflow: bool
-    had_todo: bool
-    had_add_comment: bool
-
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  Post-apply follow-up rounds (logged version)
+#  PHASE 2: Post-apply follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
 

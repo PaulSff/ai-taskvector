@@ -7,7 +7,6 @@ Tool runners consume normalized parser output and a narrow follow-up context pro
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 # Keys for ``FollowUpContribution.extra`` merged by the Workflow Designer orchestrator.
 FOLLOW_UP_EXTRA_READ_CODE_IDS = "read_code_ids_for_msg"
@@ -26,4 +25,4 @@ class FollowUpContribution:
 
     context_chunks: list[str] = field(default_factory=list)
     any_empty_tool: bool = False
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, object] = field(default_factory=dict)
