@@ -2,7 +2,7 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.schemas import ProcessGraph
+from core.schemas import NodePosition, ProcessGraph
 from core.schemas.primitives import JsonValue
 
 # Action types
@@ -114,6 +114,7 @@ class GraphEdit(BaseModel):
     code_block: GraphEditCodeBlock | None = Field(
         default=None, description="For add_code_block"
     )
+    code_blocks: list[GraphEditCodeBlock] | None = None
     find_unit: FindUnit | None = Field(
         default=None, description="For replace_unit: unit to find"
     )
@@ -197,6 +198,14 @@ class GraphEdit(BaseModel):
         )
     origin: str | None = None
     format: str | None = None
+    layout: dict[str, NodePosition] | None = Field(
+        default=None,
+        description=(
+            "For replace_graph: per-unit visual positions "
+            "(unit_id -> {x, y})"
+        ),
+    )
+
 
 
 class MultipleEditsSequential(BaseModel):
