@@ -13,6 +13,7 @@ from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
 from core.normalizer import graph_to_json_object, to_process_graph
 from core.normalizer.shared import to_json_value
+from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
 from core.schemas.primitives import JsonObject, JsonValue, is_json_array, is_json_object
 from units.registry import UnitSpec, register_unit
 
@@ -157,10 +158,12 @@ def _apply_edits_step(
             )
 
             if action == "import_workflow" and not has_origin:
-                patched_edits.append({
-                    **edit,
-                    "origin": origin,
-                })
+                patched_edits.append(
+                    {
+                        **edit,
+                        "origin": origin,
+                    }
+                )
             else:
                 patched_edits.append(edit)
 
@@ -170,50 +173,48 @@ def _apply_edits_step(
     apply_result["attempted"] = True
 
     allowed: frozenset[str] | None = None
-
-    allowed_values = string_list(
-        params.get("allowed_actions")
-    )
+    allowed_values = string_list(params.get("allowed_actions"))
 
     if allowed_values:
         allowed = frozenset(allowed_values)
 
+    graph_process = to_process_graph(
+        graph,
+        format="dict",
+    )
 
     wf_result = apply_workflow_edits(
-        graph,
-        edits,
+        graph_process,
+        MultipleEditsSequential(
+            edits=[
+                GraphEdit.model_validate(edit)
+                for edit in edits
+            ]
+        ),
         allowed_actions=allowed,
     )
 
-    if wf_result["success"]:
+    if wf_result.success:
         apply_result["success"] = True
         result["kind"] = "applied"
 
-        result_graph = wf_result.get("graph")
+        result_graph = wf_result.graph.model_dump(
+            mode="python",
+            by_alias=True,
+            exclude_none=True,
+        )
 
-        if is_json_object(result_graph):
-            result["graph"] = result_graph
+        result["graph"] = to_json_value(result_graph)
 
         summary = _edits_summary(edits)
-
         if summary:
             apply_result["edits_summary"] = summary
     else:
         apply_result["success"] = False
-        apply_result["error"] = (
-            wf_result.get("error") or "Apply failed"
-        )
+        apply_result["error"] = wf_result.error or "Apply failed"
         result["kind"] = "apply_failed"
 
-    graph_after = wf_result.get("graph")
-
-    if not is_json_object(graph_after):
-        graph_after = graph
-
-    graph_after_process_graph = to_process_graph(
-        graph_after,
-        format="dict",
-    )
+    graph_after_process_graph = wf_result.graph
 
     result["last_apply_result"] = {
         **apply_result,
@@ -223,12 +224,15 @@ def _apply_edits_step(
     }
 
     out_graph = result.get("graph")
-
     if not is_json_object(out_graph):
         out_graph = graph
 
     error_value = apply_result.get("error")
-    error_string = error_value if isinstance(error_value, str) else None
+    error_string = (
+        error_value
+        if isinstance(error_value, str)
+        else None
+    )
 
     return (
         {
