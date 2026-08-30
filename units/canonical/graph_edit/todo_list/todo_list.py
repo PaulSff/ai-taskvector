@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
 from core.graph import apply_workflow_edits
-from core.graph.graph_edit_api import GraphEdit
 from core.graph.todo_list import (
     add_task,
     create_new_todo_list,
@@ -19,6 +18,7 @@ from core.graph.todo_list import (
     todo_lists_to_list,
 )
 from core.schemas import TodoList
+from core.schemas.graph_edit_api import GraphEdit
 from core.schemas.primitives import JsonValue
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit

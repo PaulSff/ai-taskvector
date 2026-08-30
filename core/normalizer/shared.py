@@ -10,6 +10,7 @@ from core.schemas.primitives import (
     JsonValue,
     WorkflowInputs,
     is_json_object,
+    is_model_dumpable,
 )
 
 # Unit types and controllable flag come from the unit spec (units/registry.py). Canonical agent/oracle
@@ -183,3 +184,17 @@ def as_object_dict(value: object) -> dict[object, object] | None:
     if isinstance(value, dict):
         return cast(dict[object, object], value)
     return None
+
+
+def dump_json_object(value: object) -> JsonObject:
+    if not is_model_dumpable(value):
+        raise TypeError(
+            f"Expected a model with model_dump(), got {type(value).__name__}"
+        )
+
+    dumped = value.model_dump(by_alias=True)
+
+    if not is_json_object(dumped):
+        raise TypeError("model_dump() did not return a JSON object")
+
+    return dumped
