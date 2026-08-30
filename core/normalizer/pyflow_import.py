@@ -3,14 +3,8 @@ import copy
 from typing import Any
 
 from core.normalizer.shared import ensure_list_connections
-from core.normalizer.system_comments import PYFLOW_IMPORT_COMMENT_INFO
+from core.normalizer.system_comments import PYFLOW_SYSTEM_COMMENT
 
-_PYFLOW_SYSTEM_COMMENT = {
-    "id": "comment_system_pyflow",
-    "info": PYFLOW_IMPORT_COMMENT_INFO,
-    "commenter": "System",
-    "created_at": "2025-01-01T00:00:00Z",
-}
 # Keys used for graph structure / identity; do not store in unit.params.
 _PYFLOW_STRUCTURE_KEYS = frozenset({"id", "name", "type", "uuid", "nodeType", "__class__"})
 
@@ -171,5 +165,5 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     if layout:
         result["layout"] = layout
     result["origin"] = {"pyflow": {}}
-    result["comments"] = [dict(_PYFLOW_SYSTEM_COMMENT)]
+    result["comments"] = [dict(PYFLOW_SYSTEM_COMMENT)]
     return result

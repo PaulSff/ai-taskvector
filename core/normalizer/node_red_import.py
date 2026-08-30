@@ -14,7 +14,9 @@ import copy
 import re
 from typing import Any
 
-from core.normalizer.system_comments import NODE_RED_IMPORT_COMMENT_INFO
+from core.normalizer.system_comments import (
+    NODE_RED_SYSTEM_COMMENT,
+)
 
 # Keys that define graph structure; do not store in unit.params (handled separately).
 _NODE_RED_STRUCTURE_KEYS = frozenset(
@@ -23,14 +25,6 @@ _NODE_RED_STRUCTURE_KEYS = frozenset(
 
 # Port type for Node-RED message object (msg is a JavaScript object).
 _NODE_RED_MSG_TYPE = "JavaScript(object)"
-
-# System comment added on Node-RED import (commenter "System"); message text is in normalizer.system_comments.NODE_RED_IMPORT_COMMENT_INFO
-_NODE_RED_SYSTEM_COMMENT = {
-    "id": "comment_system_node_red",
-    "info": NODE_RED_IMPORT_COMMENT_INFO,
-    "commenter": "System",
-    "created_at": "2025-01-01T00:00:00Z",
-}
 
 
 def _node_red_output_port_count(node: dict[str, Any]) -> int:
@@ -600,7 +594,7 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
     if layout:
         result["layout"] = layout
     # System comment documenting Node-RED msg structure and code_blocks (agents see it in graph summary)
-    result["comments"] = [dict(_NODE_RED_SYSTEM_COMMENT)]
+    result["comments"] = [dict(NODE_RED_SYSTEM_COMMENT)]
     # Preserve graph-level metadata (readme, summary, gitOwners, etc.) for roundtrip
     if isinstance(raw, dict):
         _skip = {

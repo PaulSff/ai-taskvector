@@ -6,6 +6,7 @@ Editable text for system comments added by the normalizer and graph edits.
 - Canonical pipeline: comment shown when a pipeline (RLGym, RLOracle, RLSet, LLMSet) is added.
 Edit the constants below to change the messages shown to the user.
 """
+import datetime
 
 # Node-RED import: system comment text (id/commenter/created_at are set in node_red_import.py)
 NODE_RED_IMPORT_COMMENT_INFO = """# Units Interaction
@@ -158,3 +159,50 @@ PIPELINE_WIRING_PREFIX_RLORACLE = "RLOracle Pipeline Wiring Guidelines!"
 PIPELINE_WIRING_PREFIX_RLGYM = "RLGym Pipeline Wiring Guidelines!"
 PIPELINE_WIRING_PREFIX_RLAGENT = "RLAgent Pipeline Wiring Guidelines!"
 PIPELINE_WIRING_PREFIX_LLMAGENT = "LLMAgent Pipeline Wiring Guidelines!"
+
+
+RYVEN_SYSTEM_COMMENT = {
+    "id": "comment_system_ryven",
+    "info": RYVEN_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+}
+
+PYFLOW_SYSTEM_COMMENT = {
+    "id": "comment_system_pyflow",
+    "info": PYFLOW_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+}
+
+N8N_SYSTEM_COMMENT = {
+    "id": "comment_system_n8n",
+    "info": N8N_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+}
+
+# System comment added on Node-RED import (commenter "System"); message text is in normalizer.system_comments.NODE_RED_IMPORT_COMMENT_INFO
+NODE_RED_SYSTEM_COMMENT = {
+    "id": "comment_system_node_red",
+    "info": NODE_RED_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+}
+
+COMFYUI_SYSTEM_COMMENT = {
+    "id": "comment_system_comfyui",
+    "info": COMFYUI_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+}
