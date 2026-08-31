@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import ValidationError
 
@@ -110,13 +108,15 @@ async def validate_graph_to_apply_for_canvas_async(
 def get_nested_data(outputs: Data, key: str) -> Data:
     value = outputs.get(key)
 
-    if not isinstance(value, dict):
+    if not is_string_keyed_dict(value):
         return {}
 
     data = value.get("data")
 
-    return data if isinstance(data, dict) else {}
+    if not is_string_keyed_dict(data):
+        return {}
 
+    return data
 
 def get_str(data: Data, key: str) -> str:
     value = data.get(key)
@@ -128,7 +128,8 @@ def get_optional_str(data: Data, key: str) -> str | None:
 
 def get_data(data: Data, key: str) -> Data:
     value = data.get(key)
-    return value if isinstance(value, dict) else {}
+
+    return value if is_string_keyed_dict(value) else {}
 
 
 def get_optional_data(data: Data, key: str) -> Data | None:
@@ -137,7 +138,7 @@ def get_optional_data(data: Data, key: str) -> Data | None:
     if value is None:
         return None
 
-    return value if isinstance(value, dict) else None
+    return value if is_string_keyed_dict(value) else None
 
 
 def get_graph(data: Data, key: str) -> ProcessGraph | None:
@@ -151,16 +152,10 @@ def get_units_response(outputs: Data) -> list[Data]:
     if not isinstance(value, list):
         return []
 
+    items = cast(list[object], value)
+
     return [
         item
-        for item in value
+        for item in items
         if is_string_keyed_dict(item)
     ]
-
-def _workflow_debug_log_enabled() -> bool:
-    return (os.environ.get("WORKFLOW_DEBUG_LOG") or "").strip() == "1"
-
-
-def _workflow_debug_log(msg: str) -> None:
-    if _workflow_debug_log_enabled():
-        print(f"[workflow_debug] {msg}", file=sys.stderr, flush=True)

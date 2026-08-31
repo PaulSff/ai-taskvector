@@ -22,16 +22,6 @@ type JsonDocument = JsonObject | JsonArray
 type Data = dict[str, object]
 type Output = tuple[Data, Data] | Data
 
-type ExecuteAsync = Callable[
-    [Data, Data, Data],
-    Awaitable[Output],
-]
-
-type StepFnAsync = Callable[
-    [Data, Data, Data, float],
-    Awaitable[Output],
-]
-
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
 type WorkflowOutputs = JsonObject
 type WorkflowErrors = list[tuple[str, str]]
