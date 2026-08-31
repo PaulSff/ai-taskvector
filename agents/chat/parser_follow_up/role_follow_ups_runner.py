@@ -1,17 +1,20 @@
+from __future__ import annotations
+
 import inspect
 import traceback
 from collections.abc import Callable
 
+from agents.chat.context.context_mergers import (
+    merge_follow_up_contribution_into_acc,
+)
 from agents.chat.context.follow_up_context import (
     ParserFollowUpContext,
     WDFollowUpAcc,
 )
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.registry import get_follow_up_runner
+from core.schemas.primitives import Data
 
-from .context_mergers import (
-    merge_follow_up_contribution_into_acc,
-)
 from .tool_controller import (
     follow_up_tool_enabled,
 )
@@ -19,8 +22,8 @@ from .tool_controller import (
 
 async def run_role_ordered_follow_ups(
     ctx: ParserFollowUpContext,
-    po: dict[str, object],
-    response: dict[str, object],
+    po: Data,
+    response: Data,
     hint: Callable[[], str],
     acc: WDFollowUpAcc,
 ) -> None:

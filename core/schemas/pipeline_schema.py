@@ -1,4 +1,6 @@
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 from core.schemas.process_graph import Connection, Unit

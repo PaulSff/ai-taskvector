@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from agents.chat.context.follow_up_context import ParserFollowUpContext
 
 

@@ -2,6 +2,7 @@
 Canonical process graph schema.
 Single source of truth for process structure: units + connections.
 """
+from __future__ import annotations
 
 from enum import Enum
 from typing import ClassVar, Literal

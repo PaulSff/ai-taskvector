@@ -11,13 +11,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
+from core.schemas.primitives import Data
+
 # Common Prompt unit ids in agents/roles/*/…_workflow.json graphs.
 _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")
 
 
 def attach_llm_prompt_debug_from_outputs(
-    outputs: dict[str, object],
-    data: dict[str, object],
+    outputs: Data,
+    data: Data,
     *,
     prompt_unit_ids: tuple[str, ...] = _DEFAULT_PROMPT_UNIT_IDS,
 ) -> None:

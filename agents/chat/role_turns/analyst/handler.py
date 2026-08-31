@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Any
 
 from agents.chat.agent_workflow import (
     build_agent_workflow_unit_param_overrides,
@@ -46,6 +45,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from core.schemas import ProcessGraph
+from core.schemas.primitives import Data
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
@@ -73,9 +73,9 @@ class AnalystChatHandler:
     async def run_turn(
         self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str
     ) -> None:
-        response: dict[str, Any] = {}
+        response: Data = {}
         content = ""
-        result: dict[str, Any] = {}
+        result: Data = {}
 
         overrides = build_agent_workflow_unit_param_overrides(
             turn_ctx.provider,
@@ -104,8 +104,8 @@ class AnalystChatHandler:
         )
 
         async def _parser_output_follow_up_chain(
-            resp: dict[str, Any],
-        ) -> dict[str, Any] | None:
+            resp: Data,
+        ) -> Data | None:
             parser_ctx = ParserFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,

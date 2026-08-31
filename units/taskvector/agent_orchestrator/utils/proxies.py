@@ -7,7 +7,7 @@ from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
 
 class SessionProxy:
     """
-    Minimal session state object satisfying the _SessionLanguageSink protocol
+    Minimal session state object satisfying the SessionLanguageSink protocol
     from agents.chat.context.language_control.
     Also carries chat history for format_previous_turn.
     """
@@ -189,7 +189,7 @@ class ToolCtxProxy:
         stream_cb = self._stream_cb
 
         if self._prefer_inline_workflow and workflow_path is not None:
-            from agents.chat.agent_workflow.run_agent_workflow import (
+            from agents.chat.agent_workflow.collect_workflow_response import (
                 merge_response_from_workflow_outputs,
             )
             from runtime.run import run_workflow

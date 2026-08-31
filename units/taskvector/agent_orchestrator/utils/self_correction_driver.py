@@ -4,8 +4,10 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
-from agents.chat.agent_workflow.helpers import (
+from agents.chat.agent_workflow.build_self_correction_retry_inputs import (
     build_self_correction_retry_inputs,
+)
+from agents.chat.agent_workflow.helpers import (
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
 )

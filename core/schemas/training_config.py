@@ -2,6 +2,8 @@
 Canonical training config schema.
 Single source of truth for goal, rewards, algorithm, hyperparameters, environment (runtime).
 """
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import BaseModel, Field

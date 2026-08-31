@@ -11,7 +11,6 @@ from .save_workflow import (
     save_workflow_version,
 )
 from .workflow_manager import import_latest_workflow_graph_async
-from .workflow_run_utils import collect_workflow_errors
 
 __all__ = [
     "SaveResult",
@@ -20,7 +19,6 @@ __all__ = [
     "_latest_saved_json",
     "_md5_hex",
     "_now_timestamp",
-    "collect_workflow_errors",
     "import_latest_workflow_graph_async",
     "resolve_workflow_save_path",
     "save_workflow_version",

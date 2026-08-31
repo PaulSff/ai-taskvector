@@ -23,11 +23,11 @@ def _is_empty(val: Any) -> bool:
 
 
 def _merge_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: dict[str, object],
+    inputs: dict[str, object],
+    state: dict[str, object],
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, object], dict[str, object]]:
     """If input "data" is a dict (pre-built context), pass it through. Else collect in_0..in_N into one dict and only output when fully aggregated.
     Emits error on port "error" when any required_keys entry is missing or empty."""
     data_in = inputs.get("data")

@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+from agents.chat.context.language_control import SessionLanguageSink
+from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.process_graph import ProcessGraph
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pre-apply follow-up rounds
@@ -13,8 +19,8 @@ class ParserFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain."""
 
     page: object | None
-    graph_ref: list[object]
-    state: object
+    graph_ref: list[ProcessGraph]
+    state: SessionLanguageSink
     token: str
     turn_id: str
     agent_label: str
@@ -29,7 +35,7 @@ class ParserFollowUpContext:
     normalize_user_message_for_workflow: Callable[[str], str]
     last_apply_result_ref: list[object]
     get_recent_changes: Callable[[], str | None] | None
-    overrides: dict[str, object]
+    overrides: WorkflowInputs
     run_workflow_streaming: Callable[..., Awaitable[object]]
     get_runtime_for_prompts: Callable[
         [object],
@@ -46,7 +52,7 @@ class ParserFollowUpContext:
     follow_up_tool_ids: tuple[str, ...] | None = None
 
     # Workflow response dictionary for the current follow-up round.
-    follow_up_source_response: dict[str, object] | None = None
+    follow_up_source_response: Data | None = None
 
     # agents.roles ID, such as "workflow_designer".
     # Used for RAG follow-ups, not only for the UI label.
@@ -102,9 +108,9 @@ class WDFollowUpAcc:
 
 @dataclass
 class PostApplyFollowUpContext:
-    graph_ref: list[object]
-    state: object
-    token: object
+    graph_ref: list[ProcessGraph]
+    state: SessionLanguageSink
+    token: str
     turn_id: str
     agent_role_id: str
     agent_label: str
@@ -118,7 +124,7 @@ class PostApplyFollowUpContext:
     normalize_user_message_for_workflow: Callable[[str], str]
     last_apply_result_ref: list[object]
     get_recent_changes: Callable[[], str | None] | None
-    overrides: dict[str, object]
+    overrides: WorkflowInputs
     run_workflow_streaming: Callable[..., Awaitable[object]]
     get_runtime_for_prompts: Callable[
         [object],

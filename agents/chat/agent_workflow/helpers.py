@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 import time
 from pathlib import Path
 from typing import Literal
@@ -9,8 +11,8 @@ from typing import Literal
 from pydantic import ValidationError
 
 from core.graph.summary import graph_summary
-from gui.components.workflow_tab.process_graph import ProcessGraph
-from units.registry import Data
+from core.schemas.primitives import Data, is_string_keyed_dict
+from core.schemas.process_graph import ProcessGraph
 
 
 def missing_workflow_msg(path: Path) -> str:
@@ -103,3 +105,62 @@ async def validate_graph_to_apply_for_canvas_async(
         return None, f"ValidateGraphToApply: invalid graph: {exc}"
 
     return validated_graph, None
+
+
+def get_nested_data(outputs: Data, key: str) -> Data:
+    value = outputs.get(key)
+
+    if not isinstance(value, dict):
+        return {}
+
+    data = value.get("data")
+
+    return data if isinstance(data, dict) else {}
+
+
+def get_str(data: Data, key: str) -> str:
+    value = data.get(key)
+    return value if isinstance(value, str) else ""
+
+def get_optional_str(data: Data, key: str) -> str | None:
+    value = get_str(data, key)
+    return value or None
+
+def get_data(data: Data, key: str) -> Data:
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def get_optional_data(data: Data, key: str) -> Data | None:
+    value = data.get(key)
+
+    if value is None:
+        return None
+
+    return value if isinstance(value, dict) else None
+
+
+def get_graph(data: Data, key: str) -> ProcessGraph | None:
+    value = data.get(key)
+    return value if isinstance(value, ProcessGraph) else None
+
+
+def get_units_response(outputs: Data) -> list[Data]:
+    value = outputs.get("units_response")
+
+    if not isinstance(value, list):
+        return []
+
+    return [
+        item
+        for item in value
+        if is_string_keyed_dict(item)
+    ]
+
+def _workflow_debug_log_enabled() -> bool:
+    return (os.environ.get("WORKFLOW_DEBUG_LOG") or "").strip() == "1"
+
+
+def _workflow_debug_log(msg: str) -> None:
+    if _workflow_debug_log_enabled():
+        print(f"[workflow_debug] {msg}", file=sys.stderr, flush=True)

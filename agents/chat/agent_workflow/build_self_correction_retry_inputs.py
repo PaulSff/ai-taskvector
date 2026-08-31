@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from core.schemas.primitives import WorkflowInputs
-from gui.components.workflow_tab.process_graph import ProcessGraph
-from units.registry import Data
+from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.process_graph import ProcessGraph
 
 
 def build_self_correction_retry_inputs(

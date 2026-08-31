@@ -9,10 +9,11 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from agents.chat.agent_workflow.collect_workflow_response import collect_workflow_errors
 from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
 )
-from agents.chat.utils import collect_workflow_errors
+from core.schemas.primitives import WorkflowErrors, WorkflowInputs, WorkflowOutputs
 from core.schemas.process_graph import ProcessGraph
 from runtime.run import WorkflowTimeoutError
 from services.workflows.core_workflows import run_normalize_graph
@@ -26,18 +27,14 @@ RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 logger = logging.getLogger(__name__)
 
 
-# Ensure your intended type matches what you return: list[tuple[str, str]]
-WorkflowErrors = list[tuple[str, str]]
-
-
 async def run_current_graph(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    initial_inputs: WorkflowInputs,
+    unit_param_overrides: WorkflowInputs| None = None,
     execution_timeout_s: float | None = None,
     stream_callback: Callable[[str], None] | None = None,
     *,
-    workflow_graph: ProcessGraph | dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    workflow_graph: ProcessGraph | None = None,
+) -> WorkflowOutputs:
     # --- same unit registration as your other runner ---
     try:
         register_data_bi_units()
@@ -46,7 +43,7 @@ async def run_current_graph(
         raise
 
     # Helper to keep return shape consistent (and satisfy the type checker)
-    def _base_payload(*, workflow_errors: WorkflowErrors) -> dict[str, Any]:
+    def _base_payload(*, workflow_errors: WorkflowErrors) -> WorkflowOutputs:
         return {
             "reply": "",
             "result": {},
@@ -147,8 +144,8 @@ async def run_current_graph(
     # IMPORTANT: send workflow_graph instead of workflow_path
     job_pub.publish_job(
         run_id=run_id,
-        workflow_path=None,  # if worker requires the field, keep it but unused
-        workflow_graph=g_norm,  # <-- the key change
+        workflow_path=None,
+        workflow_graph=g_norm,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format="dict",

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
 from agents.chat.context.follow_up_context import WDFollowUpAcc
-from agents.chat.context.wf_response_schema import (
-    ResponseData,
-)
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP,
@@ -17,26 +19,26 @@ from core.schemas.primitives import is_object_list
 
 
 def merge_preserved_apply_failure_into_response(
-    response: ResponseData,
-    preserved: ResponseData,
-) -> ResponseData:
-    out = response.copy()
+    response: AgentWorkflowResponse,
+    preserved: AgentWorkflowResponse,
+) -> AgentWorkflowResponse:
+    response_merge = response.merged_response
+    preserved_merge = preserved.merged_response
 
-    preserved_result = preserved.get("result")
-    out["result"] = dict(preserved_result) if preserved_result is not None else {}
+    merged_errors = list(response_merge.workflow_errors)
 
-    status = preserved.get("status")
-    out["status"] = dict(status) if status is not None else None
+    for error in preserved_merge.workflow_errors:
+        if error not in merged_errors:
+            merged_errors.append(error)
 
-    merged_errs = list(response.get("workflow_errors", []))
+    merged_response = replace(
+        response_merge,
+        result=dict(preserved_merge.result),
+        status=dict(preserved_merge.status),
+        workflow_errors=merged_errors,
+    )
 
-    for error in preserved.get("workflow_errors", []):
-        if error not in merged_errs:
-            merged_errs.append(error)
-
-    out["workflow_errors"] = merged_errs
-    return out
-
+    return replace(response, merged_response=merged_response)
 
 
 def merge_follow_up_contribution_into_acc(

@@ -23,6 +23,7 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 from core.schemas import ProcessGraph
+from core.schemas.primitives import WorkflowInputs
 
 DEFAULT_WF_LANGUAGE = "English (en)"
 
@@ -111,7 +112,7 @@ def build_agent_workflow_initial_inputs(
     session_language: str = "",
     *,
     analyst_mode: bool = False,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     """
     Build initial_inputs for run_workflow(workflow_designer_workflow.json).
 

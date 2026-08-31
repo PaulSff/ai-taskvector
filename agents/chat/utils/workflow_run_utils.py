@@ -5,12 +5,16 @@ from __future__ import annotations
 import os
 import sys
 
-from core.schemas.primitives import is_string_keyed_dict
+from core.schemas.primitives import (
+    Data,
+    WorkflowErrors,
+    is_string_keyed_dict,
+)
 
 
 def collect_workflow_errors(
-    outputs: object,
-) -> list[tuple[str, str]]:
+    outputs: Data,
+) -> WorkflowErrors:
     """
     Collect non-null error port values from workflow outputs.
 
@@ -18,7 +22,7 @@ def collect_workflow_errors(
         A list of ``(unit_id, error_message)`` tuples for units that emitted
         an error.
     """
-    errors: list[tuple[str, str]] = []
+    errors: WorkflowErrors = []
 
     if not is_string_keyed_dict(outputs):
         return errors
@@ -33,7 +37,6 @@ def collect_workflow_errors(
             errors.append((unit_id, err.strip()))
 
     return errors
-
 
 
 def _workflow_debug_log_enabled() -> bool:

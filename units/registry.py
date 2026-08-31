@@ -14,12 +14,15 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from core.schemas.primitives import (
+    Data,
+    Output,
+)
+
 logger = logging.getLogger(__name__)
 
 PortSpec = tuple[str, str]  # (name, type e.g. "float", "flow", "temp")
 
-type Data = dict[str, object]
-type Output = tuple[Data, Data] | Data
 
 type ExecuteAsync = Callable[
     [Data, Data, Data],

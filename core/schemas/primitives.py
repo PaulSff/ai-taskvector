@@ -1,4 +1,13 @@
-from typing import Literal, Protocol, TypeGuard, cast, runtime_checkable
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import (
+    Literal,
+    Protocol,
+    TypeGuard,
+    cast,
+    runtime_checkable,
+)
 
 type JsonPrimitive = str | int | float | bool | None
 type JsonValue = (
@@ -10,12 +19,25 @@ type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]
 type JsonDocument = JsonObject | JsonArray
 
+type Data = dict[str, object]
+type Output = tuple[Data, Data] | Data
+
+type ExecuteAsync = Callable[
+    [Data, Data, Data],
+    Awaitable[Output],
+]
+
+type StepFnAsync = Callable[
+    [Data, Data, Data, float],
+    Awaitable[Output],
+]
+
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
+type WorkflowOutputs = JsonObject
+type WorkflowErrors = list[tuple[str, str]]
 
+# Raw input format for any workflow to be normalized into ProcessGraph
 RawProcessInput = JsonDocument | str
-
-
-# Workflow output is always the JsonObject
 
 FormatProcess = Literal[
    "yaml",

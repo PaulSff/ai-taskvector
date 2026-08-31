@@ -5,14 +5,14 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
-from agents.chat.context.llm_prompt_inspector import (
-    attach_llm_prompt_debug_from_outputs,
+from agents.chat.agent_workflow.collect_workflow_response import (
+    merge_response_from_workflow_outputs,
 )
-from agents.chat.utils import collect_workflow_errors
+from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
 from core.normalizer.shared import workflow_inputs_to_json_object
 from core.schemas.primitives import (
+    Data,
     FormatProcess,
     JsonObject,
     WorkflowInputs,
@@ -48,8 +48,6 @@ RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 # Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
 
-WorkflowErrors = list[tuple[str, str]]
-
 # ---- Publish workflow job to the server ---
 
 async def _publish_and_wait(
@@ -60,7 +58,7 @@ async def _publish_and_wait(
     execution_timeout_s: float | None,
     stream_callback: Callable[[str], None] | None,
     format: FormatProcess = "dict",
-) -> dict[str, object]:
+) -> Data:
     slot = await _slot_allocator.acquire()
     sub: ZmqSubscriber | None = None
     job_pub: ZmqPublisher | None = None
@@ -149,71 +147,6 @@ async def _publish_and_wait(
         await _slot_allocator.release()
 
 
-def merge_response_from_workflow_outputs(
-    outputs: dict[str, object],
-) -> dict[str, object]:
-    """Shape raw run_workflow unit outputs into run_agent_workflow response dict."""
-
-    merge_response_obj = outputs.get("merge_response")
-    raw_data: object = None
-
-    if isinstance(merge_response_obj, dict):
-        merge_response = cast(dict[str, object], merge_response_obj)
-        raw_data = merge_response.get("data")
-
-    if isinstance(raw_data, dict):
-        data = cast(dict[str, object], raw_data).copy()
-    else:
-        data: dict[str, object] = {
-            "reply": "",
-            "result": {},
-            "status": {},
-            "graph": None,
-            "diff": "",
-            "parser_output": None,
-            "run_output": {},
-            "report_output": {},
-            "grep_output": {},
-            "formulas_calc_output": {},
-            "formulas_calc_error": "",
-            "delegate_request": {},
-            "delegate_request_error": "",
-            "workflow_errors": [],
-        }
-
-    defaults: dict[str, object] = {
-        "parser_output": None,
-        "run_output": {},
-        "report_output": {},
-        "grep_output": {},
-        "formulas_calc_output": {},
-        "formulas_calc_error": "",
-        "delegate_request": {},
-        "delegate_request_error": "",
-        "workflow_errors": [],
-    }
-
-    for key, default in defaults.items():
-        _ = data.setdefault(key, default)
-
-    reply_val = data.get("reply")
-
-    if not isinstance(reply_val, str) or not reply_val.strip():
-        llm_output_obj = outputs.get("llm_agent")
-
-        if isinstance(llm_output_obj, dict):
-            llm_output = cast(dict[str, object], llm_output_obj)
-            action = llm_output.get("action")
-
-            if isinstance(action, str) and action.strip():
-                data["reply"] = action.strip()
-
-    data["workflow_errors"] = collect_workflow_errors(outputs)
-
-    attach_llm_prompt_debug_from_outputs(outputs, data)
-
-    return data
-
 
 async def run_agent_workflow(
     initial_inputs: WorkflowInputs | None = None,
@@ -222,7 +155,7 @@ async def run_agent_workflow(
     stream_callback: Callable[[str], None] | None = None,
     *,
     workflow_path: str | Path | None = None,
-) -> dict[str, object]:
+) -> AgentWorkflowResponse:
     print(
         "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
         type(initial_inputs),

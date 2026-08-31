@@ -11,12 +11,22 @@ import asyncio
 import inspect
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import Any
 
 import agents.follow_ups as agents_follow_ups
 from agents.chat.agent_workflow import (
     refresh_last_apply_result_after_canvas_apply,
     run_agent_workflow,
+)
+from agents.chat.agent_workflow.wf_response_schema import (
+    AgentWorkflowResponse,
+)
+from agents.chat.context.context_mergers import (
+    merge_preserved_apply_failure_into_response,
+)
+from agents.chat.context.context_signals import (
+    workflow_merge_response_apply_failed,
+    workflow_response_is_question,
 )
 from agents.chat.context.follow_up_context import (
     ParserFollowUpContext,
@@ -63,25 +73,19 @@ from agents.tools.read_file.follow_ups import (
 )
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from core.schemas import ProcessGraph
+from core.schemas.primitives import Data
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 
-from .context_mergers import (
-    merge_preserved_apply_failure_into_response,
-)
-from .context_signals import (
-    workflow_merge_response_apply_failed,
-    workflow_response_is_question,
-)
 from .role_follow_ups_runner import run_role_ordered_follow_ups
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 1: Pre-apply follow-up chain
+#  PHASE 1: Pre-apply follow-up chain (Human in the loop)
 # ─────────────────────────────────────────────────────────────────────────────────
 
 async def run_parser_output_follow_up_chain_async(
     ctx: ParserFollowUpContext,
-    resp: dict[str, Any],
-) -> dict[str, Any] | None:
+    resp: AgentWorkflowResponse,
+) -> Data | None:
     """
     Async version: If parser_output requests tools, fetch context and re-run agent_workflow.
     Returns None when the user cancelled the run mid-chain.
@@ -95,10 +99,10 @@ async def run_parser_output_follow_up_chain_async(
 
     _ = maybe_pin_session_language_from_workflow_response(ctx.state, resp)
     ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
-    preserved_apply_failure: dict[str, Any] = {}
+    preserved_apply_failure: Data = {}
     preserved_apply_failure_set = False
 
-    def _capture_apply_failure(r: dict[str, Any]) -> None:
+    def _capture_apply_failure(r: Data) -> None:
         nonlocal preserved_apply_failure, preserved_apply_failure_set
         if not workflow_merge_response_apply_failed(r):
             return
@@ -386,16 +390,16 @@ async def run_parser_output_follow_up_chain_async(
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 2: Post-apply follow-up rounds
+#  PHASE 2: Post-apply follow-up rounds (No human in the loop)
 # ─────────────────────────────────────────────────────────────────────────────────
 
 
 async def run_post_apply_follow_up_rounds_async(
     ctx: PostApplyFollowUpContext,
     *,
-    result: dict[str, Any],
+    result: Data,
     content_holder: list[str],
-    parser_chain_runner: Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]],
+    parser_chain_runner: Callable[[dict[str, object]], Awaitable[dict[str, object] | None]],
     flags: PostApplyFlags,
 ) -> None:
     """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
@@ -717,6 +721,7 @@ async def run_post_apply_follow_up_rounds_async(
                             await canonicalize_add_comment_edits(
                                 _post_edits, agent_role_id=ctx.agent_role_id
                             )
+
 
                             if isinstance(post_graph, dict):
                                 post_graph = ProcessGraph.model_validate(post_graph)

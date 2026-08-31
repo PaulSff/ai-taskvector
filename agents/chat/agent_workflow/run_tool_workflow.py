@@ -6,11 +6,13 @@ import time
 import uuid
 from pathlib import Path
 
-from agents.chat.utils import collect_workflow_errors
+from agents.chat.agent_workflow.collect_workflow_response import collect_workflow_errors
 from core.normalizer.shared import workflow_inputs_to_json_object
 from core.schemas.primitives import (
+    Data,
     FormatProcess,
     JsonObject,
+    WorkflowErrors,
     WorkflowInputs,
 )
 from gui.components.settings import (
@@ -60,7 +62,7 @@ async def run_workflow_with_errors(
     unit_param_overrides: WorkflowInputs | None = None,
     format: FormatProcess | None = "dict",
     execution_timeout_s: float | None = None,
-) -> tuple[dict[str, object], list[tuple[str, str]]]:
+) -> tuple[Data, WorkflowErrors]:
     """
     Pure async version: publishes the job over the workflow server and
     waits for subscribed response.
@@ -150,7 +152,7 @@ async def run_workflow_with_errors(
         if has_workflow_error:
             raise RuntimeError(workflow_error)
 
-        outputs: dict[str, object] = (
+        outputs: Data = (
             final_outputs if final_outputs is not None else {}
         )
 
