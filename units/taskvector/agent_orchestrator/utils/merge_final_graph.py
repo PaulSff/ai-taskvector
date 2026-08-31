@@ -1,26 +1,28 @@
 import asyncio
-from typing import Any
 
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from core.graph import graph_diff, merge_graph_actions_from_diff
-from core.graph.merge_diff import to_plain_dict
+from core.schemas.process_graph import ProcessGraph
 
 from .graph_hasher import graph_md5
 
 
 async def merge_latest_graph_for_final_output(
     *,
-    graph_ref: list[Any],
+    graph_ref: list[ProcessGraph],
     initial_graph_md5: str | None,
-) -> Any:
+) -> ProcessGraph | None:
+    current_graph = graph_ref[0]
+
     latest = await import_latest_workflow_graph_async()
-    if latest.graph is None:
+    latest_graph = latest.graph
+
+    if latest_graph is None:
         print(
             "[final_graph_merge] latest graph import failed/empty; keeping existing graph."
         )
-        return graph_ref[0]
+        return current_graph
 
-    latest_graph = latest.graph
     latest_md5 = graph_md5(latest_graph)
 
     if initial_graph_md5 is not None:
@@ -28,46 +30,54 @@ async def merge_latest_graph_for_final_output(
             print(
                 "[final_graph_merge] latest graph unchanged (md5 match); skipping merge."
             )
-            return graph_ref[0]
-        else:
-            print(
-                "[final_graph_merge] latest graph changed (md5 differ); merging latest + edits.",
-                f"initial={initial_graph_md5} latest={latest_md5}",
-            )
+            return current_graph
+
+        print(
+            "[final_graph_merge] latest graph changed (md5 differ); merging latest + edits.",
+            f"initial={initial_graph_md5} latest={latest_md5}",
+        )
     else:
         print(
             "[final_graph_merge] initial_graph_md5 not provided; merging latest + edits anyway.",
             f"latest={latest_md5}",
         )
 
-    current_graph = graph_ref[0]
-    prev_d = to_plain_dict(current_graph)
-    latest_d = to_plain_dict(latest_graph)
-    prev_unit_count = len(prev_d.get("units") or [])
-    latest_unit_count = len(latest_d.get("units") or [])
+    # The merger accepts ProcessGraph instances, not dictionaries.
+    prev_unit_count = len(latest_graph.units)
+    current_unit_count = len(current_graph.units)
 
-    # Never merge from an on-disk graph that dropped all units while we still have units.
-    if prev_unit_count > 0 and latest_unit_count == 0:
+    # Never merge from an on-disk graph that dropped all units while the
+    # in-memory graph still contains units.
+    if current_unit_count > 0 and prev_unit_count == 0:
         print(
-            "[final_graph_merge] latest graph has no units but in-memory graph does; keeping in-memory graph."
+            "[final_graph_merge] latest graph has no units but in-memory graph "
+            + "does; keeping in-memory graph."
         )
         return current_graph
 
-    res = await asyncio.to_thread(
+    result = await asyncio.to_thread(
         merge_graph_actions_from_diff,
         prev=latest_graph,
         current=current_graph,
         graph_diff_fn=graph_diff,
     )
 
-    if not res.get("success", False):
-        return current_graph if current_graph is not None else latest_graph
-
-    merged = res.get("graph", latest_graph)
-    merged_d = to_plain_dict(merged)
-    if prev_unit_count > 0 and len(merged_d.get("units") or []) == 0:
+    # MergeResult is a Pydantic/model object, not a dictionary.
+    if not result.success:
         print(
-            "[final_graph_merge] merge would drop all units; keeping in-memory graph."
+            "[final_graph_merge] graph merge failed; "
+            + "keeping in-memory graph.",
+            result.error or "",
+        )
+        return current_graph
+
+    merged = result.graph
+
+    # Guard against an unexpected merge result that removes every unit.
+    if current_unit_count > 0 and not merged.units:
+        print(
+            "[final_graph_merge] merge would drop all units; "
+            + "keeping in-memory graph."
         )
         return current_graph
 
