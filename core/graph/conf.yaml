@@ -14,13 +14,13 @@ valid_origin:
   - idaes
   - comfyui
 origin_language:
-  - canonical: python
-  - node_red: javascript
-  - edgelinkd: javascript
-  - n8n: javascript
-  - pyflow: python
-  - ryven": python
-  - comfyui: python
+  canonical: python
+  node_red: javascript
+  edgelinkd: javascript
+  n8n: javascript
+  pyflow: python
+  ryven: python
+  comfyui: python
 custom_code_unit_types:
   - function
   - exec
