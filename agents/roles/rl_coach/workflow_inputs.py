@@ -10,12 +10,13 @@ from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
 )
 from core.schemas import ProcessGraph
+from core.schemas.primitives import Data, WorkflowInputs
 
 
 def build_rl_coach_training_inject_updates(
     training_config: str,
     training_results: str,
-    training_config_dict: dict[str, object],
+    training_config_dict: Data,
 ) -> dict[str, dict[str, object]]:
     """Inject ports for training summary, results snippet, and full config dict (ApplyTrainingConfigEdits)."""
     return {
@@ -29,13 +30,13 @@ def build_rl_coach_training_inject_updates(
 def build_rl_coach_agent_aligned_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: dict[str, object] | None,
+    last_apply_result: Data | None,
     recent_changes: str | None,
     *,
     training_config: str,
     training_results: str,
     previous_turn: str,
-    training_config_dict: dict[str, object],
+    training_config_dict: Data,
     follow_up_context: str = "",
     runtime: str = "external",
     coding_is_allowed: bool = True,
@@ -43,7 +44,7 @@ def build_rl_coach_agent_aligned_initial_inputs(
     language_hint: str | None = None,
     session_language: str = "",
     analyst_mode: bool = True,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     """
     Merge Workflow-Designer-style injects (graph, follow-up context, session language, …)
     with RL-specific training injects for ``rl_coach_workflow.json``.

@@ -29,6 +29,7 @@ from core.schemas.primitives import (
     JsonObject,
     JsonValue,
     WorkflowInputs,
+    WorkflowOutputs,
     is_json_object,
     is_json_object_keyed_dict,
     is_model_dumpable,
@@ -102,7 +103,7 @@ async def _publish_and_wait(
     *,
     format: FormatProcess = "dict",
     execution_timeout_s: float | None = None,
-) -> JsonObject:
+) -> WorkflowOutputs:
     slot = await _acquire_slot()
     try:
         run_id = uuid.uuid4().hex

@@ -23,7 +23,7 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 from core.schemas import ProcessGraph
-from core.schemas.primitives import WorkflowInputs
+from core.schemas.primitives import Data, WorkflowInputs
 
 DEFAULT_WF_LANGUAGE = "English (en)"
 
@@ -101,7 +101,7 @@ def _build_last_edit_block_string(
 def build_agent_workflow_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: dict[str, object] | None,
+    last_apply_result: Data | None,
     recent_changes: str | None,
     follow_up_context: str = "",
     runtime: str = "native",
@@ -145,7 +145,7 @@ def build_agent_workflow_initial_inputs(
         language=lang,
     )
 
-    out: dict[str, dict[str, object]] = {
+    out: WorkflowInputs = {
         "inject_user_message": {"data": user_message},
         "inject_graph": {"data": graph_data},
         "inject_turn_state": {"data": turn_state},

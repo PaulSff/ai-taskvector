@@ -1,12 +1,12 @@
 from typing import Literal, Protocol, TypedDict
 
 from core.schemas.primitives import (
-    JsonObject,
+    WorkflowOutputs,
 )
 
 
 class ProcessQueue(Protocol):
-    def put(self, item: JsonObject) -> None:
+    def put(self, item: WorkflowOutputs) -> None:
         ...
 
 class StopWorkflowRequest(TypedDict):

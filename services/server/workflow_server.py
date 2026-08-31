@@ -26,6 +26,7 @@ from core.schemas.primitives import (
     FormatProcess,
     JsonObject,
     WorkflowInputs,
+    WorkflowOutputs,
 )
 from core.schemas.process_graph import ProcessGraph
 from runtime import run_workflow
@@ -145,7 +146,7 @@ def _run_job_in_subprocess(
     response_endpoint: str | None,
     execution_timeout_s: float | None,
     keep_alive: bool,
-) -> JsonObject:
+) -> WorkflowOutputs:
     """
     Execute one workflow inside the spawned subprocess.
 

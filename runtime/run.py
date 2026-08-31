@@ -18,7 +18,12 @@ from core.normalizer.shared import (
     outputs_to_json_object,
     workflow_inputs_to_json_object,
 )
-from core.schemas.primitives import JsonObject, JsonValue, WorkflowInputs
+from core.schemas.primitives import (
+    JsonObject,
+    JsonValue,
+    WorkflowInputs,
+    WorkflowOutputs,
+)
 from core.schemas.process_graph import ProcessGraph, Unit
 from runtime.executor import GraphExecutor, GraphUpdateCallback
 from runtime.stream_ui_signals import inline_status_stream_chunk
@@ -87,7 +92,7 @@ def run_workflow(
     zmq_publisher: ZmqPublisher | None = None,
     send_job_message: bool = False,
     control_queue: ControlQueue | None = None,
-) -> JsonObject:
+) -> WorkflowOutputs:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
 

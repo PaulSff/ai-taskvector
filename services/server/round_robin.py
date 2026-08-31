@@ -24,7 +24,7 @@ class RoundRobinSlotAllocator:
     def __init__(self, n: int):
         if n <= 0:
             raise ValueError("n must be > 0")
-        self._n = n
+        self._n: int = n
         self._sem: asyncio.Semaphore = asyncio.Semaphore(n)
         self._next: int = 0
         self._lock: asyncio.Lock = asyncio.Lock()
