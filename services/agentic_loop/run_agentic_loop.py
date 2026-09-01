@@ -153,7 +153,6 @@ async def run_agentic_loop(
                 edits_to_apply=edits_to_apply,
                 ensure_todo_list_if_missing=ensure_todo_list_if_missing,
                 queue_add_task=queue_add_task,
-                workflow_path=None,
                 deadline=TODO_TASK_DEADLINE,
             )
 
@@ -227,7 +226,6 @@ async def run_agentic_loop(
         sess=hook_session,
         out_session=hook_session,
         MESSENGER=messenger,
-        workflow_path=None,
     )
 
     logger.info("session=%s: agentic turn completed", out_session)

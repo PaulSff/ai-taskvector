@@ -1,9 +1,12 @@
-from typing import ClassVar, Literal, Protocol, TypedDict
+from typing import ClassVar, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph, TodoTask
+from core.schemas.graph_edit_api import (
+    GraphEdit,
+    MultipleEditsSequential,
+)
 from core.schemas.primitives import WorkflowInputs
 
 
@@ -12,57 +15,34 @@ class ReplyToIncomingMessagePayload(BaseModel):
 
     chat_id: str | int = Field(...)
 
+
 class IncompleteTaskResult(TypedDict):
     todo_list_id: str
     task: TodoTask
 
-class AddTodoListEdit(TypedDict):
-    action: Literal["add_todo_list"]
-    id: str
-    title: str
 
-
-class AddTaskEdit(TypedDict):
-    action: Literal["add_task"]
-    todo_list_id: str
-    text: str
-
-
-class RemoveTaskEdit(TypedDict):
-    action: Literal["remove_task"]
-    todo_list_id: str
-    task_id: str
-
-
-class SetDeadlineEdit(TypedDict):
-    action: Literal["set_deadline"]
-    todo_list_id: str
-    task_id: str
-    deadline: str | None
-
-
-type TodoEdit = (
-    AddTodoListEdit
-    | AddTaskEdit
-    | RemoveTaskEdit
-    | SetDeadlineEdit
-)
-
-class MultipleEditsSequential(TypedDict):
-    Multiple_edits_sequential: list[TodoEdit]
-
-
+# Canonical graph edit model is the single source of truth for all edits,
+# including todo-list edits.
+type TodoEdit = GraphEdit
 type TodoParams = TodoEdit | MultipleEditsSequential
 
-# This converter constructs params overrides for todo_list unit
-# operating within todo_list tool workflow
+
 def todo_params_to_workflow_inputs(
     params: TodoParams,
 ) -> WorkflowInputs:
-    converted = to_json_value(params)
-
-    if not isinstance(converted, dict):
-        raise TypeError("TodoParams must convert to a JSON object")
+    """
+    Convert canonical todo graph edits into workflow input overrides.
+    """
+    if isinstance(params, MultipleEditsSequential):
+        converted = params.model_dump(
+            by_alias=True,
+            exclude_none=True,
+        )
+    else:
+        converted = params.model_dump(
+            by_alias=True,
+            exclude_none=True,
+        )
 
     return {
         "todo_list": converted,

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-from collections.abc import Sequence
-from pathlib import Path
 
 from pydantic import ValidationError
 
-from core.normalizer.shared import to_json_value
+from core.graph.batch_edits import apply_workflow_edits
 from core.schemas import ProcessGraph, TodoTask
-from core.schemas.primitives import WorkflowInputs, safe_int
+from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
+from core.schemas.primitives import safe_int
 from gui.components.settings import (
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
@@ -23,7 +21,6 @@ from .helpers import (
     as_todo_params_sequential,
     classify_replyto_chats_from_history,
     dedupe_graph_tasks_and_lists,
-    default_todo_list_workflow_path,
     ensure_todo_list_if_missing,
     extract_message_text,
     get_added_unit,
@@ -48,73 +45,16 @@ from .prompts import (
     TASK_REVIEW_IMPORTED_WORKFLOW,
 )
 from .todo_state import (
-    AddTaskEdit,
-    AddTodoListEdit,
     EnsureTodoListIfMissing,
-    MultipleEditsSequential,
     QueueAddTask,
     ReplyToIncomingMessagePayload,
-    TodoEdit,
     TodoParams,
-    todo_params_to_workflow_inputs,
 )
 
 # Telegram conversation history directory
 MESSAGES_DIR = get_telegram_conversations_dir()
 
 logger = logging.getLogger("TodoListManager")
-
-# --- Run todo list tool workflow (add tasks, todo-lists, etc. by running the workflow) ---
-
-def _run_todo_list_workflow_sync(
-    graph: ProcessGraph,
-    todo_params: TodoParams,
-    workflow_path: Path | None = None,
-) -> ProcessGraph:
-    from runtime.run import run_workflow
-
-    path = workflow_path or default_todo_list_workflow_path()
-    if not path.is_file():
-        return graph
-
-    initial_inputs: WorkflowInputs = {
-            "inject_graph": {
-                "data": to_json_value(graph.model_dump(mode="json")),
-            }
-        }
-    # convert TodoParams to WorkflowInputs before passing to run_workflow
-    unit_param_overrides = todo_params_to_workflow_inputs(todo_params)
-
-    try:
-        outputs = run_workflow(
-            path,
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
-            format="dict",
-        )
-    except (OSError, ValueError) as exc:
-        logger.warning("Todo workflow failed for %s: %s", path, exc)
-        return graph
-
-    todo_output = outputs.get("todo_list")
-    if not isinstance(todo_output, dict):
-        return graph
-
-    out_graph = todo_output.get("graph")
-    if isinstance(out_graph, ProcessGraph):
-        return out_graph
-
-    return graph
-
-
-async def _run_todo_list_workflow(
-    graph: ProcessGraph,
-    todo_params: TodoParams,
-    workflow_path: Path | None = None,
-) -> ProcessGraph:
-    return await asyncio.to_thread(
-        _run_todo_list_workflow_sync, graph, todo_params, workflow_path
-    )
 
 
 # --- Add todo-lists if not present ---
@@ -124,33 +64,34 @@ async def _ensure_todo_list_exists(
     *,
     list_id: str,
     title: str | None = None,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
-    current = graph
-
-    for todo_list in current.todo_lists:
+    for todo_list in graph.todo_lists:
         if todo_list.id == list_id:
-            return current
+            return graph
 
-    add_list_edit: AddTodoListEdit = {
-        "action": "add_todo_list",
-        "id": list_id,
-        "title": title or "",
-    }
-
-    return await _run_todo_list_workflow(
-        current,
-        add_list_edit,
-        workflow_path,
+    add_list_edit = GraphEdit(
+        action="add_todo_list",
+        id=list_id,
+        title=title or "",
     )
 
+    result = apply_workflow_edits(
+        current=graph,
+        edits=MultipleEditsSequential(edits=[add_list_edit]),
+    )
+
+    if not result.success:
+        raise ValueError(
+            result.error or f"Failed to create todo list: {list_id}"
+        )
+
+    return result.graph
 
 # --- Add tasks for read_code_block tool ---
 
 async def add_tasks_for_read_code_block(
     unit_ids: list[str],
     graph: ProcessGraph,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
     if not unit_ids:
         return graph
@@ -159,19 +100,19 @@ async def add_tasks_for_read_code_block(
         graph,
         list_id=GRAPH_TODO_LIST_ID,
         title=GRAPH_TODO_LIST_TITLE,
-        workflow_path=workflow_path,
     )
 
-    edits: list[TodoEdit] = []
+    edits: list[GraphEdit] = []
     seen_unit_ids: set[str] = set()
 
     for raw_uid in unit_ids:
-        uid = (raw_uid or "").strip()
+        uid = raw_uid.strip()
 
         if not uid or uid in seen_unit_ids:
             continue
 
         seen_unit_ids.add(uid)
+
         task_text = TASK_PREFIX_REVIEW_SOURCE + uid
 
         if has_open_task_with_text(
@@ -181,55 +122,74 @@ async def add_tasks_for_read_code_block(
         ):
             continue
 
-        edit: AddTaskEdit = {
-            "action": "add_task",
-            "todo_list_id": GRAPH_TODO_LIST_ID,
-            "text": task_text,
-        }
-        edits.append(edit)
+        edits.append(
+            GraphEdit(
+                action="add_task",
+                todo_list_id=GRAPH_TODO_LIST_ID,
+                text=task_text,
+            )
+        )
 
     if not edits:
         return current
 
-    todo_params: MultipleEditsSequential = {
-        "Multiple_edits_sequential": edits,
-    }
-
-    return await _run_todo_list_workflow(
-        current,
-        todo_params,
-        workflow_path,
+    result = apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=edits),
     )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to add source-review todo tasks"
+        )
+
+    return result.graph
 
 # --- Add tasks after adding new code blocks into the workflow ---
 
 async def add_task_for_add_code_block(
     unit_id: str,
     graph: ProcessGraph,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
-    if not (unit_id or "").strip():
+    unit_id = unit_id.strip()
+
+    if not unit_id:
         return graph
-    unit_id = str(unit_id).strip()
 
     current = await _ensure_todo_list_exists(
         graph,
         list_id=GRAPH_TODO_LIST_ID,
         title=GRAPH_TODO_LIST_TITLE,
-        workflow_path=workflow_path,
     )
-
 
     task_text = TASK_PREFIX_ADD_CODE_BLOCK + unit_id
-    if has_open_task_with_text(current, task_text, list_id=GRAPH_TODO_LIST_ID):
+
+    if has_open_task_with_text(
+        current,
+        task_text,
+        list_id=GRAPH_TODO_LIST_ID,
+    ):
         return current
 
-
-    return await _run_todo_list_workflow(
-        current,
-        {"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": task_text},
-        workflow_path,
+    edit = GraphEdit(
+        action="add_task",
+        todo_list_id=GRAPH_TODO_LIST_ID,
+        text=task_text,
     )
+
+    result = apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=[edit]),
+    )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to add the code-block todo task"
+        )
+
+    return result.graph
 
 
 # --- Add tasks after adding new units into the workflow ---
@@ -237,13 +197,13 @@ async def add_task_for_add_code_block(
 async def add_tasks_for_added_units(
     unit_ids: list[str],
     graph: ProcessGraph,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
     ordered: list[str] = []
     seen: set[str] = set()
 
     for raw in unit_ids:
-        uid = (raw or "").strip()
+        uid = raw.strip()
+
         if not uid or uid in seen:
             continue
 
@@ -254,110 +214,126 @@ async def add_tasks_for_added_units(
         return graph
 
     unit_ids_str = ", ".join(ordered)
+
     text_connected = TASK_ENSURE_UNITS_CONNECTED.format(
-        unit_ids=unit_ids_str
+        unit_ids=unit_ids_str,
     )
     text_params = TASK_CHECK_UNITS_PARAMS.format(
-        unit_ids=unit_ids_str
+        unit_ids=unit_ids_str,
     )
 
     current = await _ensure_todo_list_exists(
         graph,
         list_id=GRAPH_TODO_LIST_ID,
         title=GRAPH_TODO_LIST_TITLE,
-        workflow_path=workflow_path,
     )
 
-    edits: list[TodoEdit] = []
+    edits: list[GraphEdit] = []
 
     if not has_open_task_with_text(
         current,
         text_connected,
         list_id=GRAPH_TODO_LIST_ID,
     ):
-        connected_edit: AddTaskEdit = {
-            "action": "add_task",
-            "todo_list_id": GRAPH_TODO_LIST_ID,
-            "text": text_connected,
-        }
-        edits.append(connected_edit)
+        edits.append(
+            GraphEdit(
+                action="add_task",
+                todo_list_id=GRAPH_TODO_LIST_ID,
+                text=text_connected,
+            )
+        )
 
     if not has_open_task_with_text(
         current,
         text_params,
         list_id=GRAPH_TODO_LIST_ID,
     ):
-        params_edit: AddTaskEdit = {
-            "action": "add_task",
-            "todo_list_id": GRAPH_TODO_LIST_ID,
-            "text": text_params,
-        }
-        edits.append(params_edit)
+        edits.append(
+            GraphEdit(
+                action="add_task",
+                todo_list_id=GRAPH_TODO_LIST_ID,
+                text=text_params,
+            )
+        )
 
     if not edits:
         return current
 
-    return await _run_todo_list_workflow(
-        current,
-        as_todo_params_sequential(edits),
-        workflow_path,
+    result = apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=edits),
     )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to add todo tasks for added units"
+        )
+
+    return result.graph
 
 
 # --- Add tasks for Run Workflow tool ---
 
 async def add_tasks_for_run_workflow(
     graph: ProcessGraph,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
     current = await _ensure_todo_list_exists(
         graph,
         list_id=GRAPH_TODO_LIST_ID,
         title=GRAPH_TODO_LIST_TITLE,
-        workflow_path=workflow_path,
     )
 
-    edits: list[TodoEdit] = []
+    edits: list[GraphEdit] = []
 
     if not has_open_task_with_text(
         current,
         TASK_ENSURE_DEBUG_FOR_RUN,
         list_id=GRAPH_TODO_LIST_ID,
     ):
-        debug_edit: AddTaskEdit = {
-            "action": "add_task",
-            "todo_list_id": GRAPH_TODO_LIST_ID,
-            "text": TASK_ENSURE_DEBUG_FOR_RUN,
-        }
-        edits.append(debug_edit)
+        edits.append(
+            GraphEdit(
+                action="add_task",
+                todo_list_id=GRAPH_TODO_LIST_ID,
+                text=TASK_ENSURE_DEBUG_FOR_RUN,
+            )
+        )
 
     if not has_open_task_with_text(
         current,
         TASK_PREPARE_INITIAL_DATA_FOR_RUN,
         list_id=GRAPH_TODO_LIST_ID,
     ):
-        initial_data_edit: AddTaskEdit = {
-            "action": "add_task",
-            "todo_list_id": GRAPH_TODO_LIST_ID,
-            "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN,
-        }
-        edits.append(initial_data_edit)
+        edits.append(
+            GraphEdit(
+                action="add_task",
+                todo_list_id=GRAPH_TODO_LIST_ID,
+                text=TASK_PREPARE_INITIAL_DATA_FOR_RUN,
+            )
+        )
 
     if not edits:
         return current
 
-    return await _run_todo_list_workflow(
-        current,
-        as_todo_params_sequential(edits),
-        workflow_path,
+    result = apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=edits),
     )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to add todo tasks for run_workflow"
+        )
+
+    return result.graph
+
 
 
 # --- Add tasks for Import Workflow tool ---
 
 async def add_review_workflow_task_after_import(
     graph: ProcessGraph,
-    workflow_path: Path | None = None,
 ) -> ProcessGraph:
     if not graph or not isinstance(graph, dict):
         return graph
@@ -366,18 +342,33 @@ async def add_review_workflow_task_after_import(
         graph,
         list_id=GRAPH_TODO_LIST_ID,
         title=GRAPH_TODO_LIST_TITLE,
-        workflow_path=workflow_path,
     )
 
-
-    if has_open_task_with_text(current, TASK_REVIEW_IMPORTED_WORKFLOW, list_id=GRAPH_TODO_LIST_ID):
+    if has_open_task_with_text(
+        current,
+        TASK_REVIEW_IMPORTED_WORKFLOW,
+        list_id=GRAPH_TODO_LIST_ID,
+    ):
         return current
 
-    return await _run_todo_list_workflow(
-        current,
-        {"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": TASK_REVIEW_IMPORTED_WORKFLOW},
-        workflow_path,
+    edit = GraphEdit(
+        action="add_task",
+        todo_list_id=str(GRAPH_TODO_LIST_ID),
+        text=TASK_REVIEW_IMPORTED_WORKFLOW,
     )
+
+    result = apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=[edit]),
+    )
+
+    if not result.success:
+        raise ValueError(
+            result.error or "Failed to add imported-workflow review task"
+        )
+
+    return result.graph
+
 
 
 # ---- Add tasks for unhandled messages from messengers ---
@@ -385,10 +376,9 @@ async def add_review_workflow_task_after_import(
 async def add_tasks_for_unhandled_messages(
     *,
     current: ProcessGraph,
-    edits_to_apply: list[TodoEdit], # additional TODO list edits to apply
+    edits_to_apply: list[GraphEdit],
     ensure_todo_list_if_missing: EnsureTodoListIfMissing,
     queue_add_task: QueueAddTask,
-    workflow_path: Path | None = None,
     deadline: float | None = None,
 ) -> ProcessGraph | None:
 
@@ -398,29 +388,36 @@ async def add_tasks_for_unhandled_messages(
         messages_dir = None
 
     if not messages_dir:
-        logger.info("Todo_list_manager: No MESSAGES_DIR; skipping unhandled tg messages tasks.")
+        logger.info(
+            "Todo_list_manager: No MESSAGES_DIR; skipping unhandled tg messages tasks."
+        )
         return None
 
-    logger.info("Todo_list_manager: Processing incoming message reply-to tracking (dir=%r)...", messages_dir)
-    history: list[HistoryMessage] = load_tg_history(str(messages_dir))
-    logger.info("Todo_list_manager: TG history loaded for reply-to tracking: %d items", len(history))
+    logger.info(
+        "Todo_list_manager: Processing incoming message reply-to tracking "
+        + "(dir=%r)...",
+        messages_dir,
+    )
 
-    # --- Blacklist loading (reply-to tasks; ignore epoch) ---
+    history: list[HistoryMessage] = load_tg_history(str(messages_dir))
+
+    logger.info(
+        "Todo_list_manager: TG history loaded for reply-to tracking: %d items",
+        len(history),
+    )
+
     all_bl = load_tg_black_list(str(messages_dir))
     blacklisted_chat_ids: set[str] = set()
 
-    # all_bl: { "<bot_token>": { "<chat_id>": <blocked_epoch_s>, ... }, ... }
     for chat_map in all_bl.values():
         for chat_id in chat_map:
             blacklisted_chat_ids.add(str(chat_id))
 
-
     logger.info(
-        "Todo_list_manager: blacklist filtering (all bots): blacklisted_chat_ids=%d",
+        "Todo_list_manager: blacklist filtering (all bots): "
+        + "blacklisted_chat_ids=%d",
         len(blacklisted_chat_ids),
     )
-
-    # -----------------------------------------
 
     pending_chat_ids, responded_chat_ids = classify_replyto_chats_from_history(
         history=history,
@@ -428,12 +425,12 @@ async def add_tasks_for_unhandled_messages(
     )
 
     logger.info(
-        "Todo_list_manager: Reply-to detection: pending_chat_ids=%d responded_chat_ids=%d",
+        "Todo_list_manager: Reply-to detection: pending_chat_ids=%d "
+        + "responded_chat_ids=%d",
         len(pending_chat_ids),
         len(responded_chat_ids),
     )
 
-    # 3) Gather existing TG todo tasks from current
     existing_tasks: list[TodoTask] = []
 
     for todo_list in current.todo_lists:
@@ -442,11 +439,8 @@ async def add_tasks_for_unhandled_messages(
 
         existing_tasks.extend(todo_list.tasks)
 
+    edits_remove_batch: list[GraphEdit] = []
 
-    # removals happen in separate batch
-    edits_remove_batch: list[TodoEdit] = []
-
-    # Always remove all open blacklisted reply-to tasks.
     did_blacklist_removals = False
 
     if blacklisted_chat_ids:
@@ -455,10 +449,13 @@ async def add_tasks_for_unhandled_messages(
                 continue
 
             text = task.text.strip()
+
             if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
                 continue
 
-            payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):].strip()
+            payload_str = text[
+                len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
+            ].strip()
 
             try:
                 payload = ReplyToIncomingMessagePayload.model_validate_json(
@@ -468,6 +465,7 @@ async def add_tasks_for_unhandled_messages(
                 continue
 
             chat_id = str(payload.chat_id)
+
             if chat_id not in blacklisted_chat_ids:
                 continue
 
@@ -476,15 +474,16 @@ async def add_tasks_for_unhandled_messages(
                 todo_list_id=str(TG_TODO_LIST_ID),
                 task_id=task.id,
             )
+
             did_blacklist_removals = True
 
             logger.info(
-                "Todo_list_manager: Queuing blacklist removal: chat_id=%s task_id=%r",
+                "Todo_list_manager: Queuing blacklist removal: "
+                + "chat_id=%s task_id=%r",
                 chat_id,
                 task.id,
             )
 
-    # Capture which open reply-to tasks already exist from the current graph.
     existing_reply_tasks_by_chat: dict[str, list[str]] = {}
     existing_open_reply_keys: set[tuple[str, str]] = set()
 
@@ -493,14 +492,18 @@ async def add_tasks_for_unhandled_messages(
             continue
 
         text = task.text.strip()
+
         if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
             continue
 
         key = reply_key_from_task_text(text)
+
         if key is not None:
             existing_open_reply_keys.add(key)
 
-        payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):].strip()
+        payload_str = text[
+            len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
+        ].strip()
 
         try:
             payload = ReplyToIncomingMessagePayload.model_validate_json(
@@ -508,7 +511,8 @@ async def add_tasks_for_unhandled_messages(
             )
         except (TypeError, ValueError, ValidationError):
             logger.debug(
-                "Todo_list_manager: Skipping task with invalid reply-to payload text=%r",
+                "Todo_list_manager: Skipping task with invalid "
+                + "reply-to payload text=%r",
                 text,
             )
             continue
@@ -517,15 +521,14 @@ async def add_tasks_for_unhandled_messages(
         existing_reply_tasks_by_chat.setdefault(chat_id, []).append(task.id)
 
     logger.info(
-        "Todo_list_manager: Reply-to detection: existing reply tasks tracked for %d chats",
+        "Todo_list_manager: Reply-to detection: existing reply tasks "
+        + "tracked for %d chats",
         len(existing_reply_tasks_by_chat),
     )
 
-    # 2) Add tasks for pending chats, but only if no matching open task exists.
     desired_pending_task_texts: set[str] = set()
     desired_pending_reply_keys: set[tuple[str, str]] = set()
 
-    # Rebuild the latest message per chat for pending-task creation.
     by_chat: dict[str, HistoryMessage] = {}
 
     for message in history:
@@ -553,6 +556,7 @@ async def add_tasks_for_unhandled_messages(
 
     for chat_id_s in pending_chat_ids:
         last_message = by_chat.get(chat_id_s)
+
         if last_message is None:
             continue
 
@@ -570,9 +574,11 @@ async def add_tasks_for_unhandled_messages(
             message_id_s,
             message_text,
         )
+
         desired_pending_task_texts.add(task_text)
 
         key = reply_key_from_task_text(task_text)
+
         if key is not None:
             desired_pending_reply_keys.add(key)
 
@@ -593,19 +599,22 @@ async def add_tasks_for_unhandled_messages(
         len(responded_chat_ids),
     )
 
-
-    # responded chats -> remove their existing open reply-to tasks (separate batch)
     if responded_chat_ids:
         for cid in responded_chat_ids:
             if cid in blacklisted_chat_ids:
                 continue
 
-            existing_task_ids_for_chat = existing_reply_tasks_by_chat.get(cid, [])
+            existing_task_ids_for_chat = (
+                existing_reply_tasks_by_chat.get(cid, [])
+            )
+
             logger.info(
-                "Todo_list_manager: Reply-to removals: chat_id=%s matching_existing=%d",
+                "Todo_list_manager: Reply-to removals: chat_id=%s "
+                + "matching_existing=%d",
                 cid,
                 len(existing_task_ids_for_chat),
             )
+
             for task_id in existing_task_ids_for_chat:
                 queue_remove_task(
                     edits_to_apply=edits_remove_batch,
@@ -615,11 +624,9 @@ async def add_tasks_for_unhandled_messages(
 
     # ----- Batch A: apply adds first -----
     graph_after_add = current
-    edits_add_batch: list[TodoEdit] = []
+    edits_add_batch: list[GraphEdit] = []
     queued_task_texts: set[str] = set()
 
-    # If the todo list is missing, make sure add_todo_list is the FIRST edit
-    # in this batch. Include external edits because they also need to be applied.
     if (
         edits_to_apply
         or pending_task_texts_to_queue
@@ -634,11 +641,13 @@ async def add_tasks_for_unhandled_messages(
             title=TG_TODO_LIST_TITLE,
         )
 
-    # Preserve edits queued by the external caller, such as expired-task edits.
     edits_add_batch.extend(edits_to_apply)
 
     for task_text in pending_task_texts_to_queue:
-        logger.debug("Todo_list_manager: Queueing reply-to pending task.")
+        logger.debug(
+            "Todo_list_manager: Queueing reply-to pending task."
+        )
+
         queue_add_task(
             current=graph_after_add,
             task_text=task_text,
@@ -648,19 +657,23 @@ async def add_tasks_for_unhandled_messages(
         )
 
     if edits_add_batch:
-        todo_params_add: TodoParams = (
-            edits_add_batch[0]
-            if len(edits_add_batch) == 1
-            else as_todo_params_sequential(edits_add_batch)
+        todo_params_add: MultipleEditsSequential = (
+            as_todo_params_sequential(edits_add_batch)
         )
 
-        graph_after_add = await _run_todo_list_workflow(
-            graph_after_add,
-            todo_params_add,
-            workflow_path,
+        result = apply_workflow_edits(
+            current=graph_after_add,
+            edits=todo_params_add,
         )
 
-    # If nothing to remove, just do deadline logic on the added result (if requested)
+        if not result.success:
+            raise ValueError(
+                result.error
+                or "Failed to apply todo-list add edits"
+            )
+
+        graph_after_add = result.graph
+
     if not edits_remove_batch:
         if deadline is None:
             return graph_after_add
@@ -672,11 +685,7 @@ async def add_tasks_for_unhandled_messages(
                 continue
 
             for task in todo_list.tasks:
-                if task.completed:
-                    continue
-
-                # Only set the deadline when it is currently missing.
-                if task.deadline is not None:
+                if task.completed or task.deadline is not None:
                     continue
 
                 task_text = task.text.strip()
@@ -688,9 +697,14 @@ async def add_tasks_for_unhandled_messages(
         if not task_ids_to_deadline_added:
             return graph_after_add
 
-        deadline_edits_add_batch: list[TodoEdit] = []
+        deadline_edits_add_batch: list[GraphEdit] = []
+
         for task_id in task_ids_to_deadline_added:
-            logger.debug("Todo_list_manager: Queueing set_deadline for task_id=%r", task_id)
+            logger.debug(
+                "Todo_list_manager: Queueing set_deadline for task_id=%r",
+                task_id,
+            )
+
             queue_set_deadline_for_task(
                 edits_to_apply=deadline_edits_add_batch,
                 task_id=str(task_id),
@@ -701,38 +715,48 @@ async def add_tasks_for_unhandled_messages(
         if not deadline_edits_add_batch:
             return graph_after_add
 
-        final_graph_added = await _run_todo_list_workflow(
-            graph_after_add,
-            as_todo_params_sequential(deadline_edits_add_batch),
-            workflow_path,
+        result = apply_workflow_edits(
+            current=graph_after_add,
+            edits=as_todo_params_sequential(
+                deadline_edits_add_batch
+            ),
         )
 
+        if not result.success:
+            raise ValueError(
+                result.error
+                or "Failed to apply added-task deadline edits"
+            )
+
         return dedupe_graph_tasks_and_lists(
-            final_graph_added,
+            result.graph,
             todo_list_id=str(TG_TODO_LIST_ID),
         )
 
-
     # ----- Batch B: apply removals second -----
-    todo_params_remove = as_todo_params_sequential(edits_remove_batch)
-
-    graph_after_remove = await _run_todo_list_workflow(
-        graph_after_add,
-        todo_params_remove,
-        workflow_path,
+    todo_params_remove: TodoParams = as_todo_params_sequential(
+        edits_remove_batch
     )
 
+    result = apply_workflow_edits(
+        current=graph_after_add,
+        edits=todo_params_remove,
+    )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to apply todo-list removal edits"
+        )
+
     graph_after_remove = dedupe_graph_tasks_and_lists(
-        graph_after_remove,
+        result.graph,
         todo_list_id=str(TG_TODO_LIST_ID),
     )
 
-    # If no deadline was requested, return after applying removals.
     if deadline is None:
         return graph_after_remove
 
-
-    # ----- Batch #2 (after removals): set deadlines on remaining pending tasks -----
     task_ids_to_deadline_after_remove: list[str] = []
     target_list_id = str(TG_TODO_LIST_ID)
 
@@ -741,11 +765,7 @@ async def add_tasks_for_unhandled_messages(
             continue
 
         for task in todo_list.tasks:
-            if task.completed:
-                continue
-
-            # Only set the deadline when it is currently missing.
-            if task.deadline is not None:
+            if task.completed or task.deadline is not None:
                 continue
 
             task_text = task.text.strip()
@@ -757,9 +777,14 @@ async def add_tasks_for_unhandled_messages(
     if not task_ids_to_deadline_after_remove:
         return graph_after_remove
 
-    deadline_edits_after_remove: list[TodoEdit] = []
+    deadline_edits_after_remove: list[GraphEdit] = []
+
     for task_id in task_ids_to_deadline_after_remove:
-        logger.debug("Todo_list_manager: Queueing set_deadline for task_id=%r", task_id)
+        logger.debug(
+            "Todo_list_manager: Queueing set_deadline for task_id=%r",
+            task_id,
+        )
+
         queue_set_deadline_for_task(
             edits_to_apply=deadline_edits_after_remove,
             task_id=str(task_id),
@@ -770,21 +795,29 @@ async def add_tasks_for_unhandled_messages(
     if not deadline_edits_after_remove:
         return graph_after_remove
 
-    final_graph = await _run_todo_list_workflow(
-        graph_after_remove,
-        as_todo_params_sequential(deadline_edits_after_remove),
-        workflow_path,
+    result = apply_workflow_edits(
+        current=graph_after_remove,
+        edits=as_todo_params_sequential(
+            deadline_edits_after_remove
+        ),
     )
 
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to apply remaining-task deadline edits"
+        )
+
     logger.info(
-        "Todo_list_manager: Adds+removals applied: removed_edits=%d added_edits=%d todo_list_id=%s",
+        "Todo_list_manager: Adds+removals applied: removed_edits=%d "
+        + "added_edits=%d todo_list_id=%s",
         len(edits_remove_batch),
         len(edits_add_batch),
         str(TG_TODO_LIST_ID),
     )
 
     return dedupe_graph_tasks_and_lists(
-        final_graph,
+        result.graph,
         todo_list_id=str(TG_TODO_LIST_ID),
     )
 
@@ -793,15 +826,14 @@ async def add_tasks_for_unhandled_messages(
 
 async def augment_graph_with_client_tasks(
     graph: ProcessGraph,
-    edits: Sequence[object] | None,
+    edits: list[GraphEdit] | None,
     *,
     coding_is_allowed: bool,
-    workflow_path: Path | None = None,
 ) -> tuple[ProcessGraph, list[str]]:
     supplements: list[str] = []
 
     current = graph
-    edits_to_apply: list[TodoEdit] = []
+    edits_to_apply: list[GraphEdit] = []
     ensured_todo_list = False
     queued_task_texts: set[str] = set()
 
@@ -812,7 +844,7 @@ async def augment_graph_with_client_tasks(
         if ensured_todo_list:
             return
 
-        _ = ensure_todo_list_if_missing(
+        ensure_todo_list_if_missing(
             current=current,
             edits_to_apply=edits_to_apply,
             ensured_todo_list=ensured_todo_list,
@@ -841,7 +873,6 @@ async def augment_graph_with_client_tasks(
         unit_id = unit.get("id")
         if isinstance(unit_id, str) and unit_id.strip():
             added_unit_ids.append(unit_id.strip())
-
 
     ordered_unit_ids = list(dict.fromkeys(added_unit_ids))
 
@@ -894,14 +925,14 @@ async def augment_graph_with_client_tasks(
         ):
             code_unit_ids.append(unit_id.strip())
 
-        code_unit_ids = list(dict.fromkeys(code_unit_ids))
+    code_unit_ids = list(dict.fromkeys(code_unit_ids))
 
-        for unit_id in code_unit_ids:
-            ensure_list()
-            queue_task(TASK_PREFIX_ADD_CODE_BLOCK + unit_id)
+    for unit_id in code_unit_ids:
+        ensure_list()
+        queue_task(TASK_PREFIX_ADD_CODE_BLOCK + unit_id)
 
-        if code_unit_ids:
-            supplements.append("client: todo task for code block unit")
+    if code_unit_ids:
+        supplements.append("client: todo task for code block unit")
 
     # Add imported-workflow review task.
     has_import_workflow = any(
@@ -915,16 +946,23 @@ async def augment_graph_with_client_tasks(
         ensure_list()
         queue_task(TASK_REVIEW_IMPORTED_WORKFLOW)
 
+    # Apply generated todo edits, if any.
     if not edits_to_apply:
         return current, supplements
 
-    # TodoParams is a typed union, so construct the wrapper explicitly.
-    todo_params: TodoParams = as_todo_params_sequential(edits_to_apply)
-
-    updated = await _run_todo_list_workflow(
-        current,
-        todo_params,
-        workflow_path,
+    todo_params: MultipleEditsSequential = (
+        as_todo_params_sequential(edits_to_apply)
     )
 
-    return updated, supplements
+    result = apply_workflow_edits(
+        current=current,
+        edits=todo_params,
+    )
+
+    if not result.success:
+        raise ValueError(
+            result.error
+            or "Failed to apply todo tasks to the workflow using batch edits"
+        )
+
+    return result.graph, supplements

@@ -84,7 +84,6 @@ async def handle_tasks_expired_hook(
     sess: str,
     out_session: str,
     MESSENGER: str,
-    workflow_path: Path | None,
     max_followups: int = DEFAULT_MAX_AGENTIC_LOOP_FOLLOW_UPS,
     now_ts: float | None = None,
     **handle_turn_kwargs: Any,
@@ -185,7 +184,6 @@ async def handle_tasks_expired_hook(
             edits_to_apply=edits_to_apply,
             ensure_todo_list_if_missing=ensure_todo_list_if_missing,
             queue_add_task=queue_add_task,
-            workflow_path=workflow_path,
             deadline=TODO_TASK_DEADLINE,
         )
 

@@ -8,7 +8,8 @@ from typing import TypeGuard, cast
 
 from core.normalizer.shared import as_object_dict
 from core.schemas import ProcessGraph, TodoList, TodoTask
-from core.schemas.primitives import safe_int
+from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
+from core.schemas.primitives import JsonObject, JsonValue, safe_int
 from messengers_integrations.messenger_state import HistoryMessage
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
     default_conf,
@@ -21,7 +22,7 @@ from .prompts import (
     TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
     TASK_PREFIX_REVIEW_SOURCE,
 )
-from .todo_state import IncompleteTaskResult, TodoEdit, TodoParams
+from .todo_state import IncompleteTaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def default_todo_list_workflow_path() -> Path:
 def ensure_todo_list_if_missing(
     *,
     current: ProcessGraph,
-    edits_to_apply: list[TodoEdit],
+    edits_to_apply: list[GraphEdit],
     ensured_todo_list: bool,
     list_id: str,
     title: str,
@@ -52,11 +53,11 @@ def ensure_todo_list_if_missing(
             return
 
     edits_to_apply.append(
-        {
-            "action": "add_todo_list",
-            "id": list_id,
-            "title": title,
-        }
+        GraphEdit(
+            action="add_todo_list",
+            id=list_id,
+            title=title,
+        )
     )
 
 
@@ -65,7 +66,7 @@ def queue_add_task(
     current: ProcessGraph,
     task_text: str,
     queued_task_texts: set[str],
-    edits_to_apply: list[TodoEdit],
+    edits_to_apply: list[GraphEdit],
     list_id: str | None = None,
 ) -> None:
     text = task_text.strip()
@@ -88,17 +89,17 @@ def queue_add_task(
     queued_task_texts.add(text)
 
     edits_to_apply.append(
-        {
-            "action": "add_task",
-            "todo_list_id": list_id or "",
-            "text": text,
-        }
+        GraphEdit(
+            action="add_task",
+            todo_list_id=list_id or "",
+            text=text,
+        )
     )
 
 
 def queue_remove_task(
     *,
-    edits_to_apply: list[TodoEdit],
+    edits_to_apply: list[GraphEdit],
     todo_list_id: str,
     task_id: str | int | None,
 ) -> None:
@@ -106,29 +107,31 @@ def queue_remove_task(
         return
 
     edits_to_apply.append(
-        {
-            "action": "remove_task",
-            "todo_list_id": todo_list_id,
-            "task_id": str(task_id),
-        }
+        GraphEdit(
+            action="remove_task",
+            todo_list_id=todo_list_id,
+            task_id=str(task_id),
+        )
     )
+
 
 
 def queue_set_deadline_for_task(
     *,
-    edits_to_apply: list[TodoEdit],
+    edits_to_apply: list[GraphEdit],
     task_id: str,
     deadline: float | None,
     TG_TODO_LIST_ID: str,
 ) -> None:
     edits_to_apply.append(
-        {
-            "action": "set_deadline",
-            "task_id": str(task_id),
-            "deadline": str(deadline) if deadline is not None else None,  # optional_nonempty_or_null_string
-            "todo_list_id": str(TG_TODO_LIST_ID),
-        }
+        GraphEdit(
+            action="set_deadline",
+            task_id=str(task_id),
+            deadline=str(deadline) if deadline is not None else None,
+            todo_list_id=str(TG_TODO_LIST_ID),
+        )
     )
+
 
 
 def reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
@@ -552,29 +555,33 @@ def get_unit_ids_with_source_tasks(graph: ProcessGraph | None) -> list[str]:
 def get_summary_params(
     coding_is_allowed: bool,
     graph: ProcessGraph | None,
-) -> dict[str, object]:
+) -> JsonObject:
     include_code_block_source = bool(coding_is_allowed)
-    include_source_for_unit_ids: list[str] | None = None
+    include_source_for_unit_ids: list[JsonValue] = []
+
     if not coding_is_allowed:
-        include_source_for_unit_ids = get_unit_ids_with_source_tasks(graph)
+        include_source_for_unit_ids.extend(
+            get_unit_ids_with_source_tasks(graph)
+        )
+
     return {
         "include_code_block_source": include_code_block_source,
-        "include_source_for_unit_ids": include_source_for_unit_ids or [],
+        "include_source_for_unit_ids": include_source_for_unit_ids,
     }
 
 
 def as_todo_params_sequential(
-    edits: list[TodoEdit],
-) -> TodoParams:
-    if len(edits) == 1:
-        return edits[0]
-
-    return {
-        "Multiple_edits_sequential": edits,
-    }
+    edits: list[GraphEdit],
+) -> MultipleEditsSequential:
+    return MultipleEditsSequential(
+        edits=edits,
+    )
 
 
 def has_action(edit: object, action: str) -> bool:
+    if isinstance(edit, GraphEdit):
+        return edit.action == action
+
     if not isinstance(edit, Mapping):
         return False
 
