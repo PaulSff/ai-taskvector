@@ -325,7 +325,7 @@ async def main(page: ft.Page) -> None:
             return g.model_dump(by_alias=True)
         return g if isinstance(g, dict) else None
 
-    async def _apply_graph_from_external_turn(inner_msg: dict[str, Any]) -> None:
+    async def _apply_graph_from_external_turn(inner_msg: dict[str, object]) -> None:
         await on_apply_hook(
             token=0,
             inner_msg=inner_msg,
@@ -463,7 +463,6 @@ async def main(page: ft.Page) -> None:
         get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
-        show_run_current_graph=_dev_mode(),
         on_show_run_console=on_show_run_console_from_chat,
         chat_panel_api=chat_panel_api,
         on_turn_status=on_turn_status,

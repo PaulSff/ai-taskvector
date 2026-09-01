@@ -37,7 +37,6 @@ from agents.chat.parser_follow_up import (
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )
-from agents.chat.role_turns.workflow_designer.workflow_runner import run_current_graph
 from agents.chat.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
@@ -202,31 +201,14 @@ class WorkflowDesignerChatHandler:
                 language_hint=wf_lang_cell[0],
                 session_language=turn_ctx.state.session_language,
             )
-            # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
-            rcg_cb = turn_ctx.run_current_graph_cb
-
-            use_current_graph = (
-                turn_ctx.show_run_current_graph
-                and rcg_cb is not None
-                and getattr(rcg_cb, "value", False)
-                and turn_ctx.graph_ref[0] is not None
+            # Run the Workflow Designer workflow with queue-based streaming.
+            response = await turn_ctx.run_workflow_streaming(
+                run_agent_workflow,
+                initial_inputs,
+                overrides,
+                None,  # execution_timeout_s default
+                _run_token=turn_ctx.token,
             )
-            if use_current_graph:
-                response = await turn_ctx.run_workflow_streaming(
-                    run_current_graph,
-                    turn_ctx.graph_ref[0],
-                    initial_inputs,
-                    overrides,
-                    _run_token=turn_ctx.token,
-                )
-            else:
-                response = await turn_ctx.run_workflow_streaming(
-                    run_agent_workflow,
-                    initial_inputs,
-                    overrides,
-                    None,  # execution_timeout_s default
-                    _run_token=turn_ctx.token,
-                )
         except WorkflowTimeoutError as ex:
             turn_ctx.set_inline_status(None)
             response = {"reply": "", "workflow_errors": []}

@@ -89,7 +89,6 @@ def build_agents_chat_panel(
     get_recent_changes: Callable[[], Awaitable[str | None]] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
-    show_run_current_graph: bool = False,
     on_show_run_console: Callable[[dict[str, Any]], None] | None = None,
     chat_panel_api: dict[str, Any] | None = None,
     on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None

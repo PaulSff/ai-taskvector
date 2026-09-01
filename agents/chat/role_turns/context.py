@@ -35,8 +35,6 @@ class RoleChatTurnContext:
     set_graph: Callable[[Any], None]
     get_recent_changes: Callable[[], str | None] | None
     on_show_run_console: Callable[..., Any] | None
-    show_run_current_graph: bool
-    run_current_graph_cb: ft.Checkbox | None
     last_apply_result_ref: list[dict[str, Any] | None]
     stream_buffer_ref: list[str]
     is_current_run: Callable[[int], bool]
