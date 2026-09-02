@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 
 from pydantic import ValidationError
 
-from core.graph.summary import graph_summary
-from core.schemas.primitives import Data, is_string_keyed_dict
+from agents.tools.types import ParsedActions, ParserOutput
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+    GraphEdit,
+)
+from core.schemas.primitives import Data, is_object_list, is_string_keyed_dict
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -61,33 +67,67 @@ async def get_runtime_for_prompts(
     return out
 
 
-async def refresh_last_apply_result_after_canvas_apply(
-    prev: Data | None,
-    graph: ProcessGraph,
+async def refresh_last_graph_apply_result(
+    prev: AgentApplyWorkflowEditsResult | None,
+    apply_result: ApplyWorkflowEditsResult,
     *,
     supplement_summary: str = "",
-) -> Data:
-    previous = prev or {}
-
-    base = str(previous.get("edits_summary") or "").strip()
+) -> AgentApplyWorkflowEditsResult:
+    previous_summary = prev.edits_summary.strip() if prev else ""
     supplement = supplement_summary.strip()
 
     edits_summary = (
-        f"{base}; {supplement}"
-        if base and supplement
-        else base or supplement or "applied"
+        f"{previous_summary}; {supplement}"
+        if previous_summary and supplement
+        else previous_summary or supplement or "applied"
     )
 
-    graph_after = graph_summary(graph)
+    return AgentApplyWorkflowEditsResult(
+        attempted=True,
+        apply_result=apply_result,
+        edits_summary=edits_summary,
+    )
 
-    return {
-        "attempted": True,
-        "success": True,
-        "error": None,
-        "edits_summary": edits_summary,
-        "graph_after": graph_after,
-    }
+def normalize_last_apply_result(
+    value: object,
+) -> AgentApplyWorkflowEditsResult | None:
+    if isinstance(value, AgentApplyWorkflowEditsResult):
+        return value
 
+    if isinstance(value, ApplyWorkflowEditsResult):
+        return AgentApplyWorkflowEditsResult(
+            attempted=True,
+            apply_result=value,
+            edits_summary="",
+        )
+
+    if isinstance(value, ProcessGraph):
+        return AgentApplyWorkflowEditsResult(
+            attempted=True,
+            apply_result=ApplyWorkflowEditsResult(
+                success=True,
+                graph=value,
+                error=None,
+            ),
+            edits_summary="",
+        )
+
+    if not isinstance(value, dict):
+        return None
+
+    try:
+        return AgentApplyWorkflowEditsResult.model_validate(value)
+    except ValidationError:
+        try:
+            inner_result = ApplyWorkflowEditsResult.model_validate(value)
+        except ValidationError:
+            return None
+
+        return AgentApplyWorkflowEditsResult(
+            attempted=True,
+            apply_result=inner_result,
+            edits_summary="",
+        )
 
 async def validate_graph_to_apply_for_canvas_async(
     graph: ProcessGraph | None,
@@ -105,7 +145,7 @@ async def validate_graph_to_apply_for_canvas_async(
     return validated_graph, None
 
 
-def get_nested_data(outputs: Data, key: str) -> Data:
+def get_nested_data(outputs: Mapping[str, object], key: str) -> Data:
     value = outputs.get(key)
 
     if not is_string_keyed_dict(value):
@@ -118,21 +158,22 @@ def get_nested_data(outputs: Data, key: str) -> Data:
 
     return data
 
-def get_str(data: Data, key: str) -> str:
+def get_str(data: Mapping[str, object], key: str) -> str:
     value = data.get(key)
+
     return value if isinstance(value, str) else ""
 
-def get_optional_str(data: Data, key: str) -> str | None:
+def get_optional_str(data: Mapping[str, object], key: str) -> str | None:
     value = get_str(data, key)
     return value or None
 
-def get_data(data: Data, key: str) -> Data:
+def get_data(data: Mapping[str, object], key: str) -> Data:
     value = data.get(key)
 
     return value if is_string_keyed_dict(value) else {}
 
 
-def get_optional_data(data: Data, key: str) -> Data | None:
+def get_optional_data(data: Mapping[str, object], key: str) -> Data | None:
     value = data.get(key)
 
     if value is None:
@@ -146,7 +187,7 @@ def get_graph(data: Data, key: str) -> ProcessGraph | None:
     return value if isinstance(value, ProcessGraph) else None
 
 
-def get_units_response(outputs: Data) -> list[Data]:
+def get_units_response(outputs: Mapping[str, object]) -> list[Data]:
     value = outputs.get("units_response")
 
     if not isinstance(value, list):
@@ -159,3 +200,63 @@ def get_units_response(outputs: Data) -> list[Data]:
         for item in items
         if is_string_keyed_dict(item)
     ]
+
+def get_optional_parser_output(
+    data: Mapping[str, object],
+    key: str,
+) -> ParserOutput | None:
+    value = data.get(key)
+
+    if value is None:
+        return None
+
+    if isinstance(value, ParserOutput):
+        return value
+
+    if not is_string_keyed_dict(value):
+        raise TypeError(
+            f"{key!r} must be a ParserOutput or string-keyed dictionary"
+        )
+
+    actions_value = value.get("actions", {})
+
+    if not is_string_keyed_dict(actions_value):
+        raise TypeError(
+            "'parser_output.actions' must be a string-keyed dictionary"
+        )
+
+    actions_value = value.get("actions", {})
+
+    if not is_string_keyed_dict(actions_value):
+        raise TypeError(
+            "'parser_output.actions' must be a string-keyed dictionary"
+        )
+
+    raw_edits_value = actions_value.get("edits")
+
+    if raw_edits_value is None:
+        raw_edits: list[object] = []
+    elif is_object_list(raw_edits_value):
+        raw_edits = raw_edits_value
+    else:
+        raise TypeError("'parser_output.actions.edits' must be a list")
+
+    edits: list[GraphEdit] = []
+
+    for raw_edit in raw_edits:
+        if isinstance(raw_edit, GraphEdit):
+            edits.append(raw_edit)
+        elif is_string_keyed_dict(raw_edit):
+            edits.append(GraphEdit.model_validate(raw_edit))
+        else:
+            raise TypeError(
+                "Each edit must be a GraphEdit or string-keyed dictionary"
+            )
+
+
+    error_value = value.get("error")
+
+    return ParserOutput(
+        actions=ParsedActions(edits=edits),
+        error=error_value if isinstance(error_value, str) else None,
+    )

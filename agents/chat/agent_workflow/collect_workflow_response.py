@@ -12,8 +12,8 @@ from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
 )
 from core.schemas.primitives import (
-    Data,
     WorkflowErrors,
+    WorkflowOutputs,
     is_string_keyed_dict,
 )
 
@@ -22,6 +22,7 @@ from .helpers import (
     get_graph,
     get_nested_data,
     get_optional_data,
+    get_optional_parser_output,
     get_optional_str,
     get_str,
     get_units_response,
@@ -29,7 +30,7 @@ from .helpers import (
 
 
 def collect_workflow_errors(
-    outputs: Data,
+    outputs: WorkflowOutputs,
 ) -> WorkflowErrors:
     """
     Collect non-null error port values from workflow outputs.
@@ -54,7 +55,7 @@ def collect_workflow_errors(
 
     return errors
 
-def _build_merge_errors(outputs: Data) -> MergeErrors:
+def _build_merge_errors(outputs: WorkflowOutputs) -> MergeErrors:
     merge_errors_data = get_nested_data(outputs, "merge_errors")
 
     return MergeErrors(
@@ -71,7 +72,7 @@ def _build_merge_errors(outputs: Data) -> MergeErrors:
     )
 
 def _build_direct_units_response(
-    outputs: Data,
+    outputs: WorkflowOutputs,
 ) -> DirectUnitsResponse:
     return DirectUnitsResponse(
         llm_prompt=get_optional_str(outputs, "llm_prompt"),
@@ -79,7 +80,7 @@ def _build_direct_units_response(
             outputs,
             "llm_prompt_debug",
         ),
-        parser_output=get_optional_data(
+        parser_output=get_optional_parser_output(
             outputs,
             "parser_output",
         ),
@@ -107,7 +108,7 @@ def _build_direct_units_response(
 
 
 def merge_response_from_workflow_outputs(
-    outputs: Data,
+    outputs: WorkflowOutputs,
 ) -> AgentWorkflowResponse:
     """Shape raw run_workflow unit outputs into run_agent_workflow response dict - AgentWorkflowResponse.
 
@@ -177,7 +178,7 @@ The processing order is therefore:
         graph=get_graph(merge_response_data, "graph"),
         diff=get_str(merge_response_data, "diff"),
         workflow_errors=workflow_errors,
-        parser_output=get_optional_data(
+        parser_output=get_optional_parser_output(
             merge_response_data,
             "parser_output",
         ),
