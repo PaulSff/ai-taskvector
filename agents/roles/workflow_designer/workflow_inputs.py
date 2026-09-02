@@ -23,7 +23,10 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 from core.schemas import ProcessGraph
-from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import WorkflowInputs
+
+from .wf_inputs_schema import WorkflowDesignerWorkflowInputs
 
 DEFAULT_WF_LANGUAGE = "English (en)"
 
@@ -33,26 +36,29 @@ def default_wf_language_hint(session_language: str) -> str:
     return (session_language or DEFAULT_WF_LANGUAGE).strip() or DEFAULT_WF_LANGUAGE
 
 
-def _build_turn_state_string(last_apply_result: dict[str, object] | None) -> str:
-    """Build the turn state line for inject_turn_state (e.g. 'Turn state: Last action: none.')."""
+def _build_turn_state_string(
+    last_apply_result: AgentApplyWorkflowEditsResult | None,
+) -> str:
+    """Build the turn state line for inject_turn_state."""
+    prefix = WORKFLOW_DESIGNER_TURN_STATE_PREFIX
+
     if last_apply_result is None:
-        return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: none."
-    if last_apply_result.get("success") is False:
-        err = last_apply_result.get("error") or "Unknown error"
-        return (
-            WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: failed (error: {err})."
-        )
-    summary = last_apply_result.get("edits_summary") or ""
+        return prefix + "Last action: none."
+
+    if not last_apply_result.success:
+        error = last_apply_result.error or "Unknown error"
+        return prefix + f"Last action: failed (error: {error})."
+
+    summary = last_apply_result.edits_summary.strip()
     if summary:
-        return (
-            WORKFLOW_DESIGNER_TURN_STATE_PREFIX
-            + f"Last action: applied successfully ({summary})."
-        )
-    return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: applied successfully."
+        return prefix + f"Last action: applied successfully ({summary})."
+
+    return prefix + "Last action: applied successfully."
+
 
 
 def _build_last_edit_block_string(
-    last_apply_result: dict[str, object] | None,
+    last_apply_result: AgentApplyWorkflowEditsResult | None,
     self_correction_template: str = WORKFLOW_DESIGNER_SELF_CORRECTION,
     *,
     language: str = "English (en)",
@@ -61,9 +67,8 @@ def _build_last_edit_block_string(
     if last_apply_result is None:
         return ""
 
-    if last_apply_result.get("success") is False:
-        raw_error = last_apply_result.get("error")
-        error_msg = raw_error if isinstance(raw_error, str) else "Unknown error"
+    if not last_apply_result.success:
+        error_msg = last_apply_result.error or "Unknown error"
 
         try:
             sc_text = self_correction_template.format(
@@ -81,8 +86,7 @@ def _build_last_edit_block_string(
             + WORKFLOW_DESIGNER_DO_NOT_REPEAT
         )
 
-    raw_summary = last_apply_result.get("edits_summary")
-    summary = raw_summary if isinstance(raw_summary, str) else ""
+    summary = last_apply_result.edits_summary.strip()
 
     if summary:
         return (
@@ -101,7 +105,7 @@ def _build_last_edit_block_string(
 def build_agent_workflow_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: Data | None,
+    last_apply_result: AgentApplyWorkflowEditsResult,
     recent_changes: str | None,
     follow_up_context: str = "",
     runtime: str = "native",
@@ -113,22 +117,14 @@ def build_agent_workflow_initial_inputs(
     *,
     analyst_mode: bool = False,
 ) -> WorkflowInputs:
-    """
-    Build initial_inputs for run_workflow(workflow_designer_workflow.json).
-
-    The graph must be supplied as a ProcessGraph. It is serialized only for
-    injection into the workflow while preserving live todo-list data.
-    """
-    graph_live = graph
-
-    graph_data = graph.model_dump(by_alias=True)
-
     user_message = (user_message or "").strip() or "(No message provided.)"
 
     if language_hint is None:
         language_hint = default_wf_language_hint(session_language)
 
     lang = (language_hint or "English (en)").strip() or "English (en)"
+    runtime_value = (runtime or "native").strip()
+
     turn_state = _build_turn_state_string(last_apply_result)
 
     recent_changes_block = (
@@ -145,116 +141,74 @@ def build_agent_workflow_initial_inputs(
         language=lang,
     )
 
-    out: WorkflowInputs = {
-        "inject_user_message": {"data": user_message},
-        "inject_graph": {"data": graph_data},
-        "inject_turn_state": {"data": turn_state},
-        "inject_recent_changes_block": {"data": recent_changes_block},
-        "inject_last_edit_block": {"data": last_edit_block},
-        "inject_follow_up_context": {
-            "data": (follow_up_context or "").strip()
-        },
-        "inject_previous_turn": {
-            "data": (previous_turn or "").strip()
-        },
-        "inject_session_language": {
-            "data": str(session_language or "").strip()
-        },
-    }
+    is_native = runtime_value == "native"
+    can_add_code = is_native and coding_is_allowed
+    can_contribute = can_add_code and contribution_is_allowed
 
-    r = (runtime or "native").strip()
-
-    out["inject_add_environment_edit"] = {
-        "data": (
+    inputs = WorkflowDesignerWorkflowInputs(
+        inject_user_message=user_message,
+        inject_graph=graph,
+        inject_turn_state=turn_state,
+        inject_recent_changes_block=recent_changes_block,
+        inject_last_edit_block=last_edit_block,
+        inject_follow_up_context=(follow_up_context or "").strip(),
+        inject_previous_turn=(previous_turn or "").strip(),
+        inject_session_language=(session_language or "").strip(),
+        inject_add_environment_edit=(
             WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip()
-            if r == "native"
+            if is_native
             else ""
-        )
-    }
-    out["inject_add_code_block_edit"] = {
-        "data": (
+        ),
+        inject_add_code_block_edit=(
             WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE.strip()
-            if r == "native" and coding_is_allowed
+            if can_add_code
             else ""
-        )
-    }
-    out["inject_run_workflow"] = {
-        "data": (
+        ),
+        inject_run_workflow=(
             WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE.strip()
-            if r == "native"
+            if is_native
             else ""
-        )
-    }
-    out["inject_ai_training_integration"] = {
-        "data": (
+        ),
+        inject_ai_training_integration=(
             WORKFLOW_DESIGNER_AI_TRAINING_NATIVE.strip()
-            if r == "native"
+            if is_native
             else (
                 WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL.strip()
-                if r == "external"
+                if runtime_value == "external"
                 else ""
             )
-        )
-    }
-    out["inject_running_flow_line"] = {
-        "data": (
+        ),
+        inject_running_flow_line=(
             WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip()
-            if r == "native"
+            if is_native
             else ""
-        )
-    }
-    out["inject_debugging_line"] = {
-        "data": (
+        ),
+        inject_debugging_line=(
             WORKFLOW_DESIGNER_DEBUGGING_LINE.strip()
-            if r == "native"
+            if is_native
             else ""
-        )
-    }
-    out["inject_coding_line"] = {
-        "data": (
+        ),
+        inject_coding_line=(
             WORKFLOW_DESIGNER_CODING_LINE.strip()
-            if r == "native" and coding_is_allowed
+            if can_add_code
             else ""
-        )
-    }
-
-    _contrib = (
-        r == "native"
-        and coding_is_allowed
-        and contribution_is_allowed
+        ),
+        inject_list_unit_edit=(
+            WORKFLOW_DESIGNER_LIST_UNIT_LINE.strip()
+            if can_contribute
+            else ""
+        ),
+        inject_list_environment_edit=(
+            WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip()
+            if can_contribute
+            else ""
+        ),
     )
 
-    out["inject_list_unit_edit"] = {
-        "data": WORKFLOW_DESIGNER_LIST_UNIT_LINE.strip()
-        if _contrib
-        else ""
-    }
-    out["inject_list_environment_edit"] = {
-        "data": WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip()
-        if _contrib
-        else ""
-    }
-
-    # Preserve todo_lists from the live ProcessGraph.
-    tls_live = graph_live.todo_lists
-
-    graph_data["todo_lists"] = [
-        todo_list.model_dump(by_alias=True)
-        for todo_list in tls_live
-    ]
-
     if analyst_mode:
-        out["inject_recent_changes_block"] = {"data": ""}
-        out["inject_last_edit_block"] = {"data": ""}
-        out["inject_turn_state"] = {
-            "data": (
-                WORKFLOW_DESIGNER_TURN_STATE_PREFIX
-                + "Analyst: use tools and comments/todos only; "
-                + "do not edit graph structure."
-            )
-        }
-
-        for key in (
+        for field_name in (
+            "inject_recent_changes_block",
+            "inject_last_edit_block",
             "inject_add_environment_edit",
             "inject_add_code_block_edit",
             "inject_run_workflow",
@@ -265,6 +219,12 @@ def build_agent_workflow_initial_inputs(
             "inject_list_unit_edit",
             "inject_list_environment_edit",
         ):
-            out[key] = {"data": ""}
+            setattr(inputs, field_name, "")
 
-    return out
+        inputs.inject_turn_state = (
+            WORKFLOW_DESIGNER_TURN_STATE_PREFIX
+            + "Analyst: use tools and comments/todos only; "
+            + "do not edit graph structure."
+        )
+
+    return inputs.to_workflow_inputs()
