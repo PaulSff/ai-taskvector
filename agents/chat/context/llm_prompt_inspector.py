@@ -11,14 +11,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from core.schemas.primitives import Data
+from agents.chat.agent_workflow.wf_response_schema import (
+    AgentWorkflowResponse,
+    MergeResponse,
+)
+from core.schemas.primitives import Data, WorkflowOutputs
 
 # Common Prompt unit ids in agents/roles/*/…_workflow.json graphs.
 _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")
 
 
 def attach_llm_prompt_debug_from_outputs(
-    outputs: Data,
+    outputs: WorkflowOutputs,
     data: Data,
     *,
     prompt_unit_ids: tuple[str, ...] = _DEFAULT_PROMPT_UNIT_IDS,
@@ -47,17 +51,19 @@ def attach_llm_prompt_debug_from_outputs(
             return
 
 def record_llm_prompt_view_if_present(
-    response: dict[str, object],
-    hook: Callable[[dict[str, object]], None] | None,
+    response: AgentWorkflowResponse,
+    hook: Callable[[MergeResponse], None] | None,
 ) -> None:
-    """Invoke ``hook(response)`` when response includes dev LLM prompt fields."""
+    """Invoke ``hook`` when the merged response includes LLM prompt fields."""
     if hook is None:
         return
 
+    merged_response = response.merged_response
+
     if (
-        "llm_system_prompt" not in response
-        and "llm_user_message" not in response
+        merged_response.llm_system_prompt is None
+        and merged_response.llm_user_message is None
     ):
         return
 
-    hook(response)
+    hook(merged_response)
