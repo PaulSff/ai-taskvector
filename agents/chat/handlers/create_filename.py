@@ -7,7 +7,7 @@ still comes from app settings.
 """
 from __future__ import annotations
 
-from core.schemas.primitives import WorkflowInputs
+from core.schemas.primitives import Data, WorkflowInputs
 from gui.components.settings import (
     get_create_filename_prompt_path,
     get_create_filename_workflow_path,
@@ -17,7 +17,7 @@ from runtime.run import run_workflow
 
 
 def _required_config_string(
-    cfg: dict[str, object],
+    cfg: Data,
     key: str,
 ) -> str:
     value = cfg.get(key)
@@ -55,7 +55,7 @@ def build_create_filename_unit_param_overrides(
 def run_create_filename_workflow(
     first_message: str,
     provider: str,
-    cfg: dict[str, object] | None,
+    cfg: Data | None,
     execution_timeout_s: float = 60.0,
 ) -> str:
     """

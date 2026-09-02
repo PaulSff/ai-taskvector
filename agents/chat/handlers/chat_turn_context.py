@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import cast
 
-from core.schemas.primitives import JsonValue, is_json_object_keyed_dict
+from agents.chat.session.state import AgentChatHistory
+from core.schemas.primitives import Data, JsonValue, is_json_object_keyed_dict
+from llm_integrations.client import LLMMessages
 
 _NO_MESSAGE = "(No message provided.)"
 
@@ -123,16 +125,16 @@ def summarize_parsed_edits_for_context(
 
 
 async def messages_from_history(
-    history: list[dict[str, object]],
+    history: AgentChatHistory,
     *,
     max_turn_pairs: int = 10,
-) -> list[dict[str, str]]:
+) -> LLMMessages:
     """Convert local history to LLM messages (role/content)."""
     from services.workflows.core_workflows.run_inline import (
         run_clean_text_for_chat_inline,
     )
 
-    out: list[dict[str, str]] = []
+    out: LLMMessages = []
 
     cap = max_turn_pairs * 2
     msgs = history[-cap:] if len(history) > cap else history
@@ -158,7 +160,7 @@ async def messages_from_history(
     return out
 
 
-async def format_previous_turn(history: list[dict[str, object]]) -> str:
+async def format_previous_turn(history: AgentChatHistory) -> str:
     """
     Format the last complete turn (last user + last agent) for the workflow.
     Includes any follow_up_context (RAG, web search, etc.) stored in the agent message meta
@@ -172,8 +174,8 @@ async def format_previous_turn(history: list[dict[str, object]]) -> str:
     if not history or len(history) < 2:
         return ""
 
-    last_agent: dict[str, object] | None = None
-    last_user_before: dict[str, object] | None = None
+    last_agent: Data| None = None
+    last_user_before: Data | None = None
 
     for message in reversed(history):
         role_raw = message.get("role")
