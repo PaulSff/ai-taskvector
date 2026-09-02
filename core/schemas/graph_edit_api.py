@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, TypeGuard
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from core.graph.summary import graph_summary
 from core.schemas import NodePosition, ProcessGraph
-from core.schemas.primitives import JsonValue
+from core.schemas.primitives import Data, JsonValue, is_object_list
 
 # Action types
 GraphEditAction = Literal[
@@ -83,7 +84,6 @@ class GraphEditPipeline(BaseModel):
         default_factory=dict,
         description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.",
     )
-
 
 class GraphEdit(BaseModel):
     """Structured graph edit from Process agent (validate in backend)."""
@@ -208,8 +208,6 @@ class GraphEdit(BaseModel):
         ),
     )
 
-
-
 class MultipleEditsSequential(BaseModel):
     edits: list[GraphEdit] = Field(
         default_factory=list,
@@ -220,3 +218,49 @@ class ApplyWorkflowEditsResult(BaseModel):
     success: bool
     graph: ProcessGraph
     error: str | None = None
+
+
+class AgentApplyWorkflowEditsResult(BaseModel):
+    """Metadata describing a graph-apply operation for LLM."""
+
+    attempted: bool = Field(
+        default=True,
+        description="Whether a graph-apply operation was attempted.",
+    )
+    apply_result: ApplyWorkflowEditsResult = Field(
+        ...,
+        description="Result returned by applying the workflow edits.",
+    )
+    edits_summary: str = Field(
+        default="",
+        description="Human-readable summary of applied edits.",
+    )
+
+    @computed_field
+    @property
+    def success(self) -> bool:
+        return self.apply_result.success
+
+    @computed_field
+    @property
+    def graph_after(self) -> Data:
+        return graph_summary(self.apply_result.graph)
+
+    @computed_field
+    @property
+    def error(self) -> str | None:
+        return self.apply_result.error
+
+
+# helpers
+def is_graph_edit(value: object) -> TypeGuard[GraphEdit]:
+    return isinstance(value, GraphEdit)
+
+
+def is_graph_edit_list(
+    value: object,
+) -> TypeGuard[list[GraphEdit]]:
+    if not is_object_list(value):
+        return False
+
+    return all(is_graph_edit(item) for item in value)
