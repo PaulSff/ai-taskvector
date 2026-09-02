@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, TypeVar, cast, final
 
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import Data
 from gui.utils import now_ts
 
 
 @dataclass
 class ChatSessionState:
     """Mutable session state for a single chat session."""
-    history: list[dict[str, object]]
+    history: AgentChatHistory
     busy: bool
     has_sent_any: bool
     session_id: str
@@ -25,26 +27,28 @@ class SessionSnapshot(TypedDict):
     """Strictly typed structure for session snapshots to avoid 'object' casting."""
     session_id: str
     created_at: str
-    history: list[dict[str, object]]
+    history: AgentChatHistory
     busy: bool
     has_sent_any: bool
     chat_path: str | None
     session_language: str
     messenger: str | None
-    last_apply_result: dict[str, object] | None
+    last_apply_result: AgentApplyWorkflowEditsResult | None
+
+type AgentChatHistory = list[Data]
 
 @final
 class _Session:
     def __init__(self, session_id: str):
         self.session_id: str = session_id
         self.created_at: str = now_ts()
-        self.history: list[dict[str, object]] = []
+        self.history: AgentChatHistory = []
         self.busy: bool = False
         self.has_sent_any: bool = False
         self.chat_path: Path | None = None
         self.session_language: str = ""
         self.messenger: str | None = None
-        self.last_apply_result: dict[str, object] | None = None
+        self.last_apply_result: AgentApplyWorkflowEditsResult | None = None
         # run control
         self.run_token: int = 0
         self.run_lock: threading.Lock = threading.Lock()
