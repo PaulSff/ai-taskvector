@@ -42,6 +42,7 @@ from core.schemas.primitives import (
     is_json_object,
 )
 from core.schemas.process_graph import ProcessGraph, Unit
+from runtime.executor import GraphStreamCallback
 from runtime.run import run_workflow as run_workflow_inline
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.zmq import (
@@ -359,7 +360,7 @@ def _run_workflow_step(
 
     stream_value = params.get("_stream_callback")
 
-    stream_callback: Callable[[str], None] | None = None
+    stream_callback: GraphStreamCallback | None = None
 
     if callable(stream_value):
         callback = cast(
