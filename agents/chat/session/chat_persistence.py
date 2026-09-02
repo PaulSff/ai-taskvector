@@ -12,12 +12,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agents.chat.session.history_store import unique_path
+from agents.chat.session.state import AgentChatHistory
 from agents.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
+from core.schemas.primitives import Data
 
 
-def sanitize_config(cfg: dict[str, object] | None) -> dict[str, object]:
+def sanitize_config(cfg: Data | None) -> Data:
     """Strip secret-like keys from config for persistence."""
-    safe: dict[str, object] = {}
+    safe: Data = {}
     for k, v in (cfg or {}).items():
         ks = str(k).lower()
         if any(s in ks for s in ("key", "token", "secret", "password")):
@@ -30,11 +32,11 @@ def sanitize_config(cfg: dict[str, object] | None) -> dict[str, object]:
 _SKIP_MESSAGE_PERSIST_KEYS = frozenset({"_flet_row"})
 
 
-def _message_for_persist(m: dict[str, object]) -> dict[str, object]:
+def _message_for_persist(m: Data) -> Data:
     return {k: v for k, v in m.items() if k not in _SKIP_MESSAGE_PERSIST_KEYS}
 
 
-def message_for_persist(m: dict[str, object]) -> dict[str, object]:
+def message_for_persist(m: Data) -> Data:
     """Public wrapper for persisting a single message dict."""
     return _message_for_persist(m)
 
@@ -47,10 +49,10 @@ def build_chat_payload(
     agent_selected: str | None,
     session_language: str | None,
     chat_history_dir: Path,
-    messages: list[dict[str, object]],
+    messages: AgentChatHistory,
     get_llm_provider: Callable[[str], str],
-    get_llm_provider_config: Callable[[str], dict[str, object]],
-) -> dict[str, object]:
+    get_llm_provider_config: Callable[[str], Data],
+) -> Data:
     """Build the payload dict for persisting chat to disk."""
 
     wd_provider = get_llm_provider(WORKFLOW_DESIGNER_ROLE_ID)
