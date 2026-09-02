@@ -14,7 +14,14 @@ from core.graph.summary import graph_summary
 from core.normalizer import graph_to_json_object, to_process_graph
 from core.normalizer.shared import to_json_value
 from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
-from core.schemas.primitives import JsonObject, JsonValue, is_json_array, is_json_object
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    JsonValue,
+    Output,
+    is_json_array,
+    is_json_object,
+)
 from units.registry import UnitSpec, register_unit
 
 APPLY_EDITS_INPUT_PORTS = [
@@ -107,11 +114,11 @@ def string_list(value: object) -> list[str]:
     ]
 
 def _apply_edits_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     """Apply edits to graph; return result and status."""
     del dt
 

@@ -6,7 +6,7 @@ from units.canonical.apply_edits.apply_edits import (
 )
 
 __all__ = [
-    "register_apply_edits",
     "APPLY_EDITS_INPUT_PORTS",
     "APPLY_EDITS_OUTPUT_PORTS",
+    "register_apply_edits",
 ]
