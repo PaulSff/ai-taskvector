@@ -16,10 +16,13 @@ import importlib
 from collections.abc import Callable, Iterator
 from typing import cast
 
+from core.schemas.primitives import Data
+
 
 class LLMIntegrationError(RuntimeError):
     pass
 
+type LLMMessages = list[dict[str, str]]
 
 def _load_provider_module(provider: str):
     name = (provider or "").strip()
@@ -34,10 +37,10 @@ def _load_provider_module(provider: str):
 def chat(
     *,
     provider: str,
-    config: dict[str, object] | None,
-    messages: list[dict[str, str]],
+    config: Data | None,
+    messages: LLMMessages,
     timeout_s: int,
-    options: dict[str, object] | None = None,
+    options: Data | None = None,
 ) -> str:
     """
     Call provider adapter `chat(...)` and return agent text.
@@ -62,10 +65,10 @@ def chat(
 def chat_stream(
     *,
     provider: str,
-    config: dict[str, object] | None,
-    messages: list[dict[str, str]],
+    config: Data | None,
+    messages: LLMMessages,
     timeout_s: int,
-    options: dict[str, object] | None = None,
+    options: Data | None = None,
 ) -> Iterator[str]:
     """
     Stream provider adapter output as pieces (partial tokens).
