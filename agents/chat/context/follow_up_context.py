@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from agents.chat.agent_workflow.wf_response_schema import (
+    AgentWorkflowResponse,
+    MergeResponse,
+)
 from agents.chat.context.language_control import SessionLanguageSink
+from agents.chat.role_turns.protocol import WorkflowStreamingRunner
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
@@ -21,24 +27,24 @@ class ParserFollowUpContext:
     page: object | None
     graph_ref: list[ProcessGraph]
     state: SessionLanguageSink
-    token: str
+    token: int
     turn_id: str
     agent_label: str
     follow_up_contexts: list[str]
     max_rounds: int
     wf_language_hint: list[str]
-    is_current_run: Callable[[object], bool]
+    is_current_run: Callable[[int], bool]
     toast: Callable[[str], Awaitable[None]]
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
     prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[object]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
-    run_workflow_streaming: Callable[..., Awaitable[object]]
+    run_workflow_streaming: WorkflowStreamingRunner
     get_runtime_for_prompts: Callable[
-        [object],
+        [ProcessGraph | None],
         Awaitable[Literal["native", "external"]],
     ]
     format_previous_turn: Callable[
@@ -72,7 +78,7 @@ class ParserFollowUpContext:
 
     # Optional development callback containing the response dictionary,
     # including llm_system_prompt and llm_user_message.
-    record_llm_prompt_view: Callable[[dict[str, object]], None] | None = None
+    record_llm_prompt_view: Callable[[MergeResponse], None] | None = None
 
     # RL Coach and similar agents can merge training injects after
     # build_agent_workflow_initial_inputs.
@@ -110,24 +116,24 @@ class WDFollowUpAcc:
 class PostApplyFollowUpContext:
     graph_ref: list[ProcessGraph]
     state: SessionLanguageSink
-    token: str
+    token: int
     turn_id: str
     agent_role_id: str
     agent_label: str
     max_rounds: int
     wf_language_hint: list[str]
-    is_current_run: Callable[[object], bool]
+    is_current_run: Callable[[int], bool]
     toast: Callable[[str], Awaitable[None]]
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
     prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[object]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
-    run_workflow_streaming: Callable[..., Awaitable[object]]
+    run_workflow_streaming: WorkflowStreamingRunner
     get_runtime_for_prompts: Callable[
-        [object],
+        [ProcessGraph | None],
         Awaitable[Literal["native", "external"]],
     ]
     format_previous_turn: Callable[
@@ -139,7 +145,7 @@ class PostApplyFollowUpContext:
     apply_fn: Callable[[object], None]
     agent_workflow_path: Path | None = None
     analyst_mode: bool = False
-    record_llm_prompt_view: Callable[[dict[str, object]], None] | None = field(
+    record_llm_prompt_view: Callable[[MergeResponse], None] | None = field(
         default=None,
         kw_only=True,
     )
@@ -150,3 +156,9 @@ class PostApplyFlags:
     had_import_workflow: bool
     had_todo: bool
     had_add_comment: bool
+
+
+type ParserChainRunner = Callable[
+    [AgentWorkflowResponse],
+    Awaitable[AgentWorkflowResponse | None],
+]
