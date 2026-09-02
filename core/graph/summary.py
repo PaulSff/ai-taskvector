@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from core.graph import core_config as cfg
+from core.schemas.primitives import Data
 from core.schemas.process_graph import (
     CodeBlock,
     Comment,
@@ -41,7 +42,7 @@ def _port_names_from_unit(unit: Unit) -> tuple[list[str], list[str]]:
     )
 
 
-def _origin_summary(origin: GraphOrigin | None) -> dict[str, object] | None:
+def _origin_summary(origin: GraphOrigin | None) -> Data | None:
     """Return a compact origin summary for the LLM."""
     if origin is None or origin.node_red is None:
         return None
@@ -94,7 +95,7 @@ def _code_blocks_summary(
     ]
 
 
-def _unit_summary(unit: Unit) -> dict[str, object]:
+def _unit_summary(unit: Unit) -> Data:
     """Create the LLM-facing summary for one unit."""
     input_ports, output_ports = _port_names_from_unit(unit)
 
@@ -109,7 +110,7 @@ def _unit_summary(unit: Unit) -> dict[str, object]:
 
 
 
-def _comment_summary(comment: Comment) -> dict[str, object]:
+def _comment_summary(comment: Comment) -> Data:
     return {
         "id": comment.id,
         "info": _truncate(comment.info, COMMENT_INFO_MAX),
@@ -118,7 +119,7 @@ def _comment_summary(comment: Comment) -> dict[str, object]:
     }
 
 
-def _todo_task_summary(task: TodoTask) -> dict[str, object]:
+def _todo_task_summary(task: TodoTask) -> Data:
     return {
         "id": task.id,
         "text": task.text,
@@ -127,7 +128,7 @@ def _todo_task_summary(task: TodoTask) -> dict[str, object]:
     }
 
 
-def _todo_list_summary(todo_list: TodoList) -> dict[str, object]:
+def _todo_list_summary(todo_list: TodoList) -> Data:
     return {
         "id": todo_list.id,
         "title": todo_list.title,
@@ -165,7 +166,7 @@ def graph_summary(
     include_code_block_source: bool = False,
     include_source_for_unit_ids: list[str] | None = None,
     include_structure: bool = True,
-) -> dict[str, object]:
+) -> Data:
     """
     Reduce graph context to a small, LLM-friendly summary.
 
