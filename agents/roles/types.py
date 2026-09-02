@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from agents.roles.chat_config import RoleChatConfig
 
@@ -30,5 +29,9 @@ class RoleConfig:
     follow_up_max_rounds: int | None = None
     tools: tuple[str, ...] = ()
     chat: RoleChatConfig | None = None
+
+    provider: str = ""
+    ollama_host: str = ""
     ollama_model: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
+
+    extra: dict[str, object] = field(default_factory=dict)
