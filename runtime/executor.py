@@ -25,6 +25,7 @@ from core.schemas.agent_node import (
     get_switch,
     get_switch_action_target_ids,
 )
+from core.schemas.primitives import Data, Output
 from core.schemas.process_graph import Connection, ProcessGraph, Unit
 from services.logging import setup_colored_logging
 from units.registry import get_unit_spec
@@ -49,7 +50,7 @@ class GraphWakeupEvent:
     unit_id: str
 
     # Keys must correspond to the input-port names of `unit_id`.
-    payload: dict[str, object] = field(default_factory=dict)
+    payload: Data = field(default_factory=dict)
 
     # Optional monotonic sequence number used to discard stale events.
     seq: int | None = None
@@ -68,6 +69,7 @@ type GraphUpdateCallback = Callable[
     [dict[str, dict[str, object]]],
     None,
 ]
+type GraphStreamCallback = Callable[[str], None]
 
 
 class GraphExecutor:
@@ -111,7 +113,7 @@ class GraphExecutor:
     _wakeup_task: asyncio.Task[None] | None
     _wakeup_pending: set[str]
 
-    _active_stream_callback: Callable[[str], None] | None
+    _active_stream_callback: GraphStreamCallback | None
     _update_callback: GraphUpdateCallback | None
 
     _state: dict[str, dict[str, object]]
@@ -276,16 +278,16 @@ class GraphExecutor:
         self,
         node_id: str,
         compiled: types.CodeType,
-        state: dict[str, object],
-        inputs: dict[str, object],
-        params: dict[str, object],
+        state: Data,
+        inputs: Data,
+        params: Data,
     ) -> float:
         inputs = {
             k: (0.0 if v is None else v)
             for k, v in (inputs or {}).items()
         }
 
-        scope: dict[str, object] = {
+        scope: Data = {
             "state": state,
             "inputs": inputs,
             "node_id": node_id,
@@ -418,7 +420,7 @@ class GraphExecutor:
     def graph_wakeup_callback(
         self,
         event: GraphWakeupEvent | str,
-        payload: dict[str, object] | None = None,
+        payload: Data | None = None,
         seq: int | None = None,
     ) -> None:
         if isinstance(event, str):
@@ -546,7 +548,7 @@ class GraphExecutor:
     def execute(
         self,
         initial_inputs: dict[str, dict[str, object]] | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: GraphStreamCallback | None = None,
         *,
         keep_alive: bool = False,
         execution_timeout_s: float | None = None,
@@ -615,7 +617,7 @@ class GraphExecutor:
         unit_id: str,
         action: list[float] | None,
         initial_inputs: dict[str, dict[str, object]] | None = None,
-    ) -> dict[str, object]:
+    ) -> Data:
         unit = self._unit_ids.get(unit_id)
         if not unit:
             return {}
@@ -624,7 +626,7 @@ class GraphExecutor:
         if not spec:
             return {}
 
-        inputs: dict[str, object] = {}
+        inputs: Data = {}
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
@@ -663,12 +665,12 @@ class GraphExecutor:
     async def _execute_unit_coro(
         self,
         unit: Unit,
-        inputs: dict[str, object],
-        params: dict[str, object],
+        inputs: Data,
+        params: Data,
         action: list[float] | None,
-        state: dict[str, object] | None = None,
-        stream_callback: Callable[[str], None] | None = None,
-    ) -> tuple[dict[str, object], dict[str, object]]:
+        state: Data | None = None,
+        stream_callback: GraphStreamCallback | None = None,
+    ) -> Output:
         """
         Coroutine that executes a single unit, supporting:
         - code_block_driven units (shell or python) via async helpers
@@ -832,7 +834,7 @@ class GraphExecutor:
         return out
 
     def _call_stream_callback(
-        self, chunk: str, stream_callback: Callable[[str], None] | None
+        self, chunk: str, stream_callback: GraphStreamCallback | None
     ) -> None:
         """Call stream_callback which may be sync or async. Run it without blocking executor."""
         if not stream_callback:
@@ -865,7 +867,7 @@ class GraphExecutor:
         level: list[str],
         action: list[float] | None,
         initial_inputs: dict[str, dict[str, object]] | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: GraphStreamCallback| None = None,
     ):
         """
         Execute all units in a single topological level in parallel.
@@ -876,7 +878,7 @@ class GraphExecutor:
             Coroutine[
                 object,
                 object,
-                tuple[dict[str, object], dict[str, object]],
+                Output,
             ]
         ] = []
 
@@ -970,7 +972,7 @@ class GraphExecutor:
         dt: float,
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, object]] | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: GraphStreamCallback | None = None,
         state: dict[str, dict[str, object]] | None = None,
     ) -> tuple[list[float], dict[str, object]]:
 
@@ -1060,7 +1062,7 @@ class GraphExecutor:
         dt: float,
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, object]] | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: GraphStreamCallback | None = None,
         state: dict[str, dict[str, object]] | None = None,
     ) -> tuple[list[float], dict[str, object]]:
         """
