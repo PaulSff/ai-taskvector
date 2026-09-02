@@ -12,16 +12,17 @@ from agents.chat.agent_workflow.collect_workflow_response import (
 from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
 from core.normalizer.shared import workflow_inputs_to_json_object
 from core.schemas.primitives import (
-    Data,
     FormatProcess,
     JsonObject,
     WorkflowInputs,
+    WorkflowOutputs,
 )
 from gui.components.settings import (
     get_agents_workflows_job_pub_endpoint,
     get_agents_workflows_max_concurrent_calls,
     get_agents_workflows_response_endpoint,
 )
+from runtime.executor import GraphStreamCallback
 from runtime.run import WorkflowTimeoutError
 from services.server import (
     RoundRobinSlotAllocator,
@@ -58,7 +59,7 @@ async def _publish_and_wait(
     execution_timeout_s: float | None,
     stream_callback: Callable[[str], None] | None,
     format: FormatProcess = "dict",
-) -> Data:
+) -> WorkflowOutputs:
     slot = await _slot_allocator.acquire()
     sub: ZmqSubscriber | None = None
     job_pub: ZmqPublisher | None = None
@@ -152,7 +153,7 @@ async def run_agent_workflow(
     initial_inputs: WorkflowInputs | None = None,
     unit_param_overrides: WorkflowInputs | None = None,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: GraphStreamCallback| None = None,
     *,
     workflow_path: str | Path | None = None,
 ) -> AgentWorkflowResponse:
