@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from typing import Self
 
+from agents.tools.types import ParserOutput
 from core.schemas.primitives import Data, WorkflowErrors
 from core.schemas.process_graph import ProcessGraph
 
@@ -36,7 +37,7 @@ class MergeResponse:
     llm_system_prompt: str | None = None
     llm_user_message: str | None = None
 
-    parser_output: Data | None = None
+    parser_output: ParserOutput | None = None
     run_output: Data = field(default_factory=dict)
     report_output: Data = field(default_factory=dict)
     grep_output: Data = field(default_factory=dict)
@@ -102,7 +103,7 @@ class DirectUnitsResponse:
     llm_prompt: str | None = None
     llm_prompt_debug: Data | None = None
 
-    parser_output: Data | None = None
+    parser_output: ParserOutput | None = None
     run_output: Data = field(default_factory=dict)
     report_output: Data = field(default_factory=dict)
     grep_output: Data = field(default_factory=dict)
