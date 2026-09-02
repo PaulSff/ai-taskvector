@@ -298,7 +298,7 @@ class ProcessGraph(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _enforce_unique_todo_list_ids(self) -> "ProcessGraph":
+    def _enforce_unique_todo_list_ids(self) -> ProcessGraph:
         todo_list_ids = [tl.id for tl in self.todo_lists]
         if len(todo_list_ids) != len(set(todo_list_ids)):
             raise ValueError("Duplicate TodoList.id found within ProcessGraph.todo_lists")
