@@ -1,8 +1,17 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
+from agents.chat.agent_workflow.wf_response_schema import (
+    AgentWorkflowResponse,
+    MergeResponse,
+)
+from agents.chat.role_turns.protocol import WorkflowRunner
+from agents.chat.session.state import AgentChatHistory
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.process_graph import ProcessGraph
 
 
 class SessionProxy:
@@ -15,10 +24,10 @@ class SessionProxy:
     def __init__(
         self,
         session_language: str = "",
-        history: list[Any] | None = None,
+        history: AgentChatHistory | None = None,
     ) -> None:
         self.session_language: str = session_language
-        self.history: list[Any] = history or []
+        self.history: AgentChatHistory = history or []
 
         print(
             f"[SessionProxy] init session_language={session_language!r} history_len={len(self.history)}",
@@ -38,11 +47,11 @@ class ToolCtxProxy:
     def __init__(
         self,
         *,
-        graph_ref: list[Any],
-        last_apply_result_ref: list[Any],
+        graph_ref: list[ProcessGraph],
+        last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
         follow_up_contexts: list[str],
         wf_language_hint: list[str],
-        overrides: dict[str, Any],
+        overrides: Data,
         follow_up_tool_ids: tuple[str, ...] | None,
         analyst_mode: bool,
         agent_role_id: str,
@@ -70,28 +79,33 @@ class ToolCtxProxy:
             flush=True,
         )
 
-        self.graph_ref = graph_ref
-        self.last_apply_result_ref = last_apply_result_ref
-        self.follow_up_contexts = follow_up_contexts
-        self.wf_language_hint = wf_language_hint
-        self.overrides = overrides
-        self.follow_up_tool_ids = follow_up_tool_ids
-        self.analyst_mode = analyst_mode
-        self.agent_role_id = agent_role_id
-        self.agent_workflow_path = agent_workflow_path
-        self.state = state
-        self._stream_cb = stream_cb
-        self._recent_changes = recent_changes
-        self.turn_id = turn_id
-        self.agent_label = agent_label
-        self.max_rounds = max_rounds
-        self.ordered_follow_up_tools = ordered_follow_up_tools
-        self._prefer_inline_workflow = prefer_inline_workflow
+        self.graph_ref: list[ProcessGraph] = graph_ref
+        self.last_apply_result_ref: list[
+            AgentApplyWorkflowEditsResult
+        ] = last_apply_result_ref
+        self.follow_up_contexts: list[str] = follow_up_contexts
+        self.wf_language_hint: list[str] = wf_language_hint
+        self.overrides: Data = overrides
+        self.follow_up_tool_ids: tuple[str, ...] | None = follow_up_tool_ids
+        self.analyst_mode: bool = analyst_mode
+        self.agent_role_id: str = agent_role_id
+        self.agent_workflow_path: Path | None = agent_workflow_path
+        self.state: SessionProxy = state
+        self._stream_cb: Callable[[str], None] | None = stream_cb
+        self._recent_changes: str | None = recent_changes
+        self.turn_id: str = turn_id
+        self.agent_label: str = agent_label
+        self.max_rounds: int = max_rounds
+        self.ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = (
+            ordered_follow_up_tools
+        )
+        self._prefer_inline_workflow: bool = prefer_inline_workflow
 
-        # Headless: no Flet page
-        self.page: Any = None
-        self.record_llm_prompt_view: Any = None
-        self.follow_up_source_response: dict[str, Any] | None = None
+
+        # Headless:
+        self.page: object = None
+        self.record_llm_prompt_view: Callable[[MergeResponse], None] | None = None
+        self.follow_up_source_response: Data | None = None
 
         # Unique token; is_current_run always returns True in headless mode
         self.token: object = object()
@@ -109,7 +123,7 @@ class ToolCtxProxy:
 
     # ── Protocol methods ──
 
-    def is_current_run(self, t: Any) -> bool:
+    def is_current_run(self, t: int) -> bool:
         print("[ToolCtxProxy] is_current_run called (headless): always True", flush=True)
         return True
 
@@ -117,12 +131,12 @@ class ToolCtxProxy:
         print(f"[ToolCtxProxy] get_recent_changes -> {self._recent_changes!r}", flush=True)
         return self._recent_changes
 
-    async def get_runtime_for_prompts(self, graph: Any) -> Literal["native", "external"]:
+    async def get_runtime_for_prompts(self, graph: ProcessGraph) -> Literal["native", "external"]:
         rt = await get_runtime_for_prompts(graph)
         print(f"[ToolCtxProxy] get_runtime_for_prompts result -> {rt!r}", flush=True)
         return rt
 
-    async def format_previous_turn(self, history: list[Any]) -> str:
+    async def format_previous_turn(self, history: AgentChatHistory) -> str:
         from agents.chat.handlers.chat_turn_context import format_previous_turn
 
         out = await format_previous_turn(history)
@@ -166,7 +180,7 @@ class ToolCtxProxy:
             except (TypeError, ValueError, AttributeError) as e:
                 print(f"[ToolCtxProxy] set_inline_status failed: {e!r}", flush=True)
 
-    def append_message(self, role: str, content: str, meta: Any = None) -> None:
+    def append_message(self, role: str, content: str, meta: Data) -> None:
         print(
             "[ToolCtxProxy] append_message called (headless no-op) "
             + f"role={role!r} content_len={len(content)} meta_type={type(meta).__name__}",
@@ -178,14 +192,18 @@ class ToolCtxProxy:
 
     async def run_workflow_streaming(
         self,
-        func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
+        func: WorkflowRunner,
+        initial_inputs: WorkflowInputs | None = None,
+        unit_param_overrides: WorkflowInputs | None = None,
+        execution_timeout_s: float | None = None,
+        *,
+        _run_token: object | None = None,
+        workflow_path: str | Path | None = None,
+    ) -> AgentWorkflowResponse:
         import asyncio
 
-        kwargs.pop("_run_token", None)
-        workflow_path = kwargs.pop("workflow_path", None)
+        del _run_token
+
         stream_cb = self._stream_cb
 
         if self._prefer_inline_workflow and workflow_path is not None:
@@ -193,10 +211,6 @@ class ToolCtxProxy:
                 merge_response_from_workflow_outputs,
             )
             from runtime.run import run_workflow
-
-            initial_inputs = args[0] if args else {}
-            unit_param_overrides = args[1] if len(args) > 1 else None
-            execution_timeout_s = args[2] if len(args) > 2 else None
 
             outputs = await asyncio.to_thread(
                 run_workflow,
@@ -209,23 +223,28 @@ class ToolCtxProxy:
             )
 
             print(
-                f"[ToolCtxProxy] Inline run_workflow completed outputs_type={type(outputs).__name__}",
+                "[ToolCtxProxy] Inline run_workflow completed "
+                + f"outputs_type={type(outputs).__name__}",
                 flush=True,
             )
 
             merged = merge_response_from_workflow_outputs(outputs)
+
             print(
-                f"[ToolCtxProxy] merge_response_from_workflow_outputs completed merged_type={type(merged).__name__}",
+                "[ToolCtxProxy] merge_response_from_workflow_outputs completed "
+                + f"merged_type={type(merged).__name__}",
                 flush=True,
             )
+
             return merged
 
-        if workflow_path is not None:
-            out = await func(*args, workflow_path=workflow_path, stream_callback=stream_cb)
-            return out
-
-        out = await func(*args, stream_callback=stream_cb)
-        return out
+        return await func(
+            initial_inputs,
+            unit_param_overrides,
+            execution_timeout_s,
+            stream_callback=stream_cb,
+            workflow_path=workflow_path,
+        )
 
     async def toast(self, msg: str) -> None:
         orange = "\033[38;5;208m"   # 256-color orange
