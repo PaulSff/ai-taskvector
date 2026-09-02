@@ -8,14 +8,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from core.schemas.primitives import Data
+
+from .state import AgentChatHistory
+
 
 def load_chat_session(
     path: Path,
     *,
-    load_payload: Callable[[Path], dict[str, object] | None],
+    load_payload: Callable[[Path], Data | None],
     new_id: Callable[[], str],
     now_ts: Callable[[], str],
-) -> dict[str, object] | None:
+) -> Data | None:
     """
     Load and parse chat payload from path.
     Returns session dict (messages, session_id, created_at, agent_selected, has_sent_any)
@@ -64,13 +68,13 @@ def load_chat_session(
 
 # --- Helpers ---
 def history_dedupe_prefer_applied(
-    history: list[dict[str, object]] | None,
-) -> list[dict[str, object]]:
+    history: AgentChatHistory | None,
+) -> AgentChatHistory:
     if not history:
         return []
 
     # best_by_content: mapping content string to the dictionary object
-    best_by_content: dict[str, dict[str, object]] = {}
+    best_by_content: dict[str, Data] = {}
     rank_by_content: dict[str, int] = {}
 
     for m in history:
@@ -105,7 +109,7 @@ def history_dedupe_prefer_applied(
 
     # Preserve original order for the kept messages
     seen_content: set[str] = set()
-    out: list[dict[str, object]] = []
+    out: AgentChatHistory = []
     for m in history:
         raw_content = m.get("content")
         content = (raw_content if isinstance(raw_content, str) else "").strip()
