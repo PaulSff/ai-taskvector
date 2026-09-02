@@ -25,7 +25,7 @@ from core.schemas.primitives import (
     WorkflowOutputs,
 )
 from core.schemas.process_graph import ProcessGraph, Unit
-from runtime.executor import GraphExecutor, GraphUpdateCallback
+from runtime.executor import GraphExecutor, GraphStreamCallback, GraphUpdateCallback
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.logging import setup_colored_logging
 from services.zmq import ZmqPublisher, ZmqTopics
@@ -86,7 +86,7 @@ def run_workflow(
     format: FormatProcess | None = None,
     execution_timeout_s: float | None = None,
     keep_alive: bool = False,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: GraphStreamCallback | None = None,
     update_callback: GraphUpdateCallback | None = None,
     run_id: str | None = None,
     zmq_publisher: ZmqPublisher | None = None,
