@@ -5,18 +5,23 @@ from __future__ import annotations
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
 from agents.chat.agent_workflow import (
+    AgentWorkflowResponse,
+    MergeResponse,
     build_agent_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
-    refresh_last_apply_result_after_canvas_apply,
+    normalize_last_apply_result,
+    refresh_last_graph_apply_result,
     run_agent_workflow,
 )
-from agents.chat.agent_workflow.helpers import validate_graph_to_apply_for_canvas_async
+from agents.chat.agent_workflow.helpers import (
+    get_optional_str,
+    validate_graph_to_apply_for_canvas_async,
+)
 from agents.chat.context.follow_up_context import (
     ParserFollowUpContext,
     PostApplyFlags,
@@ -42,12 +47,26 @@ from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
 )
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+from agents.roles.types import RoleConfig
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
 from agents.tools.catalog import ordered_tools_for_role_id
+from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+    GraphEditAction,
+    MultipleEditsSequential,
+)
+from core.schemas.primitives import (
+    Data,
+    ModelDumpable,
+    WorkflowInputs,
+    is_data,
+)
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
@@ -55,9 +74,22 @@ from runtime.run import WorkflowTimeoutError
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
 
+# actions supported:
+IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
+ADD_COMMENT_ACTION: GraphEditAction = "add_comment"
+
+TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
+    {
+        "add_todo_list",
+        "remove_todo_list",
+        "add_task",
+        "remove_task",
+        "mark_completed",
+    }
+)
 
 class WorkflowDesignerChatHandler:
-    """Runs one WD turn (workflow_designer_workflow + parser follow-ups + apply + post-apply)."""
+    """Runs one Workflow Designer's turn."""
 
     @property
     def role_id(self) -> str:
@@ -65,44 +97,42 @@ class WorkflowDesignerChatHandler:
 
     @property
     def role_name(self) -> str:
-        return get_role(WORKFLOW_DESIGNER_ROLE_ID).role_name
+        return get_role(self.role_id).role_name
+
 
     async def run_turn(
-        self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str
+        self,
+        turn_ctx: RoleChatTurnContext,
+        *,
+        message_for_workflow: str,
     ) -> None:
-        response: dict[str, Any] = {}
+        response = AgentWorkflowResponse()
         content = ""
-        result: dict[str, Any] = {}
+        result: Data = {}
 
-        # Workflow-driven: run workflow_designer_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
-        overrides = build_agent_workflow_unit_param_overrides(
-            turn_ctx.provider,
-            turn_ctx.cfg,
-            report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
+        role_cfg: RoleConfig = get_role(self.role_id)
+
+        overrides: WorkflowInputs = (
+            build_agent_workflow_unit_param_overrides(
+                provider=role_cfg.provider,
+                report_output_dir=str(
+                    Path(turn_ctx.mydata_dir) / "reports"
+                ),
+                model_name=role_cfg.ollama_model,
+                host=role_cfg.ollama_host,
+                llm_options_role_id=self.role_id,
+                rag_top_k_role_id=self.role_id,
+            )
         )
-        _graph = turn_ctx.graph_ref[0]
 
-        try:
-            if _graph is None:
-                validated_graph = None
-            elif isinstance(_graph, ProcessGraph):
-                validated_graph = _graph
-            elif isinstance(_graph, dict):
-                validated_graph = ProcessGraph.model_validate(_graph)
-            elif hasattr(_graph, "model_dump"):
-                validated_graph = ProcessGraph.model_validate(
-                    _graph.model_dump(by_alias=True)
-                )
-            else:
-                raise TypeError(
-                    "expected ProcessGraph, dict, or model with model_dump"
-                )
+        _graph: ProcessGraph = turn_ctx.graph_ref[0]
 
-        except (TypeError, ValidationError) as exc:
-            # Adapt this to your application's error handling.
-            raise ValueError(
-                f"ValidateGraphToApply: invalid graph: {exc}"
-            ) from exc
+        validated_graph, validation_error = (
+            await validate_graph_to_apply_for_canvas_async(_graph)
+        )
+
+        if validation_error is not None:
+            raise ValueError(validation_error)
 
         _graph_dict = (
             validated_graph.model_dump(by_alias=True)
@@ -114,6 +144,21 @@ class WorkflowDesignerChatHandler:
             turn_ctx.coding_is_allowed,
             validated_graph,
         )
+
+        def _failed_apply_result(
+            error: str,
+            *,
+            attempted: bool = True,
+        ) -> AgentApplyWorkflowEditsResult:
+            return AgentApplyWorkflowEditsResult(
+                attempted=attempted,
+                apply_result=ApplyWorkflowEditsResult(
+                    success=False,
+                    graph=_graph,
+                    error=error,
+                ),
+                edits_summary="No workflow edits were applied.",
+            )
 
         follow_up_contexts_this_turn: list[str] = []
         wf_lang_cell = [default_wf_language_hint(turn_ctx.state.session_language)]
@@ -130,8 +175,8 @@ class WorkflowDesignerChatHandler:
         )
 
         async def _parser_output_follow_up_chain(
-            resp: dict[str, Any],
-        ) -> dict[str, Any] | None:
+            resp: AgentWorkflowResponse,
+        ) -> AgentWorkflowResponse | None:
             parser_ctx = ParserFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
@@ -164,13 +209,14 @@ class WorkflowDesignerChatHandler:
 
         try:
             # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
-            last_user_content = None
+            last_user_content: str | None = None
+
             for m in reversed(turn_ctx.state.history or []):
-                if isinstance(m, dict) and str(m.get("role", "")).strip().lower() == "user":
-                    last_user_content = (
-                        m.get("content") or m.get("content_for_display") or ""
-                    )
+                if str(m.get("role", "")).strip().lower() == "user":
+                    content = m.get("content") or m.get("content_for_display") or ""
+                    last_user_content = str(content)
                     break
+
             user_message_for_workflow = normalize_user_message_for_workflow(
                 last_user_content
                 if (last_user_content is not None and str(last_user_content).strip())
@@ -209,64 +255,101 @@ class WorkflowDesignerChatHandler:
                 None,  # execution_timeout_s default
                 _run_token=turn_ctx.token,
             )
+
+            merged = response.merged_response
+
+            dr_out = merged.delegate_request
+            report_out = merged.report_output
+            raw_reply = merged.reply
+
         except WorkflowTimeoutError as ex:
             turn_ctx.set_inline_status(None)
-            response = {"reply": "", "workflow_errors": []}
-            content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again or check that the LLM/service is responding.)"
-            result = {
-                "kind": "parse_error",
-                "content_for_display": content,
-                "apply_result": {},
-                "edits": [],
-            }
-            turn_ctx.last_apply_result_ref[0] = {}
-        except (TypeError) as ex:
+
+            content = (
+                f"(Request timed out after "
+                f"{getattr(ex, 'timeout_s', 300):.0f}s. "
+                "Try again or check that the LLM/service is responding.)"
+            )
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result={
+                        "kind": "parse_error",
+                        "content_for_display": content,
+                        "apply_result": {},
+                        "edits": [],
+                    },
+                )
+            )
+
+            result = response.merged_response.result
+            turn_ctx.last_apply_result_ref[0] = _failed_apply_result(content)
+
+        except TypeError as ex:
             turn_ctx.set_inline_status(None)
-            response = {"reply": "", "workflow_errors": []}
             content = f"(Workflow error: {ex})"
-            result = {
-                "kind": "parse_error",
-                "content_for_display": content,
-                "apply_result": {},
-                "edits": [],
-            }
-            turn_ctx.last_apply_result_ref[0] = {}
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result={
+                        "kind": "parse_error",
+                        "content_for_display": content,
+                        "apply_result": {},
+                        "edits": [],
+                    },
+                )
+            )
+
+            result = response.merged_response.result
+            turn_ctx.last_apply_result_ref[0] = _failed_apply_result(content)
 
         else:
             chained = await _parser_output_follow_up_chain(response)
             if chained is None:
                 return
-            response = chained
 
-            dr_out = response.get("delegate_request")
-            if turn_ctx.delegate_request_ref is not None and isinstance(dr_out, dict):
+            response = chained
+            merged = response.merged_response
+            result = merged.result
+
+            dr_out = merged.delegate_request
+
+            if turn_ctx.delegate_request_ref is not None:
+                delegate_to = get_optional_str(dr_out, "delegate_to")
+                error_message = get_optional_str(dr_out, "error")
+
                 if (
                     dr_out.get("ok") is True
-                    and (dr_out.get("delegate_to") or "").strip()
+                    and delegate_to
+                    and delegate_to.strip()
                 ):
-                    dt = (dr_out.get("delegate_to") or "").strip().lower()
+                    dt = delegate_to.strip().lower()
+
                     if dt != (turn_ctx.profile or "").strip().lower():
                         turn_ctx.delegate_request_ref[0] = dr_out
                 else:
-                    err_d = (dr_out.get("error") or "").strip()
-                    if err_d and turn_ctx.is_current_run(turn_ctx.token):
-                        await turn_ctx.toast(err_d[:200])
+                    if (
+                        error_message
+                        and turn_ctx.is_current_run(turn_ctx.token)
+                    ):
+                        await turn_ctx.toast(error_message.strip()[:200])
 
-            # If report unit wrote a file, show status and trigger rag_update to index it.
-            report_out = response.get("report_output")
+            report_out = merged.report_output
+
             if (
                 turn_ctx.is_current_run(turn_ctx.token)
-                and isinstance(report_out, dict)
                 and report_out.get("ok")
             ):
-                turn_ctx.set_inline_status("Making report…")
+                turn_ctx.set_inline_status("Generating file…")
                 try:
                     from gui.components.settings import get_rag_update_workflow_path
                     from runtime.run import run_workflow
 
                     path = get_rag_update_workflow_path()
                     if path.exists():
-                        overrides_rag = {
+                        overrides_rag: WorkflowInputs = {
                             "rag_update": {
                                 "rag_index_data_dir": str(turn_ctx.rag_index_dir),
                                 "units_dir": str(UNITS_DIR),
@@ -274,7 +357,7 @@ class WorkflowDesignerChatHandler:
                                 "embedding_model": turn_ctx.rag_embedding_model,
                             },
                         }
-                        await asyncio.to_thread(
+                        _ = await asyncio.to_thread(
                             run_workflow,
                             path,
                             initial_inputs={},
@@ -286,63 +369,140 @@ class WorkflowDesignerChatHandler:
                 if turn_ctx.is_current_run(turn_ctx.token):
                     turn_ctx.set_inline_status(None)
 
-            raw_reply = response.get("reply")
-            if isinstance(raw_reply, dict) and "action" in raw_reply:
-                raw_reply = raw_reply.get("action") or ""
-            content = (
-                raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
-            ).strip() or "(No response from model.)"
-            # If reply is empty but parser produced edits (e.g. no_edit), show a fallback so chat doesn't look broken
-            if content == "(No response from model.)":
-                po = response.get("parser_output")
+            raw_reply: str = merged.reply
+            content = raw_reply.strip() or "(No response from the model.)"
+
+            # If reply is empty but parser produced edits (e.g. no_edit), show a fallback
+            # so chat doesn't look broken.
+            # If reply is empty but parser produced edits (e.g. no_edit), show a fallback
+            # so chat doesn't look broken.
+            if content == "(No response from the model.)":
+                parser_output = merged.parser_output
                 edits = (
-                    po
-                    if isinstance(po, list)
-                    else (po.get("edits") if isinstance(po, dict) else None)
+                    parser_output.actions.edits
+                    if parser_output is not None
+                    else []
                 )
-                if isinstance(edits, list) and edits:
+
+                if edits:
                     content = "No graph changes requested."
-            wf_result = response.get("result") or {}
-            result = dict(wf_result)
-            await canonicalize_add_comment_edits(
-                result.get("edits"), agent_role_id=turn_ctx.profile
-            )
+
+            wf_result = merged.result
+
+            if merged.parser_output is not None:
+                await canonicalize_add_comment_edits(
+                    merged.parser_output.actions.edits,
+                    agent_role_id=turn_ctx.profile,
+                )
+
             result["apply_result"] = (
-                response.get("status") or wf_result.get("last_apply_result") or {}
+                merged.status.get("last_apply_result")
+                or wf_result.get("last_apply_result")
+                or {}
             )
-            ar0 = result.get("apply_result") or {}
+
+            apply_result_value = result.get("apply_result")
+
+            if is_data(apply_result_value):
+                apply_result = apply_result_value
+            else:
+                apply_result = {}
+
             if (
                 result.get("kind") != "apply_failed"
-                and isinstance(ar0, dict)
-                and ar0.get("attempted") is True
-                and ar0.get("success") is False
+                and apply_result.get("attempted") is True
+                and apply_result.get("success") is False
             ):
                 result["kind"] = "apply_failed"
-            workflow_errors = response.get("workflow_errors") or []
-            # Only treat as "message didn't reach model" when LLMAgent reported it or error text clearly says so.
-            # (Aggregate can emit "required... user_message" even when the message did reach the model, e.g. keys param in_0 vs user_message.)
+
+
+
+            workflow_errors = merged.workflow_errors
+
+            # Only treat as "message didn't reach model" when LLMAgent reported it
+            # or the error text clearly says so.
+            # Aggregate can emit "required... user_message" even when the message
+            # did reach the model, e.g. keys param in_0 vs user_message.
             user_message_missing = any(
                 err
                 and (
-                    (str(err[0]) == "llm_agent" and (err[1] or "").strip())
+                    (
+                        str(err[0]) == "llm_agent"
+                        and (err[1] or "").strip()
+                    )
                     or "placeholder" in (err[1] or "").lower()
                     or "no message" in (err[1] or "").lower()
                 )
                 for err in workflow_errors
             )
+
             if user_message_missing:
                 content = (
                     "Your message didn't reach the model. Please try sending again."
                 )
-                result["content_for_display"] = content
-            else:
-                result["content_for_display"] = content
 
-            # ensure that later retry/self-correction never receives an awaitable or non-dict
+            result["content_for_display"] = content
+
+
+            # Ensure later retry/self-correction receives a valid
+            # AgentApplyWorkflowEditsResult, never an awaitable or raw graph.
             ap = wf_result.get("last_apply_result")
-            turn_ctx.last_apply_result_ref[0] = (
-                ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
-            )
+
+            if inspect.isawaitable(ap):
+                # Do not store an awaitable or overwrite the last valid result.
+                pass
+
+            elif isinstance(ap, AgentApplyWorkflowEditsResult):
+                turn_ctx.last_apply_result_ref[0] = ap
+
+            elif isinstance(ap, ApplyWorkflowEditsResult):
+                turn_ctx.last_apply_result_ref[0] = (
+                    AgentApplyWorkflowEditsResult(
+                        attempted=True,
+                        apply_result=ap,
+                        edits_summary="",
+                    )
+                )
+
+            elif isinstance(ap, ProcessGraph):
+                # Backward compatibility for callers that still return a raw graph.
+                turn_ctx.last_apply_result_ref[0] = (
+                    AgentApplyWorkflowEditsResult(
+                        attempted=True,
+                        apply_result=ApplyWorkflowEditsResult(
+                            success=True,
+                            graph=ap,
+                            error=None,
+                        ),
+                        edits_summary="",
+                    )
+                )
+
+            elif isinstance(ap, dict):
+                try:
+                    parsed_result = (
+                        AgentApplyWorkflowEditsResult.model_validate(ap)
+                    )
+                except ValidationError:
+                    # Backward compatibility for an inner result dictionary.
+                    try:
+                        parsed_inner_result = (
+                            ApplyWorkflowEditsResult.model_validate(ap)
+                        )
+                    except ValidationError:
+                        # Invalid result: preserve the previous valid result.
+                        pass
+                    else:
+                        turn_ctx.last_apply_result_ref[0] = (
+                            AgentApplyWorkflowEditsResult(
+                                attempted=True,
+                                apply_result=parsed_inner_result,
+                                edits_summary="",
+                            )
+                        )
+                else:
+                    turn_ctx.last_apply_result_ref[0] = parsed_result
+
 
             if workflow_errors and turn_ctx.is_current_run(turn_ctx.token):
                 err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
@@ -355,9 +515,17 @@ class WorkflowDesignerChatHandler:
                 else:
                     await turn_ctx.toast(f"Workflow error: {err_msg}")
 
-        # Append agent message as soon as we have content so it always appears (even if run is superseded)
-        display_content = result.get("content_for_display", content) or content
-        display_content = display_content + formulas_calc_display_appendix(response)
+        # Append agent message as soon as we have content so it always appears
+        content_for_display = result.get("content_for_display")
+
+        display_content = (
+            content_for_display
+            if isinstance(content_for_display, str) and content_for_display
+            else content
+        )
+
+        display_content += formulas_calc_display_appendix(response)
+
         meta = {
             "turn_id": turn_ctx.turn_id,
             "agent": turn_ctx.agent_display,
@@ -372,6 +540,7 @@ class WorkflowDesignerChatHandler:
                 result.get("apply_result", {}),
             ),
         }
+
         if result.get("kind") == "parse_error":
             meta["format_error"] = True
         if follow_up_contexts_this_turn:
@@ -394,21 +563,25 @@ class WorkflowDesignerChatHandler:
             try:
                 if isinstance(raw_graph, ProcessGraph):
                     graph_to_apply = raw_graph
+
                 elif isinstance(raw_graph, dict):
                     graph_to_apply = ProcessGraph.model_validate(raw_graph)
-                elif hasattr(raw_graph, "model_dump"):
+
+                elif isinstance(raw_graph, ModelDumpable):
                     graph_to_apply = ProcessGraph.model_validate(
                         raw_graph.model_dump(by_alias=True)
                     )
+
                 else:
                     raise TypeError(
                         "expected ProcessGraph, dict, or model with model_dump"
                     )
+
             except (TypeError, ValidationError) as exc:
-                # Adapt to your normal turn error handling.
                 raise ValueError(
                     f"ValidateGraphToApply: invalid graph: {exc}"
                 ) from exc
+
 
             # Client-side todos: code-block task only if coding_is_allowed;
             # import review always when applicable.
@@ -416,13 +589,23 @@ class WorkflowDesignerChatHandler:
                 augment_graph_with_client_tasks,
             )
 
+            parser_output = response.merged_response.parser_output
+
+            parsed_actions = (
+                parser_output.actions
+                if parser_output is not None
+                else ParsedActions()
+            )
+
             graph_to_apply, extra_supp = await augment_graph_with_client_tasks(
                 graph_to_apply,
-                result.get("edits") or [],
+                parsed_actions.edits,
                 coding_is_allowed=turn_ctx.coding_is_allowed,
             )
+
             _client_todo_supplements.extend(extra_supp)
-            # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
+
+            # Validate via ValidateGraphToApply; canvas expects ProcessGraph.
             applied_ok = False
 
             if isinstance(graph_to_apply, dict):
@@ -441,45 +624,49 @@ class WorkflowDesignerChatHandler:
             if isinstance(graph_to_apply, ProcessGraph):
                 apply_fn(graph_to_apply)
 
-                prev_apply = turn_ctx.last_apply_result_ref[0]
-                if asyncio.iscoroutine(prev_apply):
-                    prev_apply = await prev_apply
+                prev_apply: AgentApplyWorkflowEditsResult = (
+                    turn_ctx.last_apply_result_ref[0]
+                )
 
-                turn_ctx.last_apply_result_ref[
-                    0
-                ] = await refresh_last_apply_result_after_canvas_apply(
+                refreshed_result = await refresh_last_graph_apply_result(
                     prev_apply,
-                    graph_to_apply,
+                    ApplyWorkflowEditsResult(
+                        success=True,
+                        graph=graph_to_apply,
+                        error=None,
+                    ),
                     supplement_summary="; ".join(_client_todo_supplements),
                 )
+
+                turn_ctx.last_apply_result_ref[0] = refreshed_result
 
                 await turn_ctx.toast("Applied")
                 applied_ok = True
 
             if applied_ok:
-                had_import_workflow = any(
-                    e.get("action") == "import_workflow"
-                    for e in result.get("edits", [])
+                parser_output = response.merged_response.parser_output
+
+                parsed_actions = (
+                    parser_output.actions
+                    if parser_output is not None
+                    else ParsedActions()
                 )
 
-                todo_actions = frozenset(
-                    {
-                        "add_todo_list",
-                        "remove_todo_list",
-                        "add_task",
-                        "remove_task",
-                        "mark_completed",
-                    }
+                edits = parsed_actions.edits
+
+                had_import_workflow = any(
+                    edit.action == IMPORT_WORKFLOW_ACTION
+                    for edit in edits
                 )
 
                 had_todo = any(
-                    e.get("action") in todo_actions
-                    for e in result.get("edits", [])
+                    edit.action in TODO_ACTIONS
+                    for edit in edits
                 )
 
                 had_add_comment = any(
-                    e.get("action") == "add_comment"
-                    for e in result.get("edits", [])
+                    edit.action == ADD_COMMENT_ACTION
+                    for edit in edits
                 )
 
                 content_holder = [content]
@@ -522,17 +709,25 @@ class WorkflowDesignerChatHandler:
                 )
                 content = content_holder[0]
         elif result.get("kind") == "apply_failed":
-            # Ensure last_apply_result is stored so next turn (and same-turn retry) get self-correction block
-            failed_apply = (
-                result.get("last_apply_result") or result.get("apply_result") or {}
+            # Ensure last_apply_result is stored so the next turn and any
+            # same-turn retry receive a valid self-correction block.
+            failed_apply_value = (
+                result.get("last_apply_result")
+                or result.get("apply_result")
             )
-            turn_ctx.last_apply_result_ref[0] = (
-                failed_apply if isinstance(failed_apply, dict) else {}
-            )
-            err_str = str(failed_apply.get("error", "Unknown"))[:500]
+
+            failed_apply = normalize_last_apply_result(failed_apply_value)
+
+            if failed_apply is not None:
+                turn_ctx.last_apply_result_ref[0] = failed_apply
+                err_str = failed_apply.error or "Unknown"
+            else:
+                err_str = "Unknown"
+
             await turn_ctx.toast(
                 f"Could not apply edits: {err_str[:120]}",
             )
+
             # Same-turn self-correction: workflow_inputs.build_self_correction_retry_inputs; we run and apply/toast
             if turn_ctx.is_current_run(turn_ctx.token):
                 turn_ctx.set_inline_status("Retrying with error context…")
@@ -560,55 +755,85 @@ class WorkflowDesignerChatHandler:
                         None,
                         _run_token=turn_ctx.token,
                     )
+
                     record_llm_prompt_view_if_present(
-                        retry_response, turn_ctx.record_llm_prompt_view
+                        retry_response,
+                        turn_ctx.record_llm_prompt_view,
                     )
+
                     _ = maybe_pin_session_language_from_workflow_response(
-                        turn_ctx.state, retry_response
+                        turn_ctx.state,
+                        retry_response,
                     )
-                    wf_lang_cell[0] = default_wf_language_hint(
-                        turn_ctx.state.session_language
-                    )
+
+                    retry_merged = retry_response.merged_response
+                    retry_result = retry_merged.result
                     if not turn_ctx.is_current_run(turn_ctx.token):
                         return
-                    r_result = retry_response.get("result") or {}
+                    r_result = retry_result
+                    raw_edits = r_result.get("edits")
+
+                    try:
+                        retry_edits = MultipleEditsSequential.model_validate(
+                            {"edits": raw_edits if raw_edits is not None else []}
+                        ).edits
+                    except ValidationError:
+                        retry_edits = []
+
                     await canonicalize_add_comment_edits(
-                        r_result.get("edits"), agent_role_id=turn_ctx.profile
+                        retry_edits,
+                        agent_role_id=turn_ctx.profile,
                     )
+
+
                     r_kind = r_result.get("kind")
-                    if r_kind == "applied" and r_result.get("graph") is not None:
-                        raw_graph = r_result["graph"]
 
-                        vg, v_err = await validate_graph_to_apply_for_canvas_async(raw_graph)
+                    if r_kind == "applied":
+                        raw_graph = r_result.get("graph")
 
-                        if v_err or vg is None:
+                        try:
+                            process_graph = ProcessGraph.model_validate(raw_graph)
+                        except ValidationError as exc:
                             graph_to_apply = None
+                            validation_error = str(exc)
 
                             if turn_ctx.is_current_run(turn_ctx.token):
                                 await turn_ctx.toast(
-                                    f"Retry graph validation failed: {(v_err or '')[:100]}",
+                                    f"Retry graph validation failed: {validation_error[:100]}",
                                 )
                         else:
-                            graph_to_apply = vg
-
-                            from agents.chat.context.todo_list_manager import (
-                                augment_graph_with_client_tasks,
+                            vg, v_err = await validate_graph_to_apply_for_canvas_async(
+                                process_graph,
                             )
 
-                            graph_to_apply, _retry_supp = (
-                                await augment_graph_with_client_tasks(
-                                    graph_to_apply,
-                                    r_result.get("edits") or [],
-                                    coding_is_allowed=turn_ctx.coding_is_allowed,
+                            if v_err or vg is None:
+                                graph_to_apply = None
+
+                                if turn_ctx.is_current_run(turn_ctx.token):
+                                    await turn_ctx.toast(
+                                        f"Retry graph validation failed: {(v_err or '')[:100]}",
+                                    )
+                            else:
+                                graph_to_apply = vg
+
+                                from agents.chat.context.todo_list_manager import (
+                                    augment_graph_with_client_tasks,
                                 )
-                            )
+
+                                graph_to_apply, _retry_supp = (
+                                    await augment_graph_with_client_tasks(
+                                        graph_to_apply,
+                                        retry_edits,
+                                        coding_is_allowed=turn_ctx.coding_is_allowed,
+                                    )
+                                )
 
                         if isinstance(graph_to_apply, ProcessGraph):
                             apply_fn(graph_to_apply)
 
                             await turn_ctx.toast("Applied (after retry)")
 
-                            retry_reply = (retry_response.get("reply") or "").strip()
+                            retry_reply = (retry_merged.reply or "").strip()
                             if retry_reply:
                                 content = content + "\n\n" + retry_reply
                                 result["content_for_display"] = content
@@ -627,23 +852,34 @@ class WorkflowDesignerChatHandler:
                                     },
                                 )
 
-                            ap = r_result.get("last_apply_result")
-                            turn_ctx.last_apply_result_ref[0] = (
-                                ap
-                                if isinstance(ap, dict) and not inspect.isawaitable(ap)
-                                else {}
+                            retry_apply = normalize_last_apply_result(
+                                r_result.get("last_apply_result")
+                                or r_result.get("apply_result")
                             )
+
+                            if retry_apply is not None:
+                                turn_ctx.last_apply_result_ref[0] = retry_apply
+
                     elif r_kind == "apply_failed":
-                        failed_apply = r_result.get(
-                            "last_apply_result"
-                        ) or r_result.get("apply_result")
-                        turn_ctx.last_apply_result_ref[0] = (
-                            failed_apply if isinstance(failed_apply, dict) else {}
+                        failed_apply_value = (
+                            r_result.get("last_apply_result")
+                            or r_result.get("apply_result")
                         )
 
-                        await turn_ctx.toast(
-                            f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}"
+                        failed_apply = normalize_last_apply_result(
+                            failed_apply_value
                         )
+
+                        if failed_apply is not None:
+                            turn_ctx.last_apply_result_ref[0] = failed_apply
+                            retry_error = failed_apply.error or "Unknown"
+                        else:
+                            retry_error = "Unknown"
+
+                        await turn_ctx.toast(
+                            f"Retry also failed: {retry_error[:80]}"
+                        )
+
                 except (TypeError, WorkflowTimeoutError):
                     pass
                 turn_ctx.set_inline_status(None)
