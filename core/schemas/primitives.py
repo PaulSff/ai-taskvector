@@ -19,11 +19,12 @@ type JsonArray = list[JsonValue]
 type JsonDocument = JsonObject | JsonArray
 
 type Data = dict[str, object]
-type Output = tuple[Data, Data] | Data
+type Output = tuple[Data, Data]
 
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
 type WorkflowOutputs = JsonObject
 type WorkflowErrors = list[tuple[str, str]]
+type LastApplyResult = Data | None
 
 # Raw input format for any workflow to be normalized into ProcessGraph
 RawProcessInput = JsonDocument | str
@@ -160,3 +161,7 @@ def is_json_document(value: object) -> TypeGuard[JsonDocument]:
 
 def is_object_list(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
+
+
+def is_data(value: object) -> TypeGuard[Data]:
+    return isinstance(value, dict)
