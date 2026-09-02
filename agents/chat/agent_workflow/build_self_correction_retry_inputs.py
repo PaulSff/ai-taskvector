@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
 
 def build_self_correction_retry_inputs(
-    failed_apply_result: Data,
+    failed_apply_result: AgentApplyWorkflowEditsResult,
     graph: ProcessGraph,
     recent_changes: str | None,
     runtime: str = "native",
@@ -24,10 +25,13 @@ def build_self_correction_retry_inputs(
         default_wf_language_hint,
     )
 
-    err_str = str(failed_apply_result.get("error", "Unknown"))[:500]
+    err_str = str(failed_apply_result.error or "Unknown")[:500]
+
     if language_hint is None:
         language_hint = default_wf_language_hint(session_language)
+
     lang = (language_hint or "English (en)").strip() or "English (en)"
+
     retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(
         error=err_str,
         language=lang,
