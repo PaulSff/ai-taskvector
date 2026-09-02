@@ -52,6 +52,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
+from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
@@ -73,6 +74,19 @@ from runtime.run import WorkflowTimeoutError
 
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
+
+_WORKFLOW_DESIGNER_WORKFLOW_PATH = (
+    get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID).resolve()
+)
+
+_WORKFLOW_DESIGNER_PROMPT_PATH = (
+    _WORKFLOW_DESIGNER_WORKFLOW_PATH.parents[3]
+    / "config"
+    / "prompts"
+    / "workflow_designer.json"
+)
+
+_WORKFLOW_EXECUTION_TIMEOUT = None # default
 
 # actions supported:
 IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
@@ -252,8 +266,9 @@ class WorkflowDesignerChatHandler:
                 run_agent_workflow,
                 initial_inputs,
                 overrides,
-                None,  # execution_timeout_s default
+                _WORKFLOW_EXECUTION_TIMEOUT,
                 _run_token=turn_ctx.token,
+                workflow_path=_WORKFLOW_DESIGNER_WORKFLOW_PATH,
             )
 
             merged = response.merged_response
@@ -693,6 +708,7 @@ class WorkflowDesignerChatHandler:
                     format_previous_turn=format_previous_turn,
                     replace_agent_message_row=turn_ctx.replace_agent_message_row,
                     stream_buffer_ref=turn_ctx.stream_buffer_ref,
+                    agent_workflow_path=_WORKFLOW_DESIGNER_WORKFLOW_PATH,
                     apply_fn=apply_fn,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
@@ -752,8 +768,9 @@ class WorkflowDesignerChatHandler:
                         run_agent_workflow,
                         retry_inputs,
                         overrides,
-                        None,
+                        _WORKFLOW_EXECUTION_TIMEOUT,
                         _run_token=turn_ctx.token,
+                        workflow_path=_WORKFLOW_DESIGNER_WORKFLOW_PATH,
                     )
 
                     record_llm_prompt_view_if_present(
