@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 from agents.roles.chat_config import parse_role_chat_config
 from agents.roles.types import RoleConfig
+from core.schemas.primitives import Data
 
 _ROLES_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, RoleConfig] = {}
@@ -58,7 +59,7 @@ def _coerce_tools(raw: Any) -> tuple[str, ...]:
     return ()
 
 
-def _load_yaml(role_id: str) -> dict[str, Any]:
+def _load_yaml(role_id: str) -> Data:
     path = _ROLES_ROOT / role_id / "role.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"Role file not found: {path}")
@@ -71,29 +72,95 @@ def _load_yaml(role_id: str) -> dict[str, Any]:
     return data
 
 
-def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
+def _build_config(role_id: str, data: Data) -> RoleConfig:
     rid = str(data.get("id") or role_id).strip()
+
     if rid != role_id:
-        raise ValueError(f"role.yaml id {rid!r} does not match folder {role_id!r}")
+        raise ValueError(
+            f"role.yaml id {rid!r} does not match folder {role_id!r}"
+        )
+
     role_name = str(
-        data.get("role_name") or data.get("display_name") or role_id
+        data.get("role_name")
+        or data.get("display_name")
+        or role_id
     ).strip()
+
     name = str(data.get("name") or "").strip()
     project_name = str(data.get("project_name") or "").strip()
+
     intro_raw = data.get("introduction_words")
-    introduction_words = str(intro_raw).strip() if intro_raw is not None else ""
+    introduction_words = (
+        str(intro_raw).strip()
+        if intro_raw is not None
+        else ""
+    )
+
     resp_raw = data.get("responsibility_description")
-    responsibility_description = str(resp_raw).strip() if resp_raw is not None else ""
+    responsibility_description = (
+        str(resp_raw).strip()
+        if resp_raw is not None
+        else ""
+    )
+
     fur = data.get("follow_up_max_rounds")
-    follow_up: int | None
+
     if fur is None or fur == "":
-        follow_up = None
+        follow_up: int | None = None
+    elif isinstance(fur, bool):
+        raise TypeError(
+            "role.yaml field 'follow_up_max_rounds' must be an integer"
+        )
+    elif isinstance(fur, int):
+        follow_up = max(1, min(50, fur))
+    elif isinstance(fur, str):
+        follow_up = max(1, min(50, int(fur.strip())))
     else:
-        follow_up = max(1, min(50, int(fur)))
+        raise TypeError(
+            "role.yaml field 'follow_up_max_rounds' must be an integer"
+        )
+
+    raw_llm = data.get("llm")
+
+    if raw_llm is None:
+        llm: Data = {}
+    elif isinstance(raw_llm, dict):
+        raw_llm_typed = cast(dict[object, object], raw_llm)
+
+        llm = {}
+
+        for key, value in raw_llm_typed.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    "role.yaml field 'llm' must contain string keys"
+                )
+
+            llm[key] = value
+    else:
+        raise TypeError("role.yaml field 'llm' must be a mapping")
+
+
+    provider_raw = llm.get("provider", "")
+    ollama_host_raw = llm.get("ollama_host", "")
+    ollama_model_raw = llm.get("ollama_model", "")
+
+    if not isinstance(provider_raw, str):
+        raise TypeError("role.yaml field 'llm.provider' must be a string")
+
+    if not isinstance(ollama_host_raw, str):
+        raise TypeError(
+            "role.yaml field 'llm.ollama_host' must be a string"
+        )
+
+    if not isinstance(ollama_model_raw, str):
+        raise TypeError(
+            "role.yaml field 'llm.ollama_model' must be a string"
+        )
+
     known = {
         "id",
         "role_name",
-        "display_name",  # legacy alias for role_name only; consumed above, not stored
+        "display_name",
         "name",
         "project_name",
         "introduction_words",
@@ -107,7 +174,13 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         "settings",
         "report",
     }
-    extra = {k: v for k, v in data.items() if k not in known}
+
+    extra = {
+        key: value
+        for key, value in data.items()
+        if key not in known
+    }
+
     return RoleConfig(
         id=rid,
         role_name=role_name,
@@ -118,7 +191,9 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         follow_up_max_rounds=follow_up,
         tools=_coerce_tools(data.get("tools")),
         chat=parse_role_chat_config(data.get("chat")),
-        ollama_model=str((data.get("llm") or {}).get("ollama_model") or "").strip(),
+        provider=provider_raw.strip(),
+        ollama_host=ollama_host_raw.strip(),
+        ollama_model=ollama_model_raw.strip(),
         extra=extra,
     )
 
