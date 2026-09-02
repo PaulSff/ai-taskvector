@@ -11,7 +11,8 @@ from .build_self_correction_retry_inputs import build_self_correction_retry_inpu
 from .build_units_param_overrides import build_agent_workflow_unit_param_overrides
 from .helpers import (
     get_runtime_for_prompts,
-    refresh_last_apply_result_after_canvas_apply,
+    normalize_last_apply_result,
+    refresh_last_graph_apply_result,
 )
 from .paths import (
     BROWSER_WORKFLOW_PATH,
@@ -34,6 +35,12 @@ from .paths import (
 )
 from .run_agent_workflow import run_agent_workflow
 from .run_tool_workflow import run_workflow_with_errors
+from .wf_response_schema import (
+    AgentWorkflowResponse,
+    DirectUnitsResponse,
+    MergeErrors,
+    MergeResponse,
+)
 
 __all__ = [
     "BROWSER_WORKFLOW_PATH",
@@ -52,11 +59,16 @@ __all__ = [
     "RENAME_WORKFLOW_PATH",
     "SEND_MESSAGE_WORKFLOW_PATH",
     "WEB_SEARCH_WORKFLOW_PATH",
+    "AgentWorkflowResponse",
+    "DirectUnitsResponse",
+    "MergeErrors",
+    "MergeResponse",
     "agent_WORKFLOW_PATH",
     "build_agent_workflow_unit_param_overrides",
     "build_self_correction_retry_inputs",
     "get_runtime_for_prompts",
-    "refresh_last_apply_result_after_canvas_apply",
+    "normalize_last_apply_result",
+    "refresh_last_graph_apply_result",
     "run_agent_workflow",
     "run_workflow_with_errors",
 ]
