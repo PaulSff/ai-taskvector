@@ -8,7 +8,8 @@ from typing import Any, cast
 import yaml
 
 from agents.roles.chat_config import parse_role_chat_config
-from agents.roles.types import RoleConfig
+from agents.roles.types import RoleConfig, RoleIds
+from agents.tools.types import ToolList
 from core.schemas.primitives import Data
 
 _ROLES_ROOT = Path(__file__).resolve().parent
@@ -42,7 +43,7 @@ CHAT_MAIN_agent_ROLE_IDS: tuple[str, ...] = (
 )
 
 
-def list_role_ids() -> tuple[str, ...]:
+def list_role_ids() -> RoleIds:
     """Return sorted role ids: each immediate child of ``agents/roles`` that contains ``role.yaml``."""
     names: list[str] = []
     for p in sorted(_ROLES_ROOT.iterdir()):
@@ -51,7 +52,7 @@ def list_role_ids() -> tuple[str, ...]:
     return tuple(names)
 
 
-def _coerce_tools(raw: Any) -> tuple[str, ...]:
+def _coerce_tools(raw: Any) -> ToolList:
     if raw is None:
         return ()
     if isinstance(raw, list):
@@ -91,16 +92,12 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
 
     intro_raw = data.get("introduction_words")
     introduction_words = (
-        str(intro_raw).strip()
-        if intro_raw is not None
-        else ""
+        str(intro_raw).strip() if intro_raw is not None else ""
     )
 
     resp_raw = data.get("responsibility_description")
     responsibility_description = (
-        str(resp_raw).strip()
-        if resp_raw is not None
-        else ""
+        str(resp_raw).strip() if resp_raw is not None else ""
     )
 
     fur = data.get("follow_up_max_rounds")
@@ -114,7 +111,14 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
     elif isinstance(fur, int):
         follow_up = max(1, min(50, fur))
     elif isinstance(fur, str):
-        follow_up = max(1, min(50, int(fur.strip())))
+        try:
+            follow_up_value = int(fur.strip())
+        except ValueError as exc:
+            raise TypeError(
+                "role.yaml field 'follow_up_max_rounds' must be an integer"
+            ) from exc
+
+        follow_up = max(1, min(50, follow_up_value))
     else:
         raise TypeError(
             "role.yaml field 'follow_up_max_rounds' must be an integer"
@@ -125,20 +129,16 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
     if raw_llm is None:
         llm: Data = {}
     elif isinstance(raw_llm, dict):
-        raw_llm_typed = cast(dict[object, object], raw_llm)
-
         llm = {}
 
-        for key, value in raw_llm_typed.items():
+        for key, value in raw_llm.items():
             if not isinstance(key, str):
                 raise TypeError(
                     "role.yaml field 'llm' must contain string keys"
                 )
-
             llm[key] = value
     else:
         raise TypeError("role.yaml field 'llm' must be a mapping")
-
 
     provider_raw = llm.get("provider", "")
     ollama_host_raw = llm.get("ollama_host", "")
@@ -156,6 +156,8 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
         raise TypeError(
             "role.yaml field 'llm.ollama_model' must be a string"
         )
+
+    chat_config = parse_role_chat_config(data.get("chat"))
 
     known = {
         "id",
@@ -190,12 +192,13 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
         responsibility_description=responsibility_description,
         follow_up_max_rounds=follow_up,
         tools=_coerce_tools(data.get("tools")),
-        chat=parse_role_chat_config(data.get("chat")),
+        chat=chat_config,
         provider=provider_raw.strip(),
         ollama_host=ollama_host_raw.strip(),
         ollama_model=ollama_model_raw.strip(),
         extra=extra,
     )
+
 
 
 def get_role(role_id: str) -> RoleConfig:
@@ -224,7 +227,7 @@ def is_role_chat_panel_enabled(role: RoleConfig) -> bool:
     return role.id in CHAT_MAIN_agent_ROLE_IDS
 
 
-def list_chat_dropdown_role_ids() -> tuple[str, ...]:
+def list_chat_dropdown_role_ids() -> RoleIds:
     """
     Role ids for the agents chat dropdown: ``CHAT_MAIN_agent_ROLE_IDS`` (when enabled), then
     any other role directory with ``role.yaml`` declaring ``chat.enabled: true``.
