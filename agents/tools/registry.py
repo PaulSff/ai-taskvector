@@ -16,8 +16,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Protocol
 
-from agents.tools.types import ToolList
-from core.schemas.primitives import Data
+from agents.tools.types import ParserOutput, ToolList
 
 if TYPE_CHECKING:
     from agents.chat.context.follow_up_context import (
@@ -32,7 +31,7 @@ class FollowUpRunner(Protocol):
     def __call__(
         self,
         ctx: ParserFollowUpContext,
-        po: Data,
+        po: ParserOutput,
         *,
         language_hint: Callable[[], str],
     ) -> Awaitable[FollowUpContribution]:
