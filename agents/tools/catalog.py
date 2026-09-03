@@ -7,6 +7,8 @@ import yaml
 
 from .workflow_path import _TOOLS_ROOT
 
+type OrderedToolsForRole = tuple[tuple[str, str], ...]
+
 # ---- Index: tool_id -> tool.yaml path (one-time at import) ----
 
 def _index_tool_yaml_paths_by_id() -> dict[str, Path]:
@@ -95,7 +97,7 @@ def tool_id_for_parser_keys(parser_key: str) -> str | None:
 # ---- Role-specific ordered tuples ----
 
 @functools.cache
-def ordered_tools_for_role_id(role_id: str | None) -> tuple[tuple[str, str], ...]:
+def ordered_tools_for_role_id(role_id: str | None) -> OrderedToolsForRole:
     """
     Build (tool_id, parser_key) tuples from role.yaml tools and tool.yaml parser_keys.
     Only loads parser_keys for tool_ids present in the role configuration.
