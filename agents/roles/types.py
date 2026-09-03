@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from agents.roles.chat_config import RoleChatConfig
+from agents.tools.types import ToolList
 
+type RoleIds = tuple[str, ...]
 
 @dataclass(frozen=True)
 class RoleConfig:
@@ -27,7 +29,7 @@ class RoleConfig:
     introduction_words: str
     responsibility_description: str = ""
     follow_up_max_rounds: int | None = None
-    tools: tuple[str, ...] = ()
+    tools: ToolList = ()
     chat: RoleChatConfig | None = None
 
     provider: str = ""
