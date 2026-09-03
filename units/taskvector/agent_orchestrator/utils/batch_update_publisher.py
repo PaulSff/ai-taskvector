@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from collections.abc import Mapping
 
+from agents.chat.context.follow_up_context import FollowUpContexts
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult, GraphEdit
+from core.schemas.primitives import Data, JsonObject
+from core.schemas.process_graph import ProcessGraph
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
 
@@ -40,14 +44,14 @@ class BatchUpdatePublisher:
     def run_id(self) -> str | None:
         return self._run_id
 
-    def publish_update(self, batch_payload: dict[str, Any]) -> None:
+    def publish_update(self, batch_payload: JsonObject) -> None:
         # unchanged: caller (publish_progress) now sets top-level "run_id"
         self._publisher.publish_update_batch(batch_payload)
 
     def publish_progress(
         self,
         *,
-        status: Any,
+        status: Data,
         role_id: str,
         agent_display: str,
         display_content: str,
@@ -55,18 +59,18 @@ class BatchUpdatePublisher:
         source: str,
         session_language: str,
         messenger: str,
-        llm_user_message: Any,
-        llm_system_prompt: Any,
+        llm_user_message: str,
+        llm_system_prompt: str,
         id: str | None = None,
         ts: float | None = None,
         # placeholders required by the inner message schema you already use
-        graph: dict[str, Any],
-        parsed_edits: list[Any] | None = None,
-        apply_meta: dict[str, Any] | None = None,
-        follow_up_contexts: list[str] | None = None,
-        last_apply_result: dict[str, Any] | None = None,
-        run_output: dict[str, Any] | None = None,
-        error: dict[str, Any] | None = None,
+        graph: ProcessGraph,
+        parsed_edits: list[GraphEdit] | None = None,
+        apply_meta: Mapping[str, object] | None,
+        follow_up_contexts: FollowUpContexts | None = None,
+        last_apply_result: AgentApplyWorkflowEditsResult | None = None,
+        run_output: Data | None = None,
+        error: Data| None = None,
     ) -> None:
         out = {
             "run_id": self._run_id,
