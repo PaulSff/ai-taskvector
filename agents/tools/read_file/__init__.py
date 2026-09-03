@@ -5,9 +5,8 @@ read_file follow-up: single ``read_file_workflow.json`` (Router → PayloadTrans
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import Any
 
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.read_file.follow_ups import (
@@ -17,11 +16,14 @@ from agents.tools.read_file.follow_ups import (
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
+from core.schemas.primitives import Data, WorkflowOutputs
 
 
-def _text_from_inner_outputs(inner: dict[str, Any]) -> str:
+def _text_from_inner_outputs(inner: Data) -> str:
     """Pull formatted RAG text and/or doc_to_text tables from one nested executor output dict."""
     bits: list[str] = []
     fr = inner.get("format_rag")
@@ -47,7 +49,7 @@ def _text_from_inner_outputs(inner: dict[str, Any]) -> str:
 
 
 def _text_from_read_file_workflow_outputs(
-    outputs: dict[str, Any], slot_name: str = "rw_run"
+    outputs: WorkflowOutputs, slot_name: str = "rw_run"
 ) -> str:
     """
     Extract and return cleaned text from a single workflow output slot (default "rw_run").
@@ -93,10 +95,10 @@ def _run_read_file_workflow_for_path(path: str) -> str:
 
 
 async def run_read_file_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     """
     Build follow-up context for parser ``read_file`` paths via ``read_file_workflow.json``.

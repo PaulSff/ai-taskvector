@@ -1,5 +1,5 @@
 """
-Register follow-up tool implementations by stable id (Phase 2+).
+Register follow-up tool implementations by stable id.
 
 Follow-up runners have this signature::
 
@@ -13,10 +13,10 @@ Follow-up runners have this signature::
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Protocol
 
-from agents.tools.types import ParserOutput, ToolList
+from agents.tools.types import LanguageHintGetter, ParserOutput, ToolList
 
 if TYPE_CHECKING:
     from agents.chat.context.follow_up_context import (
@@ -33,7 +33,7 @@ class FollowUpRunner(Protocol):
         ctx: ParserFollowUpContext,
         po: ParserOutput,
         *,
-        language_hint: Callable[[], str],
+        language_hint: LanguageHintGetter,
     ) -> Awaitable[FollowUpContribution]:
         ...
 
@@ -104,6 +104,9 @@ def _ensure_builtin_follow_up_tools() -> None:
     )
 
 
+    from .types import ActionBlock
+
+    ActionBlock._valid_parser_keys.cache_clear()
     _builtin_tools_loaded = True
 
 
@@ -122,6 +125,11 @@ def register_tool(tool_id: str, impl: FollowUpRunner) -> None:
 
     TOOL_RUNNERS[tid] = impl
 
+    # The set of valid parser keys may have changed.
+    from .types import ActionBlock
+
+    ActionBlock._valid_parser_keys.cache_clear()
+
 
 def list_tool_ids() -> ToolList:
     _ensure_builtin_follow_up_tools()
@@ -134,3 +142,7 @@ def clear_tool_registry_for_tests() -> None:
 
     TOOL_RUNNERS.clear()
     _builtin_tools_loaded = False
+
+    from .types import ActionBlock
+
+    ActionBlock._valid_parser_keys.cache_clear()

@@ -4,28 +4,26 @@ delete follow-up: delete file via delete workflow.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from agents.chat.agent_workflow import (
     DELETE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.delete.follow_ups import (
     DELETE_FOLLOW_UP_PREFIX,
     DELETE_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 EXECUTION_TIMEOUT_S: float = 30
 
 
 async def run_delete_file_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Deleting items…")

@@ -3,6 +3,6 @@
 from agents.tools.follow_up_common import FOLLOW_UP_RESPONSE_SESSION_SUFFIX
 
 RUN_WORKFLOW_FOLLOW_UP_PREFIX = (
-    "IMPORTANT: You requested to run the workflow. You must check the run result.\n\n"
+    "IMPORTANT: You requested running the workflow. You must check the run output.\n\n"
 )
 RUN_WORKFLOW_FOLLOW_UP_SUFFIX = FOLLOW_UP_RESPONSE_SESSION_SUFFIX

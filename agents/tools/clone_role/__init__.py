@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from agents.chat.agent_workflow import (
     CLONE_ROLE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.clone_role.follow_ups import (
     CLONE_ROLE_FOLLOW_UP_PREFIX,
     CLONE_ROLE_FOLLOW_UP_SUFFIX,
@@ -15,18 +13,20 @@ from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 
 EXECUTION_TIMEOUT_S: float = 60
 
 
 async def run_clone_role_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    hint: Callable[[], str] = language_hint  # ensure always defined
+    hint: LanguageHintGetter = language_hint  # ensure always defined
 
     chunk_ws: str = ""
 

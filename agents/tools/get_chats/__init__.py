@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from json import dumps
 from typing import Any
 
@@ -10,17 +9,19 @@ from agents.chat.agent_workflow import (
     GET_CHATS_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.get_chats.follow_ups import (
     GET_CHATS_FOLLOW_UP_PREFIX,
     GET_CHATS_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
+from core.schemas.primitives import Data
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
 
-def _format_telegram_result(tg_out: dict[str, Any]) -> str:
+def _format_telegram_result(tg_out: Data) -> str:
     err = tg_out.get("error")
     if isinstance(err, dict):
         msg = err.get("error") or err.get("message")
@@ -59,10 +60,10 @@ def _format_telegram_result(tg_out: dict[str, Any]) -> str:
 
 
 async def run_get_chats_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     action = po.get("get_unread") or po.get("get_chats")
     if not action:

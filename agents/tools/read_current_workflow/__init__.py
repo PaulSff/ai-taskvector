@@ -7,19 +7,21 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Callable
 
+from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.todo_list_manager import get_summary_params
 from agents.tools.read_current_workflow.follow_ups import (
     READ_CURRENT_WORKFLOW_FOLLOW_UP_PREFIX,
     READ_CURRENT_WORKFLOW_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 from core.graph.summary import graph_summary
-from agents.chat.context.todo_list_manager import get_summary_params
+from core.schemas import ProcessGraph
+from core.schemas.primitives import Data
 from gui.components.settings import get_coding_is_allowed
 
 
-def _graph_to_dict(graph_ref: Any) -> dict[str, Any]:
+def _graph_to_dict(graph_ref: list[ProcessGraph]) -> Data:
     if graph_ref is None:
         return {}
     if hasattr(graph_ref, "model_dump"):
@@ -28,10 +30,10 @@ def _graph_to_dict(graph_ref: Any) -> dict[str, Any]:
 
 
 async def run_read_current_workflow_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     if not po.get("read_current_workflow"):
         return FollowUpContribution(context_chunks=[], any_empty_tool=False)

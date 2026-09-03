@@ -1,16 +1,14 @@
 """JSON action line for clone_role."""
 
-TOOL_ACTION_PROMPT_LINE = (
-    """ - clone_role - create new role by clonnig an existing one (Analyst):
-        {
-          action: "clone_role",
-          new_role_name: "lowcase_new_role_name",
-          character_name: "e.g. Alex",
-          responsibility: "Responsible for...",
-          intro_brief: "Hello, I'm Admin...<one sentence at max>",
-          prompt_duties: "e.g. You analyse files, ...",
-          prompt_conversational_behavior: "e.g. - If the request is vague or exploratory, respond in natural language and ask focused follow-ups...",
-          prompt_reasoning: "e.g. - Break down tasks..., -...",
-          tools: ["grep", "read_file", "formulas_calc", ...]
-        }"""
-)
+TOOL_ACTION_PROMPT_LINE = """- clone_role: Create a new role by cloning an existing one:
+{
+  "action": "clone_role",
+  "new_role_name": "lowercase_new_role_name",
+  "character_name": "e.g. Alex",
+  "responsibility": "Responsible for...",
+  "intro_brief": "Hello, I'm Admin...<one sentence maximum>",
+  "prompt_duties": "e.g. You analyze files, ...",
+  "prompt_conversational_behavior": "e.g. Ask focused follow-ups when the request is vague...",
+  "prompt_reasoning": "e.g. Break down tasks into smaller steps...",
+  "tools": ["grep", "read_file", "formulas_calc"]
+}"""

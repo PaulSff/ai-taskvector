@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.report.follow_ups import (
     REPORT_FOLLOW_UP_PREFIX,
     REPORT_FOLLOW_UP_SUFFIX,
@@ -12,14 +10,16 @@ from agents.tools.report.follow_ups import (
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 
 
 async def run_report_follow_up(
-    ctx: Any,
-    _po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    _po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Generating file…")

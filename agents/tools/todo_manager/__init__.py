@@ -6,17 +6,15 @@ today TODO edits are applied as normal graph ``edits`` and post-apply messaging 
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
-from agents.tools.types import FollowUpContribution
+from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 
 async def run_todo_manager_follow_up(
-    _ctx: Any,
-    _po: dict[str, Any],
+    _ctx: ParserFollowUpContext,
+    _po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     """No-op unless ``parser_output`` gains a ``todo_manager`` slice (future)."""
     _ = language_hint

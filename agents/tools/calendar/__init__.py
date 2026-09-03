@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from agents.chat.agent_workflow import (
     CALENDAR_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.calendar.follow_ups import (
     CALENDAR_FOLLOW_UP_PREFIX,
     CALENDAR_FOLLOW_UP_SUFFIX,
@@ -15,16 +13,18 @@ from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 
 EXECUTION_TIMEOUT_S: float = 60.0
 
 
 async def run_calendar_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Using calendar…")

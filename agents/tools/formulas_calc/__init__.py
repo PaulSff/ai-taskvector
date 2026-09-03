@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Any
 
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_PREFIX,
@@ -11,6 +12,8 @@ from agents.tools.formulas_calc.follow_ups import (
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
 
@@ -90,10 +93,10 @@ async def _run_formulas_calc_workflow(action: dict[str, Any]) -> str:
 
 
 async def run_formulas_calc_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     """
     Build follow-up context from ``formulas_calc`` on parser_output (same shape as the LLM action dict).
@@ -126,9 +129,7 @@ async def run_formulas_calc_follow_up(
 
         if merged_err:
             text = _format_calc_body(merged_results, merged_err)
-        elif isinstance(merged_results, dict):
-            text = _format_calc_body(merged_results, None)
-        elif merged_results not in (None, ""):
+        elif isinstance(merged_results, dict) or merged_results not in (None, ""):
             text = _format_calc_body(merged_results, None)
         elif isinstance(fc, dict):
             text = await _run_formulas_calc_workflow(fc)

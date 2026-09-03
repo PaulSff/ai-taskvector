@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from agents.chat.agent_workflow import (
     WEB_SEARCH_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 from agents.tools.web_search.follow_ups import (
     WEB_SEARCH_FOLLOW_UP_PREFIX,
     WEB_SEARCH_FOLLOW_UP_SUFFIX,
@@ -19,10 +17,10 @@ EXECUTION_TIMEOUT_S: float = 30.0
 
 
 async def run_web_search_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Searching web…")

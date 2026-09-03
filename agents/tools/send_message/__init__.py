@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Any
 
+from agents.chat.agent_workflow import (
+    SEND_MESSAGE_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.send_message.follow_ups import (
     SEND_MESSAGE_FOLLOW_UP_PREFIX,
     SEND_MESSAGE_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
-from agents.chat.agent_workflow import (
-    SEND_MESSAGE_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -50,10 +51,10 @@ def _format_telegram_result(tg_out: dict[str, Any]) -> str:
 
 
 async def run_send_message_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     action = po.get("send_message")
     if not action:

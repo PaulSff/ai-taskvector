@@ -6,6 +6,7 @@ Tool runners consume normalized parser output and a narrow follow-up context pro
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
 
@@ -31,8 +32,9 @@ FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP = "read_file_follow_up"
 
 type ToolList = tuple[str, ...]
 
+type LanguageHintGetter = Callable[[], str]
 
-class ActionBlock(BaseModel):
+class ActionBlock[ActionT: str](BaseModel):
     """
     An LLM-emitted action with the shape:
 
@@ -43,8 +45,15 @@ class ActionBlock(BaseModel):
 
     The action must be either:
 
-    - a parser_key belonging to one of the registered tool runners; or
+    - a parser key belonging to one of the registered tool runners; or
     - a valid GraphEdit action.
+
+    Concrete tools can specialize the action field with Literal, for example:
+
+        class AddCommentActionBlock(
+            ActionBlock[Literal["add_comment"]]
+        ):
+            info: str
     """
 
     model_config = ConfigDict(
@@ -52,13 +61,16 @@ class ActionBlock(BaseModel):
         strict=True,
     )
 
-    action: str
+    action: ActionT
 
     @staticmethod
     @cache
     def _valid_parser_keys() -> frozenset[str]:
-        # Import lazily to avoid a circular import if the tool-runner module
-        # imports ActionBlock.
+        """
+        Return all parser keys belonging to registered tool runners.
+
+        Imports are intentionally lazy to avoid circular imports.
+        """
         from .catalog import parser_keys_for_tool
         from .registry import TOOL_RUNNERS
 
@@ -73,11 +85,14 @@ class ActionBlock(BaseModel):
         return frozenset(parser_keys)
 
     @model_validator(mode="after")
-    def validate_action(self) -> ActionBlock:
-        if self.action in self._valid_parser_keys():
+    def validate_action(self) -> ActionBlock[ActionT]:
+        """
+        Validate the action against the registered parser keys or GraphEdit.
+        """
+        if self.is_edit:
             return self
 
-        if self.is_edit:
+        if str(self.action) in self._valid_parser_keys():
             return self
 
         raise ValueError(
@@ -88,7 +103,6 @@ class ActionBlock(BaseModel):
     @property
     def is_edit(self) -> bool:
         """Whether the complete action is a valid GraphEdit."""
-
         raw_action: Data = {
             "action": self.action,
             **(self.model_extra or {}),
@@ -102,8 +116,8 @@ class ActionBlock(BaseModel):
         return True
 
     def as_json_object(self) -> Data:
+        """Return the action block as a JSON-compatible object."""
         return self.model_dump(mode="json")
-
 
 @dataclass
 class FollowUpContribution:

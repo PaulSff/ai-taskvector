@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
-from typing import Any
 
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.run_workflow.follow_ups import (
     RUN_WORKFLOW_FOLLOW_UP_PREFIX,
     RUN_WORKFLOW_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 
 async def run_run_workflow_follow_up(
-    ctx: Any,
-    _po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    _po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Workflow run result…")

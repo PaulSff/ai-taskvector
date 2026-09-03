@@ -8,9 +8,8 @@ Lookup adds registry paths; **PayloadTransform.repeat_for_each** builds **Chamel
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import Any
 
+from agents.chat.context.follow_up_context import ParserFollowUpContext
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
@@ -19,11 +18,16 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
+from core.schemas import Unit
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph
 
 
-def _rag_excerpt_blocks_from_chameleon(ch_out: Any, paths: list[str]) -> list[str]:
+def _rag_excerpt_blocks_from_chameleon(ch_out: Data, paths: list[str]) -> list[str]:
     """Build ``--- path ---\\n<text>`` blocks from Chameleon step outputs (nested ``format_rag.data``)."""
     steps = (ch_out or {}).get("data") if isinstance(ch_out, dict) else None
     if not isinstance(steps, list):
@@ -47,10 +51,10 @@ def _rag_excerpt_blocks_from_chameleon(ch_out: Any, paths: list[str]) -> list[st
 
 
 def _run_read_code_block_follow_up_workflow(
-    graph_dict: dict[str, Any],
-    unit_ids: list[str],
+    graph_dict: ProcessGraph,
+    unit_ids: list[Unit],
     session_language: str,
-) -> dict[str, Any]:
+) -> Data:
     """Run the full read_code_block follow-up graph; returns executor outputs dict."""
     from runtime.run import run_workflow
 
@@ -78,12 +82,12 @@ def _run_read_code_block_follow_up_workflow(
     )
 
 
-def _impl_types_from_follow_up_out(out: dict[str, Any]) -> list[str]:
+def _impl_types_from_follow_up_out(out: Data) -> list[str]:
     data = (out.get("lookup_graph_units") or {}).get("data")
     if not isinstance(data, dict):
-        raise RuntimeError(
+        raise TypeError(
             "read_code_block follow-up: expected executor output lookup_graph_units.data to be a dict, "
-            f"got {type(data).__name__}"
+            + f"got {type(data).__name__}"
         )
     raw = data.get("canonical_types_without_code_block")
     if raw is None:
@@ -92,7 +96,7 @@ def _impl_types_from_follow_up_out(out: dict[str, Any]) -> list[str]:
             "'canonical_types_without_code_block'"
         )
     if not isinstance(raw, list):
-        raise RuntimeError(
+        raise TypeError(
             "read_code_block follow-up: canonical_types_without_code_block must be a list, "
             f"got {type(raw).__name__}"
         )
@@ -100,17 +104,17 @@ def _impl_types_from_follow_up_out(out: dict[str, Any]) -> list[str]:
 
 
 async def run_read_code_block_follow_up(
-    ctx: Any,
-    po: dict[str, Any],
+    ctx: ParserFollowUpContext,
+    po: ParserOutput,
     *,
-    language_hint: Callable[[], str],
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     ids = list(po.get("read_code_block_ids") or [])
     hint = language_hint
     impl_types: list[str] = []
     chunks: list[str] = []
 
-    def _extra() -> dict[str, Any]:
+    def _extra() -> Data:
         return {
             FOLLOW_UP_EXTRA_READ_CODE_IDS: list(ids),
             FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES: list(impl_types),
@@ -133,7 +137,7 @@ async def run_read_code_block_follow_up(
             else (_g if isinstance(_g, dict) else _g)
         )
         updated = await add_tasks_for_read_code_block(ids, _g_dict)
-        graph_for_cb: dict[str, Any] = {}
+        graph_for_cb: Data = {}
         if isinstance(updated, dict):
             graph_for_cb = updated
         elif hasattr(updated, "model_dump"):
