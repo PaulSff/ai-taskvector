@@ -9,9 +9,12 @@ from agents.chat.agent_workflow.wf_response_schema import (
 )
 from agents.chat.role_turns.protocol import WorkflowRunner
 from agents.chat.session.state import AgentChatHistory
+from agents.tools.catalog import OrderedToolsForRole
+from agents.tools.types import ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
+from runtime.executor import GraphStreamCallback
 
 
 class SessionProxy:
@@ -51,18 +54,18 @@ class ToolCtxProxy:
         last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
         follow_up_contexts: list[str],
         wf_language_hint: list[str],
-        overrides: Data,
-        follow_up_tool_ids: tuple[str, ...] | None,
+        overrides: WorkflowInputs,
+        follow_up_tool_ids: ToolList | None,
         analyst_mode: bool,
         agent_role_id: str,
         agent_workflow_path: Path | None,
         state: SessionProxy,
-        stream_cb: Callable[[str], None] | None,
+        stream_cb: GraphStreamCallback| None,
         recent_changes: str | None,
         turn_id: str,
         agent_label: str,
         max_rounds: int,
-        ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None,
+        ordered_follow_up_tools: OrderedToolsForRole | None = None,
         prefer_inline_workflow: bool = False,
     ) -> None:
         print(
@@ -85,18 +88,18 @@ class ToolCtxProxy:
         ] = last_apply_result_ref
         self.follow_up_contexts: list[str] = follow_up_contexts
         self.wf_language_hint: list[str] = wf_language_hint
-        self.overrides: Data = overrides
-        self.follow_up_tool_ids: tuple[str, ...] | None = follow_up_tool_ids
+        self.overrides: WorkflowInputs = overrides
+        self.follow_up_tool_ids: ToolList | None = follow_up_tool_ids
         self.analyst_mode: bool = analyst_mode
         self.agent_role_id: str = agent_role_id
         self.agent_workflow_path: Path | None = agent_workflow_path
         self.state: SessionProxy = state
-        self._stream_cb: Callable[[str], None] | None = stream_cb
+        self._stream_cb: GraphStreamCallback | None = stream_cb
         self._recent_changes: str | None = recent_changes
         self.turn_id: str = turn_id
         self.agent_label: str = agent_label
         self.max_rounds: int = max_rounds
-        self.ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = (
+        self.ordered_follow_up_tools: OrderedToolsForRole | None = (
             ordered_follow_up_tools
         )
         self._prefer_inline_workflow: bool = prefer_inline_workflow
@@ -108,7 +111,7 @@ class ToolCtxProxy:
         self.follow_up_source_response: Data | None = None
 
         # Unique token; is_current_run always returns True in headless mode
-        self.token: object = object()
+        self.token: int
         self.stream_buffer_ref: list[str] = [""]
 
         print(

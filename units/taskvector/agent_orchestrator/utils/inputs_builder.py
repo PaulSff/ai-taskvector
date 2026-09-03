@@ -1,13 +1,17 @@
 from typing import Any
 
+from agents.chat.session.state import AgentChatHistory
+from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+
 
 async def build_initial_inputs(
     user_message: str,
-    graph: Any,
-    last_apply_result: Any,
+    graph: ProcessGraph,
+    last_apply_result: AgentApplyWorkflowEditsResult,
     recent_changes: str | None,
     session_language: str,
-    history: list[Any],
+    history: AgentChatHistory,
     wf_language_hint: str,
     *,
     follow_up_context: str = "",

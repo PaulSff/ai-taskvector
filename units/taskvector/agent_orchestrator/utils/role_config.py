@@ -7,7 +7,7 @@ def get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
     Build role execution config: workflow_path, overrides, analyst_mode, tool lists,
     max_follow_ups.
     """
-    from agents.chat.agent_workflow.helpers import (
+    from agents.chat.agent_workflow.build_units_param_overrides import (
         build_agent_workflow_unit_param_overrides,
     )
     from agents.roles.registry import get_role
@@ -26,7 +26,6 @@ def get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
     workflow_path = get_role_chat_workflow_path(role_id)
 
     provider = str(ctx.get("provider") or "ollama")
-    cfg = dict(ctx.get("cfg") or {})
     mydata_dir = str(ctx.get("mydata_dir") or ".")
     report_output_dir = str(Path(mydata_dir) / "reports")
 
@@ -45,8 +44,9 @@ def get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
 
     overrides = build_agent_workflow_unit_param_overrides(
         provider,
-        cfg,
         report_output_dir=report_output_dir,
+        model_name=role.ollama_model,
+        host=role.ollama_host,
         prompt_template_path=prompt_template_path,
         llm_options_role_id=role_id,
         rag_top_k_role_id=role_id,
