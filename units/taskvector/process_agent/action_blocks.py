@@ -21,238 +21,70 @@ Filtering	Parsed Obj	Remove noise	Ensures only "Actions" are executed
 
 from __future__ import annotations
 
-import json
-import re
-from typing import Any, cast
+from typing import cast
 
-# the same as in GUI message renderer
-_CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
+from pydantic import ValidationError
 
+from agents.tools.types import ParsedActions, ParserOutput
+from core.graph import GraphEdit
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    JsonValue,
+    is_json_object,
+)
 
-def _remove_json_comments(s: str) -> str:
-    """Strip // and # line comments, and /* */ block comments, only when outside double-quoted strings.
-    Also removes trailing commas before ] or }. This allows LLM output with comments (e.g. in add_code_block blocks) to parse."""
-    in_string = False
-    escape = False
-    i = 0
-    n = len(s)
-    out: list[str] = []
-    while i < n:
-        if escape:
-            escape = False
-            out.append(s[i])
-            i += 1
-            continue
-        if in_string:
-            if s[i] == "\\":
-                escape = True
-                out.append(s[i])
-                i += 1
-                continue
-            if s[i] == '"':
-                in_string = False
-            out.append(s[i])
-            i += 1
-            continue
-        # Not in string
-        if s[i] == '"':
-            in_string = True
-            out.append(s[i])
-            i += 1
-            continue
-        if s[i : i + 2] == "//":
-            # Line comment: skip to end of line
-            j = s.find("\n", i + 2)
-            if j == -1:
-                j = n
-            i = j
-            if i < n and s[i] == "\n":
-                out.append(s[i])
-                i += 1
-            continue
-        if s[i : i + 2] == "/*":
-            # Block comment: skip to */
-            j = s.find("*/", i + 2)
-            if j == -1:
-                j = n
-            i = j + 2
-            continue
-        if s[i] == "#":
-            # # line comment (e.g. shell-style)
-            j = s.find("\n", i + 1)
-            if j == -1:
-                j = n
-            i = j
-            if i < n and s[i] == "\n":
-                out.append(s[i])
-                i += 1
-            continue
-        out.append(s[i])
-        i += 1
-    # Trailing commas before ] or }
-    s2 = "".join(out)
-    s2 = re.sub(r",\s*([}\]])", r"\1", s2)
-    return s2
+from .parser import parse_json_blocks
 
 
-def strip_json_blocks(content: str) -> str:
-    """Remove fenced JSON blocks from content. Used when preparing history for LLM context."""
-    return re.sub(r"```(?:json)?[\s\S]*?```", "", content).strip()
-
-
-def _is_action_oriented(obj: Any) -> bool:
-    """Check if the parsed JSON object is a dict with 'action' or 'edits', or a list containing such a dict."""
-    if isinstance(obj, dict):
-        return "action" in obj or "edits" in obj
-    if isinstance(obj, list):
-        return any(isinstance(i, dict) and ("action" in i or "edits" in i) for i in obj)
-    return False
-
-
-def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
-    """
-    Extract and parse JSON blocks from LLM content.
-    Prefers fenced ```json blocks; falls back to inline {...} scanning.
-    Fenced extraction is JSON-aware to ignore ``` sequences that appear inside JSON payloads/strings.
-    Returns list of parsed objects, or {parse_error: str} if fenced blocks were present but all failed.
-    """
-    content = content.strip()
-    results: list[Any] = []
-
-    # --- Fenced JSON extraction (JSON-aware closing fence) ---
-    open_re = re.compile(r"(?m)^```(?:json)?[ \t]*\n")
-    close_re = _CLOSE_FENCE_LINE  # (?m)^```\s*$
-
-    fenced_blocks: list[str] = []
-    pos = 0
-    while True:
-        m_open = open_re.search(content, pos)
-        if not m_open:
-            break
-
-        body_start = m_open.end()
-        j = body_start
-
-        json_depth = 0
-        in_string = False
-        escape = False
-
-        while j < len(content):
-            if content.startswith("```", j):
-                m_close = close_re.match(content, j)
-                if m_close and json_depth == 0 and not in_string:
-                    fenced_blocks.append(content[body_start:j])
-                    pos = m_close.end()
-                    break
-
-            ch = content[j]
-            if in_string:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_string = False
-            else:
-                if ch == '"':
-                    in_string = True
-                elif ch in "{[":
-                    json_depth += 1
-                elif ch in "}]" and json_depth > 0:
-                    json_depth -= 1
-            j += 1
-        else:
-            break
-
-    fenced_parse_attempted = len(fenced_blocks) > 0
-    for block in fenced_blocks:
-        try:
-            clean = _remove_json_comments(block.strip())
-            obj = json.loads(clean)
-            if _is_action_oriented(obj):
-                results.append(obj)
-        except json.JSONDecodeError:
-            continue
-
-    if fenced_parse_attempted and not results:
-        return {
-            "parse_error": "Invalid JSON: syntax error or comments detected in fenced block"
-        }
-
-    if results:
-        return results
-
-    # --- Fallback: scan for inline JSON blocks ---
-    i, n = 0, len(content)
-    while i < n:
-        if content[i] == "{":
-            depth = 0
-            for j in range(i, n):
-                if content[j] == "{":
-                    depth += 1
-                elif content[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        raw = content[i : j + 1]
-                        try:
-                            clean = _remove_json_comments(raw)
-                            obj = json.loads(clean)
-                            if _is_action_oriented(obj):
-                                results.append(obj)
-                            i = j + 1
-                            break
-                        except json.JSONDecodeError:
-                            i = j + 1
-                            break
-            else:
-                i += 1
-        else:
-            i += 1
-
-    return results
-
-
-def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
+def parse_action_blocks(content: str) -> ParserOutput:
     """
     Parse LLM content into a generic list of action blocks (any dict with an "action" key).
     """
-    parsed = _parse_json_blocks(content)
-    if isinstance(parsed, dict):
-        return parsed
+    parsed = parse_json_blocks(content)
+
+    if isinstance(parsed, str):
+        return ParserOutput(error=parsed)
+
     return _parsed_blocks_to_action_blocks(parsed)
 
 
 def _parsed_blocks_to_action_blocks(
-    parsed_blocks: list[Any],
-) -> list[dict[str, Any]] | dict[str, Any]:
+    parsed_blocks: list[JsonValue],
+) -> ParserOutput:
     """Convert parsed JSON blocks to flat list of action dicts; extract side-channel actions into separate keys."""
-    edits: list[dict[str, Any]] = []
+    edits: list[JsonObject] = []
     read_file_paths: list[str] = []
     read_code_block_ids: list[str] = []
+
     web_search_query: str | None = None
     web_search_max_results: int | None = None
     browse_url: str | None = None
-    github_obj: dict[str, Any] | None = None
-    report_obj: dict[str, Any] | None = None
-    run_workflow_obj: dict[str, Any] | None = None
-    grep_obj: dict[str, Any] | None = None
-    formulas_calc_obj: dict[str, Any] | None = None
-    delegate_request_obj: dict[str, Any] | None = None
-    read_current_workflow_requested = False
-    send_messages: list[dict[str, Any]] = []
-    get_unreads: list[dict[str, Any]] = []
-    no_edit_obj: dict[str, Any] | None = None
-    calendar_obj: dict[str, Any] | None = None
-    clone_role_obj: dict[str, Any] | None = None
-    rag_search_obj: dict[str, Any] | None = None
-    list_dir_obj: dict[str, Any] | None = None
-    new_file_obj: dict[str, Any] | None = None
-    edit_file_obj: dict[str, Any] | None = None
-    rename_obj: dict[str, Any] | None = None
-    delete_obj: dict[str, Any] | None = None
-    make_dir_obj: dict[str, Any] | None = None
 
-    def collect_one(obj: dict[str, Any]) -> None:
+    github_obj: Data | None = None
+    report_obj: Data | None = None
+    run_workflow_obj: Data | None = None
+    grep_obj: Data | None = None
+    formulas_calc_obj: Data | None = None
+    delegate_request_obj: Data | None = None
+
+    read_current_workflow_requested = False
+
+    send_messages: list[Data] = []
+    get_unreads: list[Data] = []
+
+    calendar_obj: Data | None = None
+    clone_role_obj: Data | None = None
+    rag_search_obj: Data | None = None
+    list_dir_obj: Data | None = None
+    new_file_obj: Data | None = None
+    edit_file_obj: Data | None = None
+    rename_obj: Data | None = None
+    delete_obj: Data | None = None
+    make_dir_obj: Data | None = None
+    no_edit_obj: Data | None = None
+
+    def collect_one(obj: JsonObject) -> None:
         grey = "\033[38;5;245m"
         reset = "\033[0m"
         print(f"{grey}[action_blocks]collect_one obj: {obj}{reset}", flush=True)
@@ -301,18 +133,25 @@ def _parsed_blocks_to_action_blocks(
         if obj.get("action") == "read_current_workflow":
             read_current_workflow_requested = True
             return
-        if obj.get("action") == "web_search":
-            q = obj.get("query") or obj.get("q")
-            if isinstance(q, str) and q.strip():
-                web_search_query = q.strip()
-            mr = obj.get("max_results")
-            if mr is not None:
-                try:
-                    n = int(mr)
-                    if n >= 1:
-                        web_search_max_results = min(20, n)
-                except (TypeError, ValueError):
-                    pass
+        mr = obj.get("max_results")
+
+        if isinstance(mr, bool):
+            pass  # Reject booleans explicitly
+        elif isinstance(mr, int):
+            if mr >= 1:
+                web_search_max_results = min(20, mr)
+        elif isinstance(mr, float):
+            if mr.is_integer() and mr >= 1:
+                web_search_max_results = min(20, int(mr))
+        elif isinstance(mr, str):
+            try:
+                n = int(mr.strip())
+            except ValueError:
+                pass
+            else:
+                if n >= 1:
+                    web_search_max_results = min(20, n)
+
             return
         if obj.get("action") == "browse":
             u = obj.get("url") or obj.get("URL")
@@ -322,13 +161,13 @@ def _parsed_blocks_to_action_blocks(
         if obj.get("action") == "github":
             payload = obj.get("payload")
             if isinstance(payload, dict) and payload.get("action"):
-                github_obj = payload
+                github_obj = cast(Data, payload)
             return
         if obj.get("action") == "report":
-            report_obj = obj
+            report_obj = cast(Data, obj)
             return
         if obj.get("action") == "list_dir":
-            list_dir_obj = obj
+            list_dir_obj = cast(Data, dict(obj))
             return
         if obj.get("action") == "run_workflow":
             run_workflow_obj = {
@@ -355,7 +194,7 @@ def _parsed_blocks_to_action_blocks(
             delegate_request_obj = dict(obj)
             return
         if obj.get("action") == "send_message":
-            m = {"action": "send_message"}
+            m: Data = {"action": "send_message"}
             messenger = obj.get("messenger")
             chat_id = obj.get("chat_id")
             message = obj.get("message")
@@ -372,7 +211,12 @@ def _parsed_blocks_to_action_blocks(
             if isinstance(messenger, str):
                 messenger = messenger.strip()
             if messenger:
-                get_unreads.append({"action": "get_unread", "messenger": messenger})
+                get_unreads.append(
+                    {
+                        "action": "get_unread",
+                        "messenger": messenger,
+                    }
+                )
             return
         if obj.get("action") == "calendar":
             calendar_obj = dict(obj)
@@ -472,99 +316,65 @@ def _parsed_blocks_to_action_blocks(
         if obj.get("action") == "no_edit":
             no_edit_obj = dict(obj)
             return
+        nested_edits = obj.get("edits")
+
         if obj.get("action"):
             edits.append(obj)
-        elif isinstance(obj.get("edits"), list):
-            for e in obj["edits"]:
-                if isinstance(e, dict):
-                    collect_one(e)
+        elif isinstance(nested_edits, list):
+            for item in nested_edits:
+                if is_json_object(item):
+                    collect_one(item)
+
 
     for parsed in parsed_blocks:
         if isinstance(parsed, list):
-            for e in parsed:
-                if isinstance(e, dict):
-                    collect_one(e)
-        elif isinstance(parsed, dict):
+            for item in parsed:
+                if is_json_object(item):
+                    collect_one(item)
+        elif is_json_object(parsed):
             collect_one(parsed)
 
-    if (
-        read_file_paths
-        or read_code_block_ids
-        or read_current_workflow_requested
-        or web_search_query
-        or browse_url
-        or github_obj is not None
-        or report_obj is not None
-        or run_workflow_obj is not None
-        or grep_obj is not None
-        or formulas_calc_obj is not None
-        or delegate_request_obj is not None
-        or send_messages
-        or get_unreads
-        or calendar_obj is not None
-        or clone_role_obj is not None
-        or no_edit_obj is not None
-        or rag_search_obj is not None
-        or list_dir_obj is not None
-        or new_file_obj is not None
-        or edit_file_obj is not None
-        or rename_obj is not None
-        or delete_obj is not None
-        or make_dir_obj is not None
-    ):
-        out: dict[str, Any] = {"edits": edits}
-        if read_file_paths:
-            out["read_file"] = list(dict.fromkeys(read_file_paths))
-        if read_code_block_ids:
-            out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
-        if read_current_workflow_requested:
-            out["read_current_workflow"] = True
-        if web_search_query:
-            out["web_search"] = web_search_query
-        if web_search_max_results is not None:
-            out["web_search_max_results"] = web_search_max_results
-        if browse_url:
-            out["browse_url"] = browse_url
-        if github_obj is not None:
-            out["github"] = github_obj
-        if report_obj is not None:
-            out["report"] = report_obj
-        if run_workflow_obj is not None:
-            out["run_workflow"] = run_workflow_obj
-        if grep_obj is not None:
-            out["grep"] = grep_obj
-        if formulas_calc_obj is not None:
-            out["formulas_calc"] = formulas_calc_obj
-        if delegate_request_obj is not None:
-            out["delegate_request"] = delegate_request_obj
-        if send_messages:
-            out["send_message"] = send_messages
-        if get_unreads:
-            out["get_unread"] = get_unreads
-        if calendar_obj is not None:
-            out["calendar"] = calendar_obj
-        if clone_role_obj is not None:
-            out["clone_role"] = clone_role_obj
-        if rag_search_obj is not None:
-            out["rag_search"] = rag_search_obj
-        if list_dir_obj is not None:
-            out["list_dir"] = list_dir_obj
-        if new_file_obj is not None:
-            out["new_file"] = new_file_obj
-        if edit_file_obj is not None:
-            out["edit_file"] = edit_file_obj
-        if rename_obj is not None:
-            out["rename"] = rename_obj
-        if delete_obj is not None:
-            out["delete"] = delete_obj
-        if make_dir_obj is not None:
-            out["make_dir"] = make_dir_obj
-        if no_edit_obj is not None:
-            out["no_edit"] = no_edit_obj
-        return out
-    return edits
+    graph_edits: list[GraphEdit] = []
+
+    for raw_edit in edits:
+        try:
+            graph_edits.append(GraphEdit.model_validate(raw_edit))
+        except ValidationError:
+            continue
+
+    actions = ParsedActions(
+        # GraphEdit actions
+        edits=graph_edits,
+        # Other Tool calls
+        read_file=list(dict.fromkeys(read_file_paths)),
+        read_code_block_ids=list(dict.fromkeys(read_code_block_ids)),
+        read_current_workflow=read_current_workflow_requested,
+        web_search=web_search_query,
+        web_search_max_results=web_search_max_results,
+        browse_url=browse_url,
+        github=github_obj,
+        report=report_obj,
+        run_workflow=run_workflow_obj,
+        grep=grep_obj,
+        formulas_calc=formulas_calc_obj,
+        delegate_request=delegate_request_obj,
+        send_message=send_messages,
+        get_unread=get_unreads,
+        calendar=calendar_obj,
+        clone_role=clone_role_obj,
+        rag_search=rag_search_obj,
+        list_dir=list_dir_obj,
+        new_file=new_file_obj,
+        edit_file=edit_file_obj,
+        rename=rename_obj,
+        delete=delete_obj,
+        make_dir=make_dir_obj,
+        no_edit=no_edit_obj,
+    )
+
+    return ParserOutput(actions=actions)
 
 
-def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, Any]:
-    """Alias for parse_action_blocks (backward compat)."""
+def parse_workflow_edits(content: str) -> ParserOutput:
+    """Alias for parse_action_blocks for backward compatibility."""
     return parse_action_blocks(content)
