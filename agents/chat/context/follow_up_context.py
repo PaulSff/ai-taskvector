@@ -11,6 +11,8 @@ from agents.chat.agent_workflow.wf_response_schema import (
 )
 from agents.chat.context.language_control import SessionLanguageSink
 from agents.chat.role_turns.protocol import WorkflowStreamingRunner
+from agents.tools.catalog import OrderedToolsForRole
+from agents.tools.types import ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
@@ -55,7 +57,7 @@ class ParserFollowUpContext:
 
     # None means all Workflow Designer follow-up tools.
     # Otherwise, this is an allowlist of tool IDs from the catalog or role.yaml.
-    follow_up_tool_ids: tuple[str, ...] | None = None
+    follow_up_tool_ids: ToolList | None = None
 
     # Workflow response dictionary for the current follow-up round.
     follow_up_source_response: Data | None = None
@@ -74,7 +76,7 @@ class ParserFollowUpContext:
 
     # When set, only these (tool_id, parser_key) pairs run in follow-up order.
     # Otherwise, the Workflow Designer catalog order is used.
-    ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None
+    ordered_follow_up_tools: OrderedToolsForRole| None = None
 
     # Optional development callback containing the response dictionary,
     # including llm_system_prompt and llm_user_message.
@@ -142,7 +144,7 @@ class PostApplyFollowUpContext:
     ]
     replace_agent_message_row: Callable[[dict[str, object]], None]
     stream_buffer_ref: list[str]
-    apply_fn: Callable[[object], None]
+    apply_fn: Callable[[ProcessGraph], None]
     agent_workflow_path: Path | None = None
     analyst_mode: bool = False
     record_llm_prompt_view: Callable[[MergeResponse], None] | None = field(
