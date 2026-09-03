@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import Any
+
+from core.schemas.primitives import Data
 
 
-def get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
+def get_role_config(role_id: str, ctx: Data) -> Data:
     """
     Build role execution config: workflow_path, overrides, analyst_mode, tool lists,
     max_follow_ups.
