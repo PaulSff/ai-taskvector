@@ -1,8 +1,9 @@
-from typing import Any
+from __future__ import annotations
 
 from agents.chat.session.state import AgentChatHistory
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import WorkflowInputs
 
 
 async def build_initial_inputs(
@@ -18,7 +19,7 @@ async def build_initial_inputs(
     coding_is_allowed: bool = True,
     contribution_is_allowed: bool = False,
     analyst_mode: bool = False,
-) -> dict[str, dict[str, Any]]:
+) -> WorkflowInputs:
     """Build initial_inputs for run_agent_workflow (workflow JSON injects)."""
     from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
     from agents.chat.handlers.chat_turn_context import format_previous_turn

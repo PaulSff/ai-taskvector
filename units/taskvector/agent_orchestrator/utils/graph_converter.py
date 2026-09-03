@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph

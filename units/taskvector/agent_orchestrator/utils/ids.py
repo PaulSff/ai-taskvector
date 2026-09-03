@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def new_id() -> str:
     """uuid4 hex string."""
     from uuid import uuid4

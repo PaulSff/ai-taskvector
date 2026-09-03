@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
