@@ -1,17 +1,21 @@
-from typing import Any
-
 from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+    GraphEdit,
+)
+from core.schemas.primitives import Data
 
 
 async def apply_and_augment_graph(
     graph_to_apply: ProcessGraph,
-    edits: list[Any],
-    ctx: dict[str, Any],
-    graph_ref: list[Any],
-    last_apply_result_ref: list[Any],
+    edits: list[GraphEdit],
+    ctx: Data,
+    graph_ref: list[ProcessGraph],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
 ) -> tuple[ProcessGraph | None, list[str], str | None]:
     from agents.chat.agent_workflow.helpers import (
-        refresh_last_apply_result_after_canvas_apply,
+        refresh_last_graph_apply_result,
         validate_graph_to_apply_for_canvas_async,
     )
     from agents.chat.context.todo_list_manager import (
@@ -75,12 +79,16 @@ async def apply_and_augment_graph(
 
     prev = last_apply_result_ref[0]
 
-    last_apply_result_ref[0] = (
-        await refresh_last_apply_result_after_canvas_apply(
-            prev,
-            graph_to_apply,
-            supplement_summary="; ".join(supplements),
-        )
+    apply_result = ApplyWorkflowEditsResult(
+        success=True,
+        graph=graph_to_apply,
     )
+
+    last_apply_result_ref[0] = await refresh_last_graph_apply_result(
+        prev,
+        apply_result,
+        supplement_summary="; ".join(supplements),
+    )
+
 
     return graph_to_apply, supplements, None
