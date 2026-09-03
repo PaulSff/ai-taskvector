@@ -16,6 +16,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Protocol
 
+from agents.tools.types import ToolList
+from core.schemas.primitives import Data
+
 if TYPE_CHECKING:
     from agents.chat.context.follow_up_context import (
         ParserFollowUpContext,
@@ -29,7 +32,7 @@ class FollowUpRunner(Protocol):
     def __call__(
         self,
         ctx: ParserFollowUpContext,
-        po: dict[str, object],
+        po: Data,
         *,
         language_hint: Callable[[], str],
     ) -> Awaitable[FollowUpContribution]:
@@ -121,7 +124,7 @@ def register_tool(tool_id: str, impl: FollowUpRunner) -> None:
     TOOL_RUNNERS[tid] = impl
 
 
-def list_tool_ids() -> tuple[str, ...]:
+def list_tool_ids() -> ToolList:
     _ensure_builtin_follow_up_tools()
     return tuple(sorted(TOOL_RUNNERS))
 
