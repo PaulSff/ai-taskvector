@@ -6,9 +6,17 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import cast
 
 from core.schemas import ProcessGraph
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    JsonValue,
+    WorkflowInputs,
+    require_json_object_from_object,
+)
 from gui.components.settings import (
     get_turn_driver_job_pub_endpoint,
     get_turn_driver_max_concurrent_calls,
@@ -26,6 +34,13 @@ logger = logging.getLogger(__name__)
 OnToken = Callable[
     [str, str], Awaitable[None]
 ]  # (session_id, token_piece) -> awaitable
+
+
+@dataclass
+class JobState:
+    final_error: str | None = None
+    final_outputs: Data | None = None
+
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = get_turn_driver_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
@@ -50,12 +65,11 @@ UPDATE_BATCH_ENDPOINTS = [f"{upd_host}:{upd_port + 2 * i}" for i in range(N)]
 _slot_allocator = RoundRobinSlotAllocator(N)
 
 def _set_update_pub_endpoint_in_overrides(
-    unit_param_overrides: dict[str, object] | None,
+    unit_param_overrides: WorkflowInputs | None,
     *,
     update_pub_endpoint: str,
     run_id: str,
-) -> dict[str, object] | None:
-    # Keep caller's dict immutable
+) -> WorkflowInputs | None:
     if unit_param_overrides is None:
         return {
             "orchestrator": {
@@ -65,14 +79,18 @@ def _set_update_pub_endpoint_in_overrides(
         }
 
     copied = dict(unit_param_overrides)
+
     orch = copied.get("orchestrator")
-    orch_dict = cast(dict[str, object], orch if isinstance(orch, dict) else {})
+    orch_dict = orch if isinstance(orch, dict) else {}
+
     copied["orchestrator"] = {
         **orch_dict,
         "update_pub_endpoint": update_pub_endpoint,
         "run_id": run_id,
     }
+
     return copied
+
 
 # ------- find non-serializable ------
 def find_non_jsonable(
@@ -101,15 +119,15 @@ def find_non_jsonable(
     else:
         # This catches ProcessGraph and other custom objects.
         try:
-            json.dumps(value, ensure_ascii=False)
+            _ = json.dumps(value, ensure_ascii=False)
         except (TypeError, ValueError, OverflowError):
             yield path, type(value).__name__, repr(value)[:300]
 
 
 # ---- Serialize initial inputs ----
 def _serialize_initial_inputs(
-    initial_inputs: dict[str, object] | None,
-) -> dict[str, object] | None:
+    initial_inputs: WorkflowInputs | None,
+) -> WorkflowInputs| None:
     if initial_inputs is None:
         return None
 
@@ -146,17 +164,19 @@ async def publish_job_and_wait(
     *,
     run_id: str,
     workflow_path: str,
-    initial_inputs: dict[str, object] | None,
-    unit_param_overrides: dict[str, object] | None,
+    initial_inputs: WorkflowInputs | None,
+    unit_param_overrides: WorkflowInputs| None,
     format: str | None,
     execution_timeout_s: float | None,
     token_callback: OnToken | None,
     session_id: str,
     is_stale: Callable[[], bool] | None = None,
     topics: ZmqTopics | None = None,
-    in_progress: dict[str, object] | None = None,
-    in_progress_callback: Callable[[dict[str, object]], Awaitable[None]] | None = None,
-) -> dict[str, object]:
+    in_progress: JsonObject | None = None,
+    in_progress_callback: Callable[
+        [JsonObject], Awaitable[None]
+    ] | None = None
+) -> Data:
     if topics is None:
         topics = ZmqTopics()
     slot = await _slot_allocator.acquire()
@@ -194,13 +214,10 @@ async def publish_job_and_wait(
             )
         )
 
-        final_outputs: dict[str, object] = {}
-        had_final_outputs = False
-        final_error: object = None
-        last_update: dict[str, object] = in_progress or {}
+        state = JobState()
+        last_update: JsonObject = in_progress if in_progress is not None else {}
 
-        async def _on_token(_topic: str, payload: dict[str, object]) -> None:
-            nonlocal final_error
+        async def _on_token(_topic: str, payload: JsonObject) -> None:
             if payload.get("run_id") != run_id:
                 return
 
@@ -219,69 +236,62 @@ async def publish_job_and_wait(
                 await token_callback(session_id, token_piece)
 
 
-        async def _on_result(_topic: str, payload: dict[str, object]) -> None:
-            nonlocal had_final_outputs, final_outputs
+        async def _on_result(_topic: str, payload: JsonObject) -> None:
             if payload.get("run_id") != run_id:
                 return
 
-            # 1. Get the value (type is object | None)
             outs = payload.get("outputs")
 
-            # 2. Verify it's a dict
             if isinstance(outs, dict):
-                # 3. Cast it to a known type to resolve "Unknown" and "dict[Unknown, Unknown]"
-                final_outputs = cast(dict[str, object], outs)
-                had_final_outputs = True
+                state.final_outputs = cast(dict[str, object], outs)
 
                 logger.info(
                     "zmq_jobs_client: result received run_id=%r outputs_keys=%r",
                     run_id,
-                    list(final_outputs.keys()), # inferred as list[str]
+                    list(state.final_outputs.keys()),
                 )
 
-        async def _on_error(_topic: str, payload: dict[str, object]) -> None:
-            nonlocal final_error
+
+        async def _on_error(_topic: str, payload: JsonObject) -> None:
             if payload.get("run_id") != run_id:
                 return
+
             err = payload.get("error")
-            final_error = err if isinstance(err, str) else str(err)
+            state.final_error = err if isinstance(err, str) else str(err)
+
             logger.error(
                 "zmq_jobs_client: error received run_id=%r error=%r",
                 run_id,
-                final_error,
+                state.final_error,
             )
 
-        async def _on_batch_update(_topic: str, payload: dict[str, object]) -> None:
+
+        async def _on_batch_update(_topic: str, payload: JsonObject) -> None:
             nonlocal last_update
+
             if payload.get("run_id") != run_id:
                 return
+
             last_update = payload
 
             try:
                 msg_wrap = payload.get("message")
 
-                # 1. Explicitly type your variables to avoid "Unknown" inference
-                msg_type: object | None = None
+                msg_type: JsonValue| None = None
                 msg_keys: list[str] = []
                 inner_keys: list[str] = []
 
                 if isinstance(msg_wrap, dict):
-                    # 2. Cast msg_wrap to a known dict type
-                    msg_wrap = cast(dict[str, object], msg_wrap)
-
                     msg_type = msg_wrap.get("type")
                     inner = msg_wrap.get("message")
-
-                    # .keys() is known to be str, so list() is list[str]
                     msg_keys = list(msg_wrap.keys())
 
                     if isinstance(inner, dict):
-                        # 3. Cast inner to a known dict type
-                        inner = cast(dict[str, object], inner)
                         inner_keys = list(inner.keys())
 
                 logger.info(
-                    "zmq_jobs_client: batch_update run_id=%r message.type=%r message.keys=%r inner.message.keys=%r",
+                    "zmq_jobs_client: batch_update run_id=%r "
+                    + "message.type=%r message.keys=%r inner.message.keys=%r",
                     run_id,
                     msg_type,
                     msg_keys,
@@ -289,7 +299,8 @@ async def publish_job_and_wait(
                 )
             except (ValueError, TypeError):
                 logger.info(
-                    "zmq_jobs_client: batch_update run_id=%r (logger shape extraction failed)",
+                    "zmq_jobs_client: batch_update run_id=%r "
+                    + "(logger shape extraction failed)",
                     run_id,
                 )
 
@@ -330,11 +341,30 @@ async def publish_job_and_wait(
                 initial_inputs
             )
 
-            job_payload: dict[str, object] = {
+            json_initial_inputs = (
+                None
+                if serializable_initial_inputs is None
+                else require_json_object_from_object(
+                    serializable_initial_inputs,
+                    field="initial_inputs",
+                )
+            )
+
+            json_unit_param_overrides = (
+                None
+                if updated_unit_param_overrides is None
+                else require_json_object_from_object(
+                    updated_unit_param_overrides,
+                    field="unit_param_overrides",
+                )
+            )
+
+
+            job_payload: JsonObject = {
                 "run_id": run_id,
                 "workflow_path": workflow_path,
-                "initial_inputs": serializable_initial_inputs,
-                "unit_param_overrides": updated_unit_param_overrides,
+                "initial_inputs": json_initial_inputs,
+                "unit_param_overrides": json_unit_param_overrides,
                 "format": format,
                 "response_endpoint": response_sub_endpoint,
                 "update_endpoint": None,
@@ -346,7 +376,8 @@ async def publish_job_and_wait(
             if serialization_problems:
                 for path, type_name, representation in serialization_problems:
                     logger.error(
-                        "Non-JSON-serializable job payload value: path=%s type=%s value=%s",
+                        "Non-JSON-serializable job payload value: "
+                        + "path=%s type=%s value=%s",
                         path,
                         type_name,
                         representation,
@@ -358,23 +389,23 @@ async def publish_job_and_wait(
                 )
 
                 raise TypeError(
-                    f"Cannot publish job {run_id!r}; payload contains non-JSON-serializable values: {details}"
+                    f"Cannot publish job {run_id!r}; "
+                    + f"payload contains non-JSON-serializable values: {details}"
                 )
 
             pub.publish_job(
                 run_id=run_id,
                 workflow_path=workflow_path,
-                initial_inputs=serializable_initial_inputs,
-                unit_param_overrides=updated_unit_param_overrides,
+                initial_inputs=json_initial_inputs,
+                unit_param_overrides=json_unit_param_overrides,
                 format=format,
                 response_endpoint=response_sub_endpoint,
                 update_endpoint=None,
                 execution_timeout_s=execution_timeout_s,
             )
 
-
             start = time.monotonic()
-            while final_error is None and not had_final_outputs:
+            while state.final_error is None and state.final_outputs is None:
                 if is_stale is not None and is_stale():
                     logger.info(
                         "zmq_jobs_client: stale run_id=%r (stopping wait)", run_id
@@ -391,20 +422,25 @@ async def publish_job_and_wait(
 
 
         finally:
-            # Remove 'if is not None' because the type checker
-            # knows these were successfully initialized.
             await update_sub.stop()
             await sub.stop()
 
-        # This code will NO LONGER be "unreachable" once you
-        # fix the while loop logic from the previous step.
-        if final_error is not None:
-            return {"orchestrator": {"error": {"error": final_error}}}
+        if state.final_error is not None:
+            return {
+                "orchestrator": {
+                    "error": {
+                        "error": state.final_error,
+                    }
+                }
+            }
 
-        if had_final_outputs:
-            return {"orchestrator": final_outputs}
+        if state.final_outputs is not None:
+            return {
+                "orchestrator": state.final_outputs,
+            }
 
         return {"orchestrator": last_update}
+
 
     finally:
         # always release the slot

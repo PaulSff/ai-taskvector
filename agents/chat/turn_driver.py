@@ -51,6 +51,8 @@ from agents.chat.utils.workflow_run_utils import (
 )
 from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import Data, JsonObject
 from gui.components.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegate_workflow_path,
@@ -83,9 +85,9 @@ _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
 
 def _append_message_to_session(
-    s: _Session, role: str, content: str, meta: dict[str, object] | None = None
-) -> dict[str, object]:
-    msg: dict[str, object] = {
+    s: _Session, role: str, content: str, meta: Data | None = None
+) -> Data:
+    msg: Data = {
         "id": new_id(),
         "ts": now_ts(),
         "role": role,
@@ -191,7 +193,7 @@ def _schedule_name_from_first_message_async(
 # Session helpers (public API for chat.py)
 # ---------------------------------------------------------------------------
 
-def restore_session(session_id: str, *, path: Path, payload: dict[str, object]) -> None:
+def restore_session(session_id: str, *, path: Path, payload: Data) -> None:
     """Restore a session from a loaded chat-file payload."""
     with _sessions_lock:
         s = _sessions.get(session_id)
@@ -216,10 +218,12 @@ def restore_session(session_id: str, *, path: Path, payload: dict[str, object]) 
 
         # 3. Handle the complex dict result
         last_res = payload.get("last_apply_result")
+
         if isinstance(last_res, dict):
-            s.last_apply_result = cast(dict[str, object], last_res)
+            s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(last_res)
         else:
             s.last_apply_result = None
+
 
         s.chat_path = path
 
@@ -241,7 +245,7 @@ def restore_session(session_id: str, *, path: Path, payload: dict[str, object]) 
         s.applied_flag = True
 
 
-def append_session_message(session_id: str, msg: dict[str, object]) -> None:
+def append_session_message(session_id: str, msg: Data) -> None:
     """Append a pre-built message dict to session history and the delta file.
 
     Use this for messages that bypass handle_turn (e.g. session-language
@@ -253,7 +257,7 @@ def append_session_message(session_id: str, msg: dict[str, object]) -> None:
     if s is None:
         return
 
-    # msg is dict[str, object], which matches s.history's type
+    # msg is dict[str, object], which matches s.history type
     s.history.append(msg)
 
     if s.chat_path is None:
@@ -316,12 +320,12 @@ async def handle_turn(
     graph_dict: ProcessGraph | None = None,
     role_id: str | None = None,
     recent_changes: str | None = None,
-    pre_built_user_msg: dict[str, object] | None = None,
+    pre_built_user_msg: Data | None = None,
     on_rename: Callable[[Path], None] | None = None,
     stream_callback: Callable[[str, str], Coroutine[object, object, None]] | None = None,
     on_apply: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
     on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
-) -> dict[str, object] | None:
+) -> Data | None:
     import logging
 
     logger = logging.getLogger(__name__)
@@ -426,7 +430,7 @@ async def handle_turn(
             )
 
     def _extract_in_progress_from_batch_payload(
-        payload: dict[str, object],
+        payload: JsonObject,
     ) -> tuple[dict[str, object] | None, str]:
         """
         payload is what publish_job_and_wait receives on topics.update_batch.
@@ -595,23 +599,29 @@ async def handle_turn(
             graph = inner_msg.get("graph")
             apply_meta = cast(dict[str, object], inner_msg.get("apply") or {})
             parsed_edits = cast(list[object], inner_msg.get("parsed_edits") or [])
-            last_apply_result = cast(dict[str, object], inner_msg.get("last_apply_result") or {})
+            last_apply_result_raw = inner_msg.get("last_apply_result")
             run_output = cast(dict[str, object], inner_msg.get("run_output") or {})
 
-            # keep your existing "when to apply" condition, but only for session updates
             if (
                 graph is None
                 and not apply_meta
                 and not parsed_edits
                 and not run_output
-                and not last_apply_result
+                and not last_apply_result_raw
             ):
                 return
 
             new_lang = inner_msg.get("session_language")
             if isinstance(new_lang, str):
                 s.session_language = new_lang
-                s.last_apply_result = last_apply_result
+
+            if isinstance(last_apply_result_raw, dict):
+                s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                    last_apply_result_raw
+                )
+            else:
+                s.last_apply_result = None
+
 
             # UI update hook (only when graph exists) — emit repeatedly on graph changes
             if graph is not None:
@@ -690,7 +700,7 @@ async def handle_turn(
 
         agent = role_id or "default"
 
-        context: dict[str, object] = {
+        context = {
             "user_message": message_for_workflow,
             "messenger": messenger,
             "role_id": role_id,
@@ -822,7 +832,7 @@ async def handle_turn(
                     assistant_message_id,
                 )
 
-        async def _in_progress_batch_cb(payload: dict[str, object]) -> None:
+        async def _in_progress_batch_cb(payload: JsonObject) -> None:
             if _is_stale():
                 return
             try:
@@ -845,7 +855,11 @@ async def handle_turn(
 
                 last_apply_result = inner_msg.get("last_apply_result")
                 if isinstance(last_apply_result, dict):
-                    s.last_apply_result = last_apply_result
+                    s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                        last_apply_result
+                    )
+                else:
+                    s.last_apply_result = None
 
                 _ = _append_message_to_session(
                     s,
@@ -990,7 +1004,14 @@ async def handle_turn(
                 _workflow_debug_log(f"session_language updated → {new_lang!r}")
 
             # We cast the result of .get() to the specific type expected by the _Session class
-            s.last_apply_result = cast(dict[str, object] | None, raw_msg.get("last_apply_result"))
+            raw_result = raw_msg.get("last_apply_result")
+
+            if isinstance(raw_result, dict):
+                s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                    raw_result
+                )
+            else:
+                s.last_apply_result = None
 
             content = raw_msg.get("content") or content_from_msg or ""
             meta = {
