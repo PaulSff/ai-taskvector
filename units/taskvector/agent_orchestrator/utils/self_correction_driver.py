@@ -1,15 +1,13 @@
 import inspect
 import time
 import traceback
-from collections.abc import Callable
-from typing import Any
 
 from agents.chat.agent_workflow.build_self_correction_retry_inputs import (
     build_self_correction_retry_inputs,
 )
 from agents.chat.agent_workflow.helpers import (
     get_runtime_for_prompts,
-    refresh_last_apply_result_after_canvas_apply,
+    refresh_last_graph_apply_result,
 )
 from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
 from agents.chat.context.language_control import (
@@ -18,25 +16,34 @@ from agents.chat.context.language_control import (
 from agents.chat.context.todo_list_manager import augment_graph_with_client_tasks
 from agents.chat.handlers.chat_turn_context import format_previous_turn
 from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.session.state import AgentChatHistory
+from agents.roles.types import RoleConfig
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+    GraphEdit,
+)
+from core.schemas.primitives import Data
+from runtime.executor import GraphStreamCallback
 from units.taskvector.agent_orchestrator.utils.proxies import SessionProxy
 
 
 async def run_self_correction_retry_async(
-    failed_apply_result: dict[str, Any],
+    failed_apply_result: AgentApplyWorkflowEditsResult,
     session: SessionProxy,
-    role_config: dict[str, Any],
-    graph_ref: list[Any],
-    last_apply_result_ref: list[Any],
+    role_config: RoleConfig,
+    graph_ref: list[ProcessGraph],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
     wf_language_hint: list[str],
-    stream_cb: Callable[[str], None] | None,
-    history: list[Any],
+    stream_cb: GraphStreamCallback| None,
+    history: AgentChatHistory,
     recent_changes: str | None,
     coding_is_allowed: bool,
     contribution_is_allowed: bool,
     role_id: str,
-) -> tuple[dict[str, Any], Any, str | None]:
+) -> tuple[Data, object, str | None]:
     """
     Async wrapper for _run_self_correction_retry that runs blocking parts in threadpool.
     Returns (retry_response, retry_result_dict_or_None, retry_reply_or_None).
@@ -63,8 +70,26 @@ async def run_self_correction_retry_async(
 
     # --- end Logging ---
 
-    overrides = role_config["overrides"]
-    agent_workflow_path = role_config["workflow_path"]
+    # access workflow_path and param overrides through RoleChatConfig
+    chat_config = role_config.chat
+
+    if chat_config is None:
+        print(
+            f"[self_correction_driver] no chat configuration "
+            f"for role_id={role_config.id!r}"
+        )
+        return {}, None, None
+    # agent role workflow path
+    agent_workflow_path = chat_config.workflow
+    # workflow units param overrides
+    overrides = chat_config.overrides
+
+    if not agent_workflow_path:
+        print(
+            f"[self_correction_driver] no workflow configured "
+            f"for role_id={role_config.id!r}"
+        )
+        return {}, None, None
 
     _graph = graph_ref[0]
 
@@ -109,14 +134,33 @@ async def run_self_correction_retry_async(
 
     r_result = retry_response.get("result") or {}
 
-    # canonicalize_add_comment_edits is async
-    retry_edits = r_result.get("edits")
+    raw_retry_edits = r_result.get("edits")
+
+    if raw_retry_edits is None:
+        retry_edits: list[GraphEdit] = []
+    elif not isinstance(raw_retry_edits, list):
+        raise TypeError(
+            "Workflow result field 'edits' must be a list or null"
+        )
+    else:
+        retry_edits = []
+
+        for index, raw_edit in enumerate(raw_retry_edits):
+            if not isinstance(raw_edit, GraphEdit):
+                raise TypeError(
+                    f"Workflow result field 'edits[{index}]' "
+                    "must be a GraphEdit"
+                )
+
+            retry_edits.append(raw_edit)
 
     await _await_with_log(
         "canonicalize_add_comment_edits",
-        canonicalize_add_comment_edits(retry_edits, agent_role_id=role_id),
+        canonicalize_add_comment_edits(
+            retry_edits,
+            agent_role_id=role_id,
+        ),
     )
-
     # >>> ADDED: post-canonicalize probes <<<
     await _checkpoint(f"post-canonicalize r_result_keys={list(r_result.keys())[:20]}")
     await _checkpoint(
@@ -175,19 +219,25 @@ async def run_self_correction_retry_async(
                     graph_ref[0] = graph_to_apply
 
                     await _checkpoint(
-                        "applied:before refresh_last_apply_result_after_canvas_apply"
+                        "applied:before refresh_last_graph_apply_result"
+                    )
+
+                    refresh_apply_result = ApplyWorkflowEditsResult(
+                        success=True,
+                        graph=graph_ref[0],
+                        error=None,
                     )
 
                     last_apply_result_ref[0] = (
-                        await refresh_last_apply_result_after_canvas_apply(
+                        await refresh_last_graph_apply_result(
                             last_apply_result_ref[0],
-                            graph_ref[0],
+                            refresh_apply_result,
                             supplement_summary="",
                         )
                     )
 
                     await _checkpoint(
-                        "applied:after refresh_last_apply_result_after_canvas_apply"
+                        "applied:after refresh_last_graph_apply_result"
                     )
 
         retry_raw = retry_response.get("reply") or ""
@@ -198,14 +248,37 @@ async def run_self_correction_retry_async(
         await _checkpoint(f"branch:applied end kind={r_kind}")
 
     elif r_kind == "apply_failed":
-        failed_apply = (
-            r_result.get("last_apply_result") or r_result.get("apply_result") or {}
+        failed_apply_raw = (
+            r_result.get("last_apply_result")
+            or r_result.get("apply_result")
         )
-        last_apply_result_ref[0] = (
-            failed_apply
-            if isinstance(failed_apply, dict) and not inspect.isawaitable(failed_apply)
-            else {}
-        )
+
+        if inspect.isawaitable(failed_apply_raw):
+            failed_apply_raw = await failed_apply_raw
+
+        if isinstance(failed_apply_raw, AgentApplyWorkflowEditsResult):
+            last_apply_result_ref[0] = failed_apply_raw
+
+        elif isinstance(failed_apply_raw, dict):
+            last_apply_result_ref[0] = (
+                AgentApplyWorkflowEditsResult.model_validate(failed_apply_raw)
+            )
+
+        elif isinstance(failed_apply_raw, ApplyWorkflowEditsResult):
+            last_apply_result_ref[0] = AgentApplyWorkflowEditsResult(
+                attempted=True,
+                apply_result=failed_apply_raw,
+            )
+
+        else:
+            last_apply_result_ref[0] = AgentApplyWorkflowEditsResult(
+                attempted=True,
+                apply_result=ApplyWorkflowEditsResult(
+                    success=False,
+                    graph=graph_ref[0],
+                    error="Workflow edit application failed.",
+                ),
+            )
 
         await _checkpoint(f"branch:apply_failed end kind={r_kind}")
 
