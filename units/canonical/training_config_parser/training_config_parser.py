@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
-from units.taskvector.process_agent.action_blocks import _parse_json_blocks
+from units.taskvector.process_agent.parser import parse_json_blocks
 
 TRAINING_CONFIG_PARSER_INPUT_PORTS = [("action", "Any")]
 TRAINING_CONFIG_PARSER_OUTPUT_PORTS = [("edits", "Any"), ("error", "str")]
@@ -28,7 +28,7 @@ def _training_config_parser_step(
     if raw is None:
         return ({"edits": [], "error": None}, state)
     content = str(raw).strip()
-    parsed = _parse_json_blocks(content)
+    parsed = parse_json_blocks(content)
     if isinstance(parsed, dict) and "parse_error" in parsed:
         return ({"edits": [], "error": parsed.get("parse_error", "Parse error")}, state)
     if not isinstance(parsed, list):
