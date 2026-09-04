@@ -6,12 +6,12 @@ today TODO edits are applied as normal graph ``edits`` and post-apply messaging 
 
 from __future__ import annotations
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 
 async def run_todo_manager_follow_up(
-    _ctx: ParserFollowUpContext,
+    _ctx: ExecutionFollowUpContext,
     _po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

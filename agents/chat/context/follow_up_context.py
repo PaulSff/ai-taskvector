@@ -12,20 +12,29 @@ from agents.chat.agent_workflow.wf_response_schema import (
 from agents.chat.context.language_control import SessionLanguageSink
 from agents.chat.role_turns.protocol import WorkflowStreamingRunner
 from agents.tools.catalog import OrderedToolsForRole
-from agents.tools.types import ToolList
+from agents.tools.types import ParsedActions, ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
-from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.primitives import WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
 type FollowUpContexts = list[str]
+type WorkflowResponseCallback = Callable[
+    [AgentWorkflowResponse, ProcessGraph],
+    Awaitable[None],
+]
+type ParserChainRunner = Callable[
+    [AgentWorkflowResponse],
+    Awaitable[AgentWorkflowResponse | None],
+]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pre-apply follow-up rounds
+# Execute follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
-class ParserFollowUpContext:
+class ExecutionFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain."""
 
     page: object | None
@@ -61,8 +70,8 @@ class ParserFollowUpContext:
     # Otherwise, this is an allowlist of tool IDs from the catalog or role.yaml.
     follow_up_tool_ids: ToolList | None = None
 
-    # Workflow response dictionary for the current follow-up round.
-    follow_up_source_response: Data | None = None
+    # Agent role workflow response dictionary for the current follow-up round.
+    follow_up_source_response: AgentWorkflowResponse | None = None
 
     # agents.roles ID, such as "workflow_designer".
     # Used for RAG follow-ups, not only for the UI label.
@@ -94,6 +103,15 @@ class ParserFollowUpContext:
         | None
     ) = None
 
+    action_context: ParsedActions = field(
+            default_factory=ParsedActions,
+            kw_only=True,
+        )
+    on_workflow_response: WorkflowResponseCallback | None = field(
+            default=None,
+            kw_only=True,
+        )
+
 
 @dataclass
 class WDFollowUpAcc:
@@ -112,12 +130,12 @@ class WDFollowUpAcc:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Post-apply follow-up rounds
+# Post-execute follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
-class PostApplyFollowUpContext:
+class PostExecutionFollowUpContext:
     graph_ref: list[ProcessGraph]
     state: SessionLanguageSink
     token: int
@@ -146,23 +164,25 @@ class PostApplyFollowUpContext:
     ]
     replace_agent_message_row: Callable[[dict[str, object]], None]
     stream_buffer_ref: list[str]
-    apply_fn: Callable[[ProcessGraph], None]
+    # apply_fn: Callable[[ProcessGraph], None]
     agent_workflow_path: Path | None = None
     analyst_mode: bool = False
     record_llm_prompt_view: Callable[[MergeResponse], None] | None = field(
         default=None,
         kw_only=True,
     )
+    action_context: ParsedActions = field(
+            default_factory=ParsedActions,
+            kw_only=True,
+        )
+    on_workflow_response: WorkflowResponseCallback | None = field(
+            default=None,
+            kw_only=True,
+        )
 
 
-@dataclass
-class PostApplyFlags:
-    had_import_workflow: bool
-    had_todo: bool
-    had_add_comment: bool
-
-
-type ParserChainRunner = Callable[
-    [AgentWorkflowResponse],
-    Awaitable[AgentWorkflowResponse | None],
-]
+# @dataclass
+# class PostExecuteFlags:
+#     had_import_workflow: bool
+#     had_todo: bool
+#     had_add_comment: bool

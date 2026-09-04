@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.chat.context.todo_list_manager import get_summary_params
 from agents.tools.read_current_workflow.follow_ups import (
     READ_CURRENT_WORKFLOW_FOLLOW_UP_PREFIX,
@@ -30,7 +30,7 @@ def _graph_to_dict(graph_ref: list[ProcessGraph]) -> Data:
 
 
 async def run_read_current_workflow_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

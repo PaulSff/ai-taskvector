@@ -23,9 +23,9 @@ from agents.chat.agent_workflow.helpers import (
     validate_graph_to_apply_inline,
 )
 from agents.chat.context.follow_up_context import (
-    ParserFollowUpContext,
-    PostApplyFlags,
-    PostApplyFollowUpContext,
+    ExecutionFollowUpContext,
+    PostExecuteFlags,
+    PostExecutionFollowUpContext,
 )
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
@@ -38,8 +38,8 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    run_parser_output_follow_up_chain_async,
-    run_post_apply_follow_up_rounds_async,
+    run_execute_follow_up_chain_async,
+    run_post_execution_follow_up_chain_async,
 )
 from agents.chat.role_turns.context import RoleChatTurnContext
 from agents.chat.utils.workflow_output_normalizer import (
@@ -180,7 +180,7 @@ class AnalystChatHandler:
         async def _parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
-            parser_ctx = ParserFollowUpContext(
+            parser_ctx = ExecutionFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
                 state=turn_ctx.state,
@@ -216,7 +216,7 @@ class AnalystChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
 
-            return await run_parser_output_follow_up_chain_async(
+            return await run_execute_follow_up_chain_async(
                 parser_ctx,
                 resp,
             )
@@ -667,7 +667,7 @@ class AnalystChatHandler:
                     for edit in edits
                 )
                 content_holder = [content]
-                post_ctx = PostApplyFollowUpContext(
+                post_ctx = PostExecutionFollowUpContext(
                     graph_ref=turn_ctx.graph_ref,
                     state=turn_ctx.state,
                     token=turn_ctx.token,
@@ -695,12 +695,12 @@ class AnalystChatHandler:
                     analyst_mode=True,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
-                await run_post_apply_follow_up_rounds_async(
+                await run_post_execution_follow_up_chain_async(
                     post_ctx,
                     result=result,
                     content_holder=content_holder,
                     parser_chain_runner=_parser_output_follow_up_chain,
-                    flags=PostApplyFlags(
+                    flags=PostExecuteFlags(
                         had_import_workflow=had_import_workflow,
                         had_todo=had_todo,
                         had_add_comment=had_add_comment,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.report.follow_ups import (
     REPORT_FOLLOW_UP_PREFIX,
     REPORT_FOLLOW_UP_SUFFIX,
@@ -16,7 +16,7 @@ from agents.tools.types import (
 
 
 async def run_report_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     _po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

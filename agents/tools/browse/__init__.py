@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.browse.follow_ups import (
     BROWSE_FOLLOW_UP_PREFIX,
     BROWSE_FOLLOW_UP_SUFFIX,
@@ -14,7 +14,7 @@ EXECUTION_TIMEOUT_S: float = 30
 
 
 async def run_browse_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

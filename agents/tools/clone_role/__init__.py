@@ -4,7 +4,7 @@ from agents.chat.agent_workflow import (
     CLONE_ROLE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.clone_role.follow_ups import (
     CLONE_ROLE_FOLLOW_UP_PREFIX,
     CLONE_ROLE_FOLLOW_UP_SUFFIX,
@@ -21,7 +21,7 @@ EXECUTION_TIMEOUT_S: float = 60
 
 
 async def run_clone_role_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

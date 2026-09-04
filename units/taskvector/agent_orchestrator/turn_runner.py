@@ -15,11 +15,11 @@ from typing import Any
 from pydantic import ValidationError
 
 from agents.chat.context.follow_up_context import (
-    PostApplyFlags,
+    PostExecuteFlags,
 )
 from agents.chat.parser_follow_up.chain import (
-    run_parser_output_follow_up_chain_async,
-    run_post_apply_follow_up_rounds_async,
+    run_execute_follow_up_chain_async,
+    run_post_execution_follow_up_chain_async,
 )
 from agents.chat.session.state import AgentChatHistory
 from core.schemas import ProcessGraph
@@ -402,7 +402,7 @@ async def run_orchestrator_turn(
 
             async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
                 await _checkpoint("parser_chain_runner:enter")
-                chained = await run_parser_output_follow_up_chain_async(parser_ctx, resp)
+                chained = await run_execute_follow_up_chain_async(parser_ctx, resp)
                 await _checkpoint("parser_chain_runner:done")
                 return chained if chained is not None else resp
 
@@ -511,7 +511,7 @@ async def run_orchestrator_turn(
                         for e in _todo_edits
                     ) or graph_has_any_open_tasks(applied_graph)
 
-                    flags = PostApplyFlags(
+                    flags = PostExecuteFlags(
                         had_import_workflow=any(
                             isinstance(e, dict) and e.get("action") == "import_workflow"
                             for e in _edits
@@ -526,10 +526,10 @@ async def run_orchestrator_turn(
                     async def _parser_chain_for_post(r: dict[str, Any]) -> dict[str, Any]:
                         return await _parser_chain_runner_async(r)
 
-                    await _checkpoint("before:run_post_apply_follow_up_rounds_async")
+                    await _checkpoint("before:run_post_execution_follow_up_chain_async")
                     await _await_with_log(
                         "post_apply_follow_up_rounds_async",
-                        run_post_apply_follow_up_rounds_async(
+                        run_post_execution_follow_up_chain_async(
                             post_ctx,
                             result=result,
                             content_holder=content_holder,
@@ -537,7 +537,7 @@ async def run_orchestrator_turn(
                             flags=flags,
                         ),
                     )
-                    await _checkpoint("after:run_post_apply_follow_up_rounds_async")
+                    await _checkpoint("after:run_post_execution_follow_up_chain_async")
 
                     _publish_in_progress(
                         stage="turn:post_apply_completed",

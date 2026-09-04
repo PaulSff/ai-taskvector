@@ -1,7 +1,7 @@
 """
 Shared types for agent follow-up tools.
 
-Tool runners consume normalized parser output and a narrow follow-up context protocol.
+Tool runners consume normalized parser output and a narrow follow-up context protocol.previous_graph
 """
 
 from __future__ import annotations

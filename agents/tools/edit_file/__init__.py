@@ -8,7 +8,7 @@ from agents.chat.agent_workflow import (
     EDIT_FILE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.edit_file.follow_ups import (
     EDIT_FILE_FOLLOW_UP_PREFIX,
     EDIT_FILE_FOLLOW_UP_SUFFIX,
@@ -20,7 +20,7 @@ EXECUTION_TIMEOUT_S: float = 30
 
 
 async def run_edit_file_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

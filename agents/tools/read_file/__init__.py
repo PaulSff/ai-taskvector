@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.read_file.follow_ups import (
@@ -95,7 +95,7 @@ def _run_read_file_workflow_for_path(path: str) -> str:
 
 
 async def run_read_file_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

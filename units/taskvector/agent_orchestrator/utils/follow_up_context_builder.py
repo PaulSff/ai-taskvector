@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.chat.context.follow_up_context import (
-    ParserFollowUpContext,
+    ExecutionFollowUpContext,
 )
 from agents.chat.session.state import AgentChatHistory
 from agents.roles.types import RoleConfig
@@ -31,7 +31,7 @@ def build_parser_follow_up_context(
     last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
     wf_language_hint: list[str],
     recent_changes: str | None,
-) -> ParserFollowUpContext:
+) -> ExecutionFollowUpContext:
     chat_config = role_config.chat
 
     overrides = (
@@ -77,7 +77,7 @@ def build_parser_follow_up_context(
         ordered_follow_up_tools=ordered_tools_for_role_id(role_config.id),
     )
 
-    return ParserFollowUpContext(
+    return ExecutionFollowUpContext(
         page=None,
         graph_ref=graph_ref,
         state=session,

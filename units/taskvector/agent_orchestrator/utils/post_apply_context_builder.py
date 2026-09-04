@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agents.chat.context.follow_up_context import PostApplyFollowUpContext
+from agents.chat.context.follow_up_context import PostExecutionFollowUpContext
 from agents.roles.types import RoleConfig
 from agents.tools.catalog import ordered_tools_for_role_id
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
@@ -21,7 +21,7 @@ def build_post_apply_context(
     last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
     wf_language_hint: list[str],
     recent_changes: str | None,
-) -> PostApplyFollowUpContext:
+) -> PostExecutionFollowUpContext:
     chat_config = role_config.chat
 
     overrides = (
@@ -71,7 +71,7 @@ def build_post_apply_context(
         prefer_inline_workflow=True,
     )
 
-    return PostApplyFollowUpContext(
+    return PostExecutionFollowUpContext(
         graph_ref=graph_ref,
         state=session,
         token=proxy.token,

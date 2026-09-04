@@ -24,7 +24,7 @@ from pydantic import BaseModel, ValidationError
 from agents.tools.types import LanguageHintGetter, ParsedActions, ParserOutput, ToolList
 
 if TYPE_CHECKING:
-    from agents.chat.context.follow_up_context import ParserFollowUpContext
+    from agents.chat.context.follow_up_context import ExecutionFollowUpContext
     from agents.tools.types import FollowUpContribution
 
 
@@ -42,7 +42,7 @@ class ActionRegistration:
 class FollowUpRunner(Protocol):
     def __call__(
         self,
-        ctx: ParserFollowUpContext,
+        ctx: ExecutionFollowUpContext,
         po: ParserOutput,
         *,
         language_hint: LanguageHintGetter,

@@ -84,7 +84,7 @@ The follow-up runner should live in __init__.py as an **async** callable compati
 async def run_<name>_follow_up(ctx, po, *, language_hint) -> FollowUpContribution
 ```
 
-- **`ctx`**: narrow context object from the follow-up chain (e.g. `agent_label`, optional status callbacks). Agent sets **`follow_up_source_response`** on `ParserFollowUpContext` each round so tool runners can read fields outside normalized `parser_output` (e.g. **`grep_output`** for grep).
+- **`ctx`**: narrow context object from the follow-up chain (e.g. `agent_label`, optional status callbacks). Agent sets **`follow_up_source_response`** on `ExecutionFollowUpContext` each round so tool runners can read fields outside normalized `parser_output` (e.g. **`grep_output`** for grep).
 - **`po`**: normalized parser output dict.
 - **`language_hint`**: zero-argument callable returning the session language string for prompt suffixes.
 
@@ -129,7 +129,7 @@ if ex.get(FOLLOW_UP_EXTRA_YOUR_TOOL_FOLLOW_UP):
         acc.your_tool_follow_up = True
 ```
 
-- Wire into the `run_parser_output_follow_up_chain_async`: 
+- Wire into the `run_execute_follow_up_chain_async`: 
 ```python
 calendar_follow_up = acc.your_tool_follow_up
 ...

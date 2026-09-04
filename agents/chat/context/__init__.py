@@ -8,15 +8,13 @@ from .context_signals import (
     workflow_response_is_question,
 )
 from .follow_up_context import (
-    ParserFollowUpContext,
-    PostApplyFlags,
-    PostApplyFollowUpContext,
+    ExecutionFollowUpContext,
+    PostExecutionFollowUpContext,
 )
 
 __all__ = [
-    "ParserFollowUpContext",
-    "PostApplyFlags",
-    "PostApplyFollowUpContext",
+    "ExecutionFollowUpContext",
+    "PostExecutionFollowUpContext",
     "merge_preserved_apply_failure_into_response",
     "workflow_merge_response_apply_failed",
     "workflow_response_is_question",

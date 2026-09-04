@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.run_workflow.follow_ups import (
     RUN_WORKFLOW_FOLLOW_UP_PREFIX,
@@ -14,7 +14,7 @@ from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserO
 
 
 async def run_run_workflow_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     _po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

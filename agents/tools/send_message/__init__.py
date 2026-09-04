@@ -9,7 +9,7 @@ from agents.chat.agent_workflow import (
     SEND_MESSAGE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.send_message.follow_ups import (
     SEND_MESSAGE_FOLLOW_UP_PREFIX,
@@ -51,7 +51,7 @@ def _format_telegram_result(tg_out: dict[str, Any]) -> str:
 
 
 async def run_send_message_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

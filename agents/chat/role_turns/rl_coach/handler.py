@@ -8,7 +8,7 @@ from typing import Any
 
 from agents.chat.agent_workflow import get_runtime_for_prompts
 from agents.chat.context.follow_up_context import (
-    ParserFollowUpContext,
+    ExecutionFollowUpContext,
 )
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
@@ -20,7 +20,7 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    run_parser_output_follow_up_chain_async,
+    run_execute_follow_up_chain_async,
 )
 from agents.chat.role_turns.rl_coach.workflow_runner import (
     build_rl_coach_unit_param_overrides,
@@ -124,7 +124,7 @@ class RlCoachChatHandler:
         async def _parser_output_follow_up_chain(
             resp: dict[str, Any],
         ) -> dict[str, Any] | None:
-            parser_ctx = ParserFollowUpContext(
+            parser_ctx = ExecutionFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
                 state=turn_ctx.state,
@@ -156,7 +156,7 @@ class RlCoachChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 extend_agent_initial_inputs_async=_extend_rl_inputs,
             )
-            return await run_parser_output_follow_up_chain_async(parser_ctx, resp)
+            return await run_execute_follow_up_chain_async(parser_ctx, resp)
 
         training_config_summary = await asyncio.to_thread(get_training_config_summary)
         training_results = get_training_results_follow_up()

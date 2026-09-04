@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_PREFIX,
@@ -93,7 +93,7 @@ async def _run_formulas_calc_workflow(action: dict[str, Any]) -> str:
 
 
 async def run_formulas_calc_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

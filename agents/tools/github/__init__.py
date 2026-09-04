@@ -8,7 +8,7 @@ from agents.chat.agent_workflow import (
     GITHUB_GET_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.github.follow_ups import (
     GITHUB_FOLLOW_UP_PREFIX,
@@ -20,7 +20,7 @@ EXECUTION_TIMEOUT_S: float = 30.0
 
 
 async def run_github_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

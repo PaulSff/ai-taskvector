@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from agents.chat.context.follow_up_context import ParserFollowUpContext
+from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
@@ -103,7 +103,7 @@ def _impl_types_from_follow_up_out(out: Data) -> list[str]:
 
 
 async def run_read_code_block_follow_up(
-    ctx: ParserFollowUpContext,
+    ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,

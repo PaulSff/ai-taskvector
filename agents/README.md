@@ -45,5 +45,5 @@ Role-facing default strings live in **`agents/roles/<role_id>/prompts.py`**; **`
 | Tools: runner registry | `agents/tools/registry.py` |
 | Flet chat handlers | `agents/chatrole_turns/README.md`, `…/protocol.py`, `…/registry.py` |
 | Chat panel + turn dispatch | `agents/chatchat.py` |
-| WD-style parser follow-ups | `agents/chatparser_follow_up/` |
+| WD-style parser follow-ups | `agents/chat/parser_follow_up/` |
 | Shared `run_workflow` entry for role JSON | `agents/chatagent_workflow/` (`run_agent_workflow`, paths, overrides) |

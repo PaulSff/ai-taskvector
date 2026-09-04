@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import agents.follow_ups as agents_follow_ups
@@ -29,10 +28,9 @@ from agents.chat.context.context_signals import (
     workflow_response_is_question,
 )
 from agents.chat.context.follow_up_context import (
+    ExecutionFollowUpContext,
     ParserChainRunner,
-    ParserFollowUpContext,
-    PostApplyFlags,
-    PostApplyFollowUpContext,
+    PostExecutionFollowUpContext,
     WDFollowUpAcc,
 )
 from agents.chat.context.language_control import (
@@ -80,11 +78,11 @@ from gui.components.settings import get_coding_is_allowed, get_contribution_is_a
 from .role_follow_ups_runner import run_role_ordered_follow_ups
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 1: Parser follow_up (using tools before canvas applly)
+#  PHASE 1: Execution follow_up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
-async def run_parser_output_follow_up_chain_async(
-    ctx: ParserFollowUpContext,
+async def run_execute_follow_up_chain_async(
+    ctx: ExecutionFollowUpContext,
     resp: AgentWorkflowResponse,
 ) -> AgentWorkflowResponse | None:
     """
@@ -121,7 +119,7 @@ async def run_parser_output_follow_up_chain_async(
         response = await response
     if not isinstance(response, dict):
         raise TypeError(
-            f"run_parser_output_follow_up_chain_async got {type(response).__name__}, expected dict"
+            f"run_execute_follow_up_chain_async got {type(response).__name__}, expected dict"
         )
 
     record_llm_prompt_view_if_present(resp, ctx.record_llm_prompt_view)
@@ -391,17 +389,17 @@ async def run_parser_output_follow_up_chain_async(
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 2: Post-apply follow-up rounds
+#  PHASE 2: Post-execution follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
 
-async def run_post_apply_follow_up_rounds_async(
-    ctx: PostApplyFollowUpContext,
+async def run_post_execution_follow_up_chain_async(
+    ctx: PostExecutionFollowUpContext,
     *,
     result: Data,
     content_holder: list[str],
     parser_chain_runner: ParserChainRunner,
-    flags: PostApplyFlags,
+    # flags: PostExecuteFlags,
 ) -> None:
     """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
     from agents.chat.context.todo_list_manager import graph_has_any_open_tasks
