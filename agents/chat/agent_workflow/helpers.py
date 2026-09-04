@@ -129,7 +129,7 @@ def normalize_last_apply_result(
             edits_summary="",
         )
 
-async def validate_graph_to_apply_for_canvas_async(
+async def validate_graph_to_apply_inline(
     graph: ProcessGraph | None,
 ) -> tuple[ProcessGraph | None, str | None]:
     if graph is None:

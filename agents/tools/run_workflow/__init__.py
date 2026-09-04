@@ -44,10 +44,10 @@ async def run_run_workflow_follow_up(
 
         if hasattr(ctx.graph_ref[0], "model_dump"):
             from agents.chat.agent_workflow.helpers import (
-                validate_graph_to_apply_for_canvas_async,
+                validate_graph_to_apply_inline,
             )
 
-            vg, v_err = await validate_graph_to_apply_for_canvas_async(updated)
+            vg, v_err = await validate_graph_to_apply_inline(updated)
 
             if v_err or vg is None:
                 if ctx.is_current_run(ctx.token):

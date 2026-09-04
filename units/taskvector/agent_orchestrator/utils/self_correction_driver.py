@@ -197,14 +197,14 @@ async def run_self_correction_retry_async(
 
             try:
                 from agents.chat.agent_workflow.helpers import (
-                    validate_graph_to_apply_for_canvas_async,
+                    validate_graph_to_apply_inline,
                 )
 
                 await _checkpoint("applied:before validate_graph_to_apply_for_canvas")
 
                 vg, v_err = await _await_with_log(
                     "validate_graph_to_apply_for_canvas",
-                    validate_graph_to_apply_for_canvas_async(graph_to_apply),
+                    validate_graph_to_apply_inline(graph_to_apply),
                 )
 
                 await _checkpoint("applied:after validate_graph_to_apply_for_canvas")

@@ -125,7 +125,7 @@ async def run_read_code_block_follow_up(
         except Exception:
             pass
         from agents.chat.agent_workflow.helpers import (
-            validate_graph_to_apply_for_canvas_async,
+            validate_graph_to_apply_inline,
         )
         from agents.chat.context.todo_list_manager import add_tasks_for_read_code_block
 
@@ -142,7 +142,7 @@ async def run_read_code_block_follow_up(
         elif hasattr(updated, "model_dump"):
             graph_for_cb = updated.model_dump(by_alias=True)
         if hasattr(ctx.graph_ref[0], "model_dump"):
-            vg, v_err = await validate_graph_to_apply_for_canvas_async(updated)
+            vg, v_err = await validate_graph_to_apply_inline(updated)
             if v_err or vg is None:
                 if ctx.is_current_run(ctx.token):
                     await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")

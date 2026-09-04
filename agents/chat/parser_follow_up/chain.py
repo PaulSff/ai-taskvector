@@ -706,7 +706,7 @@ async def run_post_apply_follow_up_rounds_async(
                     try:
                         if isinstance(post_graph, dict):
                             from agents.chat.agent_workflow.helpers import (
-                                validate_graph_to_apply_for_canvas_async,
+                                validate_graph_to_apply_inline,
                             )
                             from agents.chat.context.todo_list_manager import (
                                 augment_graph_with_client_tasks,
@@ -736,7 +736,7 @@ async def run_post_apply_follow_up_rounds_async(
                             await _checkpoint(
                                 f"augment_graph_with_client_tasks:{post_round}"
                             )
-                            post_pg, _p_err = await validate_graph_to_apply_for_canvas_async(
+                            post_pg, _p_err = await validate_graph_to_apply_inline(
                                 post_graph
                             )
                             await _checkpoint(

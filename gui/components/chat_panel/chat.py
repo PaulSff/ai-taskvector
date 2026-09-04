@@ -19,7 +19,7 @@ import flet as ft
 from flet import Border, BorderSide
 
 from agents.chat.agent_workflow.helpers import (
-    validate_graph_to_apply_for_canvas_async,
+    validate_graph_to_apply_inline,
 )
 from agents.chat.context.language_control import parse_session_language_command
 from agents.chat.session import (
@@ -868,7 +868,7 @@ def build_agents_chat_panel(
                     page=page,
                     is_current_run=_is_current_run,
                     toast=_toast,
-                    validate_graph_inline=validate_graph_to_apply_for_canvas_async,
+                    validate_graph_inline=validate_graph_to_apply_inline,
                     safe_page_update=safe_page_update,
                     scroll_chat_to_bottom=_scroll_chat_to_bottom,  # passthrough; not used
                     apply_fn_from_agent=apply_from_agent,

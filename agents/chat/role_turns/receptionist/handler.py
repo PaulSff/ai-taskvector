@@ -20,7 +20,7 @@ from agents.chat.agent_workflow import (
 )
 from agents.chat.agent_workflow.helpers import (
     get_optional_str,
-    validate_graph_to_apply_for_canvas_async,
+    validate_graph_to_apply_inline,
 )
 from agents.chat.context.follow_up_context import (
     ParserFollowUpContext,
@@ -607,7 +607,7 @@ class ReceptionistChatHandler:
             applied_ok = False
 
             if isinstance(graph_to_apply, dict):
-                vg, v_err = await validate_graph_to_apply_for_canvas_async(graph_to_apply)
+                vg, v_err = await validate_graph_to_apply_inline(graph_to_apply)
 
                 if v_err or vg is None:
                     graph_to_apply = None
@@ -803,7 +803,7 @@ class ReceptionistChatHandler:
                                     f"Retry graph validation failed: {validation_error[:100]}",
                                 )
                         else:
-                            vg, v_err = await validate_graph_to_apply_for_canvas_async(
+                            vg, v_err = await validate_graph_to_apply_inline(
                                 process_graph,
                             )
 

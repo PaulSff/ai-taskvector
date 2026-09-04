@@ -18,7 +18,7 @@ async def apply_and_augment_graph(
 ) -> tuple[ProcessGraph | None, list[str], str | None]:
     from agents.chat.agent_workflow.helpers import (
         refresh_last_graph_apply_result,
-        validate_graph_to_apply_for_canvas_async,
+        validate_graph_to_apply_inline,
     )
     from agents.chat.context.todo_list_manager import (
         augment_graph_with_client_tasks,
@@ -31,7 +31,7 @@ async def apply_and_augment_graph(
         # Validate/normalize before augmentation. The todo-list augmenter
         # expects a ProcessGraph object and accesses graph.todo_lists.
         validated_graph, v_err = (
-            await validate_graph_to_apply_for_canvas_async(graph_to_apply)
+            await validate_graph_to_apply_inline(graph_to_apply)
         )
 
         if v_err or validated_graph is None:
@@ -57,7 +57,7 @@ async def apply_and_augment_graph(
 
         # Validate again because augmentation may add or modify graph data.
         validated_graph, v_err = (
-            await validate_graph_to_apply_for_canvas_async(graph_to_apply)
+            await validate_graph_to_apply_inline(graph_to_apply)
         )
 
         if v_err or validated_graph is None:
