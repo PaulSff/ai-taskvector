@@ -1,9 +1,12 @@
+from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar
 
-from pydantic import field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
+from core.schemas.graph_edit_api import GraphEdit, GraphEditAction
 
 
 def _validate_non_empty(value: str) -> str:
@@ -15,10 +18,35 @@ def _validate_non_empty(value: str) -> str:
     return value
 
 
-class AddTodoListActionBlock(
-    ActionBlock[Literal["add_todo_list"]]
-):
+class TodoGraphEditActionBlock(ActionBlock[GraphEditAction]):
+    """Base class for TODO actions represented as GraphEdit values."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        strict=True,
+    )
+
+    expected_action: ClassVar[GraphEditAction]
+
+    @model_validator(mode="after")
+    def validate_todo_graph_edit(self) -> TodoGraphEditActionBlock:
+        if self.action != self.expected_action:
+            raise ValueError(
+                f"Expected action {self.expected_action!r}, "
+                f"got {self.action!r}"
+            )
+
+        GraphEdit.model_validate(self.as_json_object())
+        return self
+
+    def to_graph_edit(self) -> GraphEdit:
+        return GraphEdit.model_validate(self.as_json_object())
+
+
+class AddTodoListActionBlock(TodoGraphEditActionBlock):
     """Add a new TODO list."""
+
+    expected_action: ClassVar[GraphEditAction] = "add_todo_list"
 
     id: str
     title: str
@@ -27,20 +55,20 @@ class AddTodoListActionBlock(
     _validate_title = field_validator("title")(_validate_non_empty)
 
 
-class RemoveTodoListActionBlock(
-    ActionBlock[Literal["remove_todo_list"]]
-):
+class RemoveTodoListActionBlock(TodoGraphEditActionBlock):
     """Remove a TODO list."""
+
+    expected_action: ClassVar[GraphEditAction] = "remove_todo_list"
 
     id: str
 
     _validate_id = field_validator("id")(_validate_non_empty)
 
 
-class AddTaskActionBlock(
-    ActionBlock[Literal["add_task"]]
-):
+class AddTaskActionBlock(TodoGraphEditActionBlock):
     """Add a task to a TODO list."""
+
+    expected_action: ClassVar[GraphEditAction] = "add_task"
 
     todo_list_id: str
     text: str
@@ -51,10 +79,10 @@ class AddTaskActionBlock(
     _validate_text = field_validator("text")(_validate_non_empty)
 
 
-class RemoveTaskActionBlock(
-    ActionBlock[Literal["remove_task"]]
-):
+class RemoveTaskActionBlock(TodoGraphEditActionBlock):
     """Remove a task from a TODO list."""
+
+    expected_action: ClassVar[GraphEditAction] = "remove_task"
 
     task_id: str
     todo_list_id: str
@@ -64,10 +92,10 @@ class RemoveTaskActionBlock(
     )
 
 
-class MarkCompletedActionBlock(
-    ActionBlock[Literal["mark_completed"]]
-):
+class MarkCompletedActionBlock(TodoGraphEditActionBlock):
     """Mark a TODO task as completed or incomplete."""
+
+    expected_action: ClassVar[GraphEditAction] = "mark_completed"
 
     task_id: str
     todo_list_id: str
@@ -78,10 +106,10 @@ class MarkCompletedActionBlock(
     )
 
 
-class SetImplementerActionBlock(
-    ActionBlock[Literal["set_implementer"]]
-):
+class SetImplementerActionBlock(TodoGraphEditActionBlock):
     """Set or clear the implementer assigned to a task."""
+
+    expected_action: ClassVar[GraphEditAction] = "set_implementer"
 
     task_id: str
     implementer: str | None
@@ -100,13 +128,13 @@ class SetImplementerActionBlock(
         return _validate_non_empty(value)
 
 
-class SetDeadlineActionBlock(
-    ActionBlock[Literal["set_deadline"]]
-):
-    """Set the estimated completion time for a task in seconds."""
+class SetDeadlineActionBlock(TodoGraphEditActionBlock):
+    """Set or clear the estimated completion time for a task."""
+
+    expected_action: ClassVar[GraphEditAction] = "set_deadline"
 
     task_id: str
-    deadline: int
+    deadline: int | None
     todo_list_id: str
 
     _validate_ids = field_validator("task_id", "todo_list_id")(
@@ -115,17 +143,17 @@ class SetDeadlineActionBlock(
 
     @field_validator("deadline")
     @classmethod
-    def validate_deadline(cls, value: int) -> int:
-        if value < 0:
+    def validate_deadline(cls, value: int | None) -> int | None:
+        if value is not None and value < 0:
             raise ValueError("deadline must not be negative")
 
         return value
 
 
-class SetCuratorActionBlock(
-    ActionBlock[Literal["set_curator"]]
-):
+class SetCuratorActionBlock(TodoGraphEditActionBlock):
     """Set or clear the curator assigned to a task."""
+
+    expected_action: ClassVar[GraphEditAction] = "set_curator"
 
     task_id: str
     curator: str | None
@@ -144,10 +172,10 @@ class SetCuratorActionBlock(
         return _validate_non_empty(value)
 
 
-class SetTodoListTitleActionBlock(
-    ActionBlock[Literal["set_todo_list_title"]]
-):
+class SetTodoListTitleActionBlock(TodoGraphEditActionBlock):
     """Change the title of a TODO list."""
+
+    expected_action: ClassVar[GraphEditAction] = "set_todo_list_title"
 
     todo_list_id: str
     title: str
@@ -156,3 +184,38 @@ class SetTodoListTitleActionBlock(
         _validate_non_empty
     )
     _validate_title = field_validator("title")(_validate_non_empty)
+
+
+_TODO_ACTION_BLOCK_TYPES = (
+    AddTodoListActionBlock,
+    RemoveTodoListActionBlock,
+    AddTaskActionBlock,
+    RemoveTaskActionBlock,
+    MarkCompletedActionBlock,
+    SetImplementerActionBlock,
+    SetDeadlineActionBlock,
+    SetCuratorActionBlock,
+    SetTodoListTitleActionBlock,
+)
+
+
+def handle_todo_action(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, _TODO_ACTION_BLOCK_TYPES):
+        raise TypeError(
+            "Expected a TODO graph-edit action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.edits.append(block.to_graph_edit())
+
+
+def register_todo_action_blocks() -> None:
+    for action_block_type in _TODO_ACTION_BLOCK_TYPES:
+        register_action_block(
+            action_block_type.expected_action,
+            action_block_type,
+            handler=handle_todo_action,
+        )

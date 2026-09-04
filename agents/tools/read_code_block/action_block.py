@@ -1,24 +1,40 @@
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
-class ReadCodeBlockActionBlock(
-    ActionBlock[Literal["read_code_block"]]
-):
-    """Request the source code for a code block from the graph."""
+class ReadCodeBlockParserOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    id: str
+    code_block_ids: list[str] = Field(default_factory=list)
 
-    @field_validator("id")
-    @classmethod
-    def validate_id(cls, value: str) -> str:
-        value = value.strip()
 
-        if not value:
-            raise ValueError("id must not be empty")
+class ReadCodeActionBlock(ActionBlock[Literal["read_code_block"]]):
+    code_block_ids: list[str]
 
-        return value
+
+def handle_read_code(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, ReadCodeActionBlock):
+        raise TypeError(
+            f"Expected ReadCodeActionBlock, got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "read_code_block",
+        block.as_json_object(),
+    )
+
+
+def register_read_code_action_blocks() -> None:
+    register_action_block(
+        "read_code_block",
+        ReadCodeActionBlock,
+        handler=handle_read_code,
+    )

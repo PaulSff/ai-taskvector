@@ -1,10 +1,12 @@
-# agents/tools/action_blocks/rename.py
+
+from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class RenameActionBlock(
@@ -24,3 +26,27 @@ class RenameActionBlock(
             raise ValueError("value must not be empty")
 
         return value
+
+
+def handle_rename(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, RenameActionBlock):
+        raise TypeError(
+            "Expected a rename action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "rename",
+        block.as_json_object(),
+    )
+
+
+def register_rename_action_blocks() -> None:
+    register_action_block(
+        "rename",
+        RenameActionBlock,
+        handler=handle_rename,
+    )

@@ -1,9 +1,11 @@
+from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 GithubAction = Literal[
     "github_search_repos",
@@ -34,3 +36,27 @@ class GithubActionBlock(
     """Query GitHub."""
 
     payload: GithubPayload
+
+
+def handle_github(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, GithubActionBlock):
+        raise TypeError(
+            "Expected a github action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "github",
+        block.as_json_object(),
+    )
+
+
+def register_github_action_blocks() -> None:
+    register_action_block(
+        "github",
+        GithubActionBlock,
+        handler=handle_github,
+    )

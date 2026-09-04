@@ -1,9 +1,11 @@
+from __future__ import annotations
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class FormulasCalcInputs(BaseModel):
@@ -25,6 +27,7 @@ class FormulasCalcActionBlock(
 ):
     """Recalculate an XLSX workbook and read output cells."""
 
+    method: Literal["calculate"] = "calculate"
     path: str
     inputs: dict[str, Any]
     outputs: list[str]
@@ -46,11 +49,17 @@ class FormulasCalcActionBlock(
     @field_validator("inputs")
     @classmethod
     def validate_inputs(cls, value: dict[str, Any]) -> dict[str, Any]:
-        for cell_reference in value:
-            if not cell_reference.strip():
+        normalized_inputs: dict[str, Any] = {}
+
+        for cell_reference, cell_value in value.items():
+            cell_reference = cell_reference.strip()
+
+            if not cell_reference:
                 raise ValueError("input cell references must not be empty")
 
-        return value
+            normalized_inputs[cell_reference] = cell_value
+
+        return normalized_inputs
 
     @field_validator("outputs")
     @classmethod
@@ -69,3 +78,27 @@ class FormulasCalcActionBlock(
             normalized_outputs.append(output)
 
         return normalized_outputs
+
+
+def handle_formulas_calc(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, FormulasCalcActionBlock):
+        raise TypeError(
+            "Expected a formulas_calc action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "formulas_calc",
+        block.as_json_object(),
+    )
+
+
+def register_formulas_calc_action_blocks() -> None:
+    register_action_block(
+        "formulas_calc",
+        FormulasCalcActionBlock,
+        handler=handle_formulas_calc,
+    )

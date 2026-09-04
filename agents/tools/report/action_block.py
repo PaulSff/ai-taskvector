@@ -1,10 +1,12 @@
-# agents/tools/action_blocks/report.py
+
+from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class ReportActionBlock(
@@ -31,10 +33,9 @@ class ReportActionBlock(
         return value
 
     @model_validator(mode="after")
-    def validate_text(self) -> "ReportActionBlock":
+    def validate_text(self) -> ReportActionBlock:
         if self.output_format == "md":
             self._validate_markdown_text()
-
         elif self.output_format == "csv":
             self._validate_csv_text()
 
@@ -87,3 +88,27 @@ class ReportActionBlock(
                     "Each CSV row must have the same number of values "
                     "as headers"
                 )
+
+
+def handle_report(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, ReportActionBlock):
+        raise TypeError(
+            "Expected a report action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "report",
+        block.as_json_object(),
+    )
+
+
+def register_report_action_blocks() -> None:
+    register_action_block(
+        "report",
+        ReportActionBlock,
+        handler=handle_report,
+    )

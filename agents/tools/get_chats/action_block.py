@@ -1,9 +1,11 @@
+from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class GetUnreadActionBlock(
@@ -22,3 +24,27 @@ class GetUnreadActionBlock(
             raise ValueError("messenger must not be empty")
 
         return value
+
+
+def handle_get_unread(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, GetUnreadActionBlock):
+        raise TypeError(
+            "Expected a get_unread action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "get_unread",
+        block.as_json_object(),
+    )
+
+
+def register_get_unread_action_blocks() -> None:
+    register_action_block(
+        "get_unread",
+        GetUnreadActionBlock,
+        handler=handle_get_unread,
+    )

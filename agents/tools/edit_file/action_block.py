@@ -1,9 +1,13 @@
+# agents/tools/action_blocks/edit_file.py
+
+from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class EditFileReplacement(BaseModel):
@@ -76,6 +80,29 @@ class EditFileTarget(BaseModel):
         return value
 
 
+class EditFileParserOutput(BaseModel):
+    """Normalized edit-file action stored in ParsedActions."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+    )
+
+    action: Literal["edit_file"]
+    output_dir: str
+    file: EditFileTarget
+
+    @field_validator("output_dir")
+    @classmethod
+    def validate_output_dir(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("output_dir must not be empty")
+
+        return value
+
+
 class EditFileActionBlock(
     ActionBlock[Literal["edit_file"]]
 ):
@@ -93,3 +120,35 @@ class EditFileActionBlock(
             raise ValueError("output_dir must not be empty")
 
         return value
+
+
+def handle_edit_file(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, EditFileActionBlock):
+        raise TypeError(
+            f"Expected EditFileActionBlock, got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "edit_file",
+        block.as_json_object(),
+    )
+
+
+def register_edit_file_action_blocks() -> None:
+    register_action_block(
+        "edit_file",
+        EditFileActionBlock,
+        handler=handle_edit_file,
+    )
+
+
+def get_edit_file_outputs(
+    actions: ParsedActions,
+) -> list[EditFileParserOutput]:
+    return [
+        EditFileParserOutput.model_validate(raw_action)
+        for raw_action in actions.get_tool_actions("edit_file")
+    ]

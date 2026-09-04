@@ -89,7 +89,6 @@ def handle_calendar(
     )
 
 
-
 def register_calendar_action_blocks() -> None:
     register_action_block(
         "calendar",

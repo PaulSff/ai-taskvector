@@ -1,10 +1,11 @@
-# agents/tools/action_blocks/new_file.py
+from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class NewFileSpec(BaseModel):
@@ -53,3 +54,27 @@ class NewFileActionBlock(
             raise ValueError("output_dir must not be empty")
 
         return value
+
+
+def handle_new_file(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, NewFileActionBlock):
+        raise TypeError(
+            "Expected a new_file action block, "
+            f"got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "new_file",
+        block.as_json_object(),
+    )
+
+
+def register_new_file_action_blocks() -> None:
+    register_action_block(
+        "new_file",
+        NewFileActionBlock,
+        handler=handle_new_file,
+    )
