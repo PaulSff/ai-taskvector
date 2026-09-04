@@ -38,6 +38,7 @@ from core.schemas.primitives import (
     FormatProcess,
     JsonObject,
     WorkflowInputs,
+    WorkflowOutputs,
     is_format_process,
     is_json_object,
 )
@@ -157,11 +158,11 @@ async def _publish_and_wait_zmq(
     workflow_graph: ProcessGraph | None,
     initial_inputs: WorkflowInputs | None = None,
     unit_param_overrides: WorkflowInputs | None = None,
-    stream_cb: Callable[[str], None] | None = None,
+    stream_cb: GraphStreamCallback| None = None,
     format: str | None,
     publish_config: ZmqPublishConfig,
     subscription_config: ZmqSubscriptionConfig,
-) -> JsonObject:
+) -> WorkflowOutputs:
     run_id = uuid.uuid4().hex
 
     topics = ZmqTopics()
