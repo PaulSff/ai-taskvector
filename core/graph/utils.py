@@ -9,7 +9,7 @@ from core.graph.core_config import (
 )
 from core.normalizer.runtime_detector import runtime_label
 from core.schemas.graph_edit_api import GraphEdit
-from core.schemas.primitives import JsonValue
+from core.schemas.primitives import Data, JsonValue
 from core.schemas.process_graph import Connection, PortSpec, Unit
 from units.registry import get_unit_spec
 
@@ -23,7 +23,7 @@ def add_unit(
     unit_id: str,
     unit_type: str,
     *,
-    params: dict[str, object] | None = None,
+    params: Data | None = None,
     controllable: bool = False,
 ) -> Unit:
     """Return an existing unit or append and return a new one."""

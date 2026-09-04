@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
+from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, register_unit
 
 RUN_MCP_TOOL_INPUT_PORTS = [
@@ -69,7 +70,7 @@ async def _call_mcp_tool_async(
     *,
     tool_name: str,
     arguments: dict[str, Any],
-    stream_cb: Any | None,
+    stream_cb: GraphStreamCallback | None,
     params: dict[str, Any],
 ) -> Any:
     from mcp import Client

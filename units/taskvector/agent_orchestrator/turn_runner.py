@@ -75,7 +75,7 @@ async def run_orchestrator_turn(
     from agents.chat.handlers.chat_turn_context import (
         normalize_user_message_for_workflow,
     )
-    from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+    from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
     from agents.chat.utils.workflow_output_normalizer import (
         apply_meta_with_formulas_calc_tool_status,
         formulas_calc_display_appendix,
@@ -423,8 +423,8 @@ async def run_orchestrator_turn(
             result = dict(wf_result)
 
             edits = result.get("edits") or []
-            await _checkpoint("before:canonicalize_add_comment_edits")
-            await canonicalize_add_comment_edits(edits, agent_role_id=role_id)
+            await _checkpoint("before:set_commenter_for_new_comments")
+            await set_commenter_for_new_comments(edits, agent_role_id=role_id)
 
             result["edits"] = edits
             result["apply_result"] = (

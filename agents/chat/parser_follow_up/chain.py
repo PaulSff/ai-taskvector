@@ -15,7 +15,7 @@ from typing import Any
 
 import agents.follow_ups as agents_follow_ups
 from agents.chat.agent_workflow import (
-    refresh_last_apply_result_after_canvas_apply,
+    refresh_last_graph_apply_result,
     run_agent_workflow,
 )
 from agents.chat.agent_workflow.wf_response_schema import (
@@ -29,6 +29,7 @@ from agents.chat.context.context_signals import (
     workflow_response_is_question,
 )
 from agents.chat.context.follow_up_context import (
+    ParserChainRunner,
     ParserFollowUpContext,
     PostApplyFlags,
     PostApplyFollowUpContext,
@@ -79,13 +80,13 @@ from gui.components.settings import get_coding_is_allowed, get_contribution_is_a
 from .role_follow_ups_runner import run_role_ordered_follow_ups
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 1: Pre-apply follow-up chain (Human in the loop)
+#  PHASE 1: Parser follow_up (using tools before canvas applly)
 # ─────────────────────────────────────────────────────────────────────────────────
 
 async def run_parser_output_follow_up_chain_async(
     ctx: ParserFollowUpContext,
     resp: AgentWorkflowResponse,
-) -> Data | None:
+) -> AgentWorkflowResponse | None:
     """
     Async version: If parser_output requests tools, fetch context and re-run agent_workflow.
     Returns None when the user cancelled the run mid-chain.
@@ -390,7 +391,7 @@ async def run_parser_output_follow_up_chain_async(
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  PHASE 2: Post-apply follow-up rounds (No human in the loop)
+#  PHASE 2: Post-apply follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
 
@@ -399,7 +400,7 @@ async def run_post_apply_follow_up_rounds_async(
     *,
     result: Data,
     content_holder: list[str],
-    parser_chain_runner: Callable[[dict[str, object]], Awaitable[dict[str, object] | None]],
+    parser_chain_runner: ParserChainRunner,
     flags: PostApplyFlags,
 ) -> None:
     """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
@@ -711,14 +712,14 @@ async def run_post_apply_follow_up_rounds_async(
                                 augment_graph_with_client_tasks,
                             )
                             from agents.chat.role_turns.turn_edits import (
-                                canonicalize_add_comment_edits,
+                                set_commenter_for_new_comments,
                             )
 
                             _post_edits = pw.get("edits") or []
                             await _checkpoint(
-                                f"canonicalize_add_comment_edits:{post_round}:{len(_post_edits)}"
+                                f"set_commenter_for_new_comments:{post_round}:{len(_post_edits)}"
                             )
-                            await canonicalize_add_comment_edits(
+                            await set_commenter_for_new_comments(
                                 _post_edits, agent_role_id=ctx.agent_role_id
                             )
 
@@ -755,7 +756,7 @@ async def run_post_apply_follow_up_rounds_async(
 
                             ctx.last_apply_result_ref[
                                 0
-                            ] = await refresh_last_apply_result_after_canvas_apply(
+                            ] = await refresh_last_graph_apply_result(
                                 prev_apply,
                                 ctx.graph_ref[0],
                                 supplement_summary="",

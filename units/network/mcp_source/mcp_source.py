@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
+from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, register_unit
 
 RUN_MCP_SOURCE_INPUT_PORTS = [
@@ -65,7 +66,7 @@ def _maybe_status(cb: Any | None, token: Any) -> None:
 async def _call_mcp_source_async(
     *,
     resource_uri: str,
-    stream_cb: Any | None,
+    stream_cb: GraphStreamCallback | None,
     params: dict[str, Any],
 ) -> Any:
     try:

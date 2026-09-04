@@ -11,6 +11,7 @@ from flet import Border, BorderSide
 from markdown_it import MarkdownIt as _MarkdownIt
 from markdown_it.token import Token
 
+from agents.chat.session.state import AgentChatHistory
 from core.graph.todo_list import (
     add_task as _todo_add_task,
 )
@@ -1154,7 +1155,7 @@ def render_messages(
     *,
     messages_col: ft.Column,
     chat_title_txt: ft.Text,
-    history: list[dict[str, Any]],
+    history: AgentChatHistory,
     new_id: Callable[[], str],
     now_ts: Callable[[], str],
     row_builder: Callable[[dict[str, Any]], ft.Row],

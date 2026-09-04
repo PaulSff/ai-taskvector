@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, get_unit_spec, register_unit
 
 CHAMELEON_INPUT_PORTS = [("actions", "Any"), ("data", "Any")]
@@ -47,7 +48,7 @@ def _running_error_summary(results: list[dict[str, Any]]) -> str | None:
 
 def _emit_chameleon_stream(
     stream_outputs: bool,
-    stream_cb: Any,
+    stream_cb: GraphStreamCallback,
     *,
     step_index: int,
     total: int,

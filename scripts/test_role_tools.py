@@ -11,7 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
 from agents.roles import (
     CHAT_NAME_CREATOR_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -102,12 +102,12 @@ def test_role_chat_feature_flags() -> None:
     assert role_chat_feature_enabled(None, "graph_canvas", default=True) is True
 
 
-async def test_canonicalize_add_comment_edits() -> None:
+async def test_set_commenter_for_new_comments() -> None:
     edits = [
         {"action": "add_comment", "info": "hello", "commenter": "fake_role"},
         {"action": "add_unit", "unit": {"id": "u1", "type": "sink"}},
     ]
-    await canonicalize_add_comment_edits(edits, agent_role_id="workflow_designer")
+    await set_commenter_for_new_comments(edits, agent_role_id="workflow_designer")
     assert edits[0]["commenter"] == "workflow_designer"
     assert edits[0]["info"] == "hello"
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     print("tool.yaml workflow paths exist (ok)")
     test_role_chat_feature_flags()
     print("role chat feature flags (ok)")
-    asyncio.run(test_canonicalize_add_comment_edits())
+    asyncio.run(test_set_commenter_for_new_comments())
     print("canonicalize add_comment edits (ok)")
     print("canonicalize add_comment edits (ok)")
     test_parse_chat_handler_spec()

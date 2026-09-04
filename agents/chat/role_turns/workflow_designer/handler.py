@@ -73,7 +73,7 @@ from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
 
 from ..context import RoleChatTurnContext
-from ..turn_edits import canonicalize_add_comment_edits
+from ..turn_edits import set_commenter_for_new_comments
 
 _WORKFLOW_DESIGNER_WORKFLOW_PATH = (
     get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID).resolve()
@@ -405,7 +405,7 @@ class WorkflowDesignerChatHandler:
             wf_result = merged.result
 
             if merged.parser_output is not None:
-                await canonicalize_add_comment_edits(
+                await set_commenter_for_new_comments(
                     merged.parser_output.actions.edits,
                     agent_role_id=turn_ctx.profile,
                 )
@@ -797,7 +797,7 @@ class WorkflowDesignerChatHandler:
                     except ValidationError:
                         retry_edits = []
 
-                    await canonicalize_add_comment_edits(
+                    await set_commenter_for_new_comments(
                         retry_edits,
                         agent_role_id=turn_ctx.profile,
                     )

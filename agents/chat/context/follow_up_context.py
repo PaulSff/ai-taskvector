@@ -17,6 +17,8 @@ from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
+type FollowUpContexts = list[str]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pre-apply follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────

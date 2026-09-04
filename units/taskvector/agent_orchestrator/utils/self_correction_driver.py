@@ -15,7 +15,7 @@ from agents.chat.context.language_control import (
 )
 from agents.chat.context.todo_list_manager import augment_graph_with_client_tasks
 from agents.chat.handlers.chat_turn_context import format_previous_turn
-from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
 from agents.chat.session.state import AgentChatHistory
 from agents.roles.types import RoleConfig
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
@@ -155,8 +155,8 @@ async def run_self_correction_retry_async(
             retry_edits.append(raw_edit)
 
     await _await_with_log(
-        "canonicalize_add_comment_edits",
-        canonicalize_add_comment_edits(
+        "set_commenter_for_new_comments",
+        set_commenter_for_new_comments(
             retry_edits,
             agent_role_id=role_id,
         ),

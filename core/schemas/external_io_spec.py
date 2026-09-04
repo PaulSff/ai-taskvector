@@ -12,9 +12,9 @@ for the *meaning* of each dimension (names + optional transforms/ranges) so sema
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
+
+from core.schemas.primitives import Data
 
 
 class ObservationSpecItem(BaseModel):
@@ -63,7 +63,7 @@ class ExternalIOSpec(BaseModel):
         return len(self.action_spec)
 
     @staticmethod
-    def from_adapter_config(cfg: dict[str, Any]) -> ExternalIOSpec:
+    def from_adapter_config(cfg: Data) -> ExternalIOSpec:
         """
         Parse spec from adapter_config dict (missing keys -> empty lists).
         When observation_source_ids or action_target_ids are present in cfg, they are the source of truth:
@@ -101,4 +101,3 @@ class ExternalIOSpec(BaseModel):
             act_spec = action_spec
 
         return ExternalIOSpec(observation_spec=obs_spec, action_spec=act_spec)
-

@@ -9,12 +9,12 @@ from agents.chat.role_turns.registry import (
     clear_dynamic_handler_cache,
     get_role_chat_handler,
 )
-from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
 
 __all__ = [
     "RoleChatHandler",
     "RoleChatTurnContext",
-    "canonicalize_add_comment_edits",
+    "set_commenter_for_new_comments",
     "clear_dynamic_handler_cache",
     "get_role_chat_handler",
 ]

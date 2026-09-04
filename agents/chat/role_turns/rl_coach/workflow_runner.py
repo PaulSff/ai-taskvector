@@ -12,6 +12,7 @@ from agents.chat.handlers.prompt_delegate_tool_visibility import (
 )
 from agents.roles import RL_COACH_ROLE_ID
 from agents.roles.workflow_path import get_role_chat_workflow_path
+from core.schemas.primitives import Data, WorkflowInputs
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,
@@ -23,6 +24,7 @@ from gui.components.settings import (
     get_role_rag_top_k,
     get_training_config_path,
 )
+from runtime.executor import GraphStreamCallback
 
 RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID)
 DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S = 300.0
@@ -80,7 +82,7 @@ def get_training_results_follow_up() -> str:
     return "No training run completed yet (no best model path in settings)."
 
 
-def get_training_config_dict() -> dict[str, Any]:
+def get_training_config_dict() -> Data:
     """
     Load training config from settings path and return as dict for ApplyTrainingConfigEdits.
     Returns empty dict if file missing or invalid.
@@ -106,10 +108,10 @@ def get_training_config_dict() -> dict[str, Any]:
 
 def build_rl_coach_unit_param_overrides(
     provider: str,
-    cfg: dict[str, Any],
+    cfg: Data,
     *,
     report_output_dir: str | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> WorkflowInputs:
     """Build unit_param_overrides for rl_coach_workflow.json (LLM, prompt, RAG caps, optional report dir)."""
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
@@ -140,11 +142,11 @@ def build_rl_coach_unit_param_overrides(
 
 
 async def run_rl_coach_workflow(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    initial_inputs: WorkflowInputs,
+    unit_param_overrides: WorkflowInputs | None = None,
     execution_timeout_s: float | None = DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S,
-    stream_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
+    stream_callback: GraphStreamCallback| None = None,
+) -> WorkflowInputs:
     """
     Run rl_coach_workflow.json via run_agent_workflow (merge_response.data shape).
 

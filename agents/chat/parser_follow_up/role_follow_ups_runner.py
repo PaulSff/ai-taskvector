@@ -13,6 +13,7 @@ from agents.chat.context.follow_up_context import (
 )
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.registry import get_follow_up_runner
+from agents.tools.types import LanguageHintGetter, ParserOutput
 from core.schemas.primitives import Data
 
 from .tool_controller import (
@@ -22,9 +23,9 @@ from .tool_controller import (
 
 async def run_role_ordered_follow_ups(
     ctx: ParserFollowUpContext,
-    po: Data,
+    po: ParserOutput,
     response: Data,
-    hint: Callable[[], str],
+    hint: LanguageHintGetter,
     acc: WDFollowUpAcc,
 ) -> None:
     ordered = (

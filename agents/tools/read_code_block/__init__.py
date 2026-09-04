@@ -22,8 +22,7 @@ from agents.tools.types import (
     ParserOutput,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
-from core.schemas import Unit
-from core.schemas.primitives import Data
+from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -52,9 +51,9 @@ def _rag_excerpt_blocks_from_chameleon(ch_out: Data, paths: list[str]) -> list[s
 
 def _run_read_code_block_follow_up_workflow(
     graph_dict: ProcessGraph,
-    unit_ids: list[Unit],
+    unit_ids: list[str],
     session_language: str,
-) -> Data:
+) -> WorkflowInputs:
     """Run the full read_code_block follow-up graph; returns executor outputs dict."""
     from runtime.run import run_workflow
 

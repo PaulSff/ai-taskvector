@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 # agent workflow and other merges may need 16+ inputs (e.g. merge_llm + language).
@@ -23,11 +24,11 @@ def _is_empty(val: Any) -> bool:
 
 
 def _merge_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     """If input "data" is a dict (pre-built context), pass it through. Else collect in_0..in_N into one dict and only output when fully aggregated.
     Emits error on port "error" when any required_keys entry is missing or empty."""
     data_in = inputs.get("data")
@@ -41,7 +42,7 @@ def _merge_step(
     keys = params.get("keys")
     if not isinstance(keys, (list, tuple)) or len(keys) < n:
         keys = [f"in_{i}" for i in range(n)]
-    data: dict[str, Any] = {}
+    data: Data = {}
     for i in range(n):
         key = str(keys[i]) if i < len(keys) else f"in_{i}"
         val = inputs.get(f"in_{i}")
@@ -52,7 +53,7 @@ def _merge_step(
     return ({"data": data, "error": error_msg}, state)
 
 
-def _required_keys(params: dict[str, Any]) -> list[str]:
+def _required_keys(params: Data) -> list[str]:
     """Return list of keys that must be non-empty. Empty if not specified (no required keys)."""
     required = params.get("required_keys")
     if isinstance(required, (list, tuple)) and required:

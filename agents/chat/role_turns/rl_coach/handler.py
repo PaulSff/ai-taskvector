@@ -46,7 +46,7 @@ from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
 
 from ..context import RoleChatTurnContext
-from ..turn_edits import canonicalize_add_comment_edits
+from ..turn_edits import set_commenter_for_new_comments
 
 _RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID).resolve()
 
@@ -313,7 +313,7 @@ class RlCoachChatHandler:
 
         wf_result = response.get("result") or {}
         result = dict(wf_result) if isinstance(wf_result, dict) else {}
-        await canonicalize_add_comment_edits(
+        await set_commenter_for_new_comments(
             result.get("edits"), agent_role_id=turn_ctx.profile
         )
 
