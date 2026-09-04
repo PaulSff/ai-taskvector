@@ -6,8 +6,9 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "origin", "type": "str"}
+        {"name": "origin", "type": "str"},
+        {"name": "graph", "type": "Any"}
+
       ],
       "output_ports": [
         {"name": "graph", "type": "Any"},
