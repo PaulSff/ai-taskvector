@@ -108,23 +108,41 @@ def _extract_edits(
 def _edits_summary(
     edits: list[dict[str, JsonValue]],
 ) -> str:
-    """Short summary of edits for status."""
+    """Return a short human-readable summary of graph edits."""
     parts: list[str] = []
 
     for edit in edits:
-        action = edit.get("action") or "?"
+        action = edit.get("action")
+
+        if not isinstance(action, str):
+            action = "?"
 
         if action == "no_edit":
             continue
 
         if action == "add_unit":
             unit = edit.get("unit")
-            unit_id: JsonValue = "?"
 
             if isinstance(unit, dict):
                 unit_id = unit.get("id", "?")
+                unit_type = unit.get("type", "?")
+                parts.append(
+                    f"add_unit {unit_id} ({unit_type})"
+                )
+            else:
+                parts.append("add_unit ?")
 
-            parts.append(f"add_unit {unit_id}")
+        elif action == "add_pipeline":
+            pipeline = edit.get("pipeline")
+
+            if isinstance(pipeline, dict):
+                pipeline_id = pipeline.get("id", "?")
+                pipeline_type = pipeline.get("type", "?")
+                parts.append(
+                    f"add_pipeline {pipeline_id} ({pipeline_type})"
+                )
+            else:
+                parts.append("add_pipeline ?")
 
         elif action == "remove_unit":
             parts.append(
@@ -136,10 +154,152 @@ def _edits_summary(
                 f"set_params {edit.get('id', '?')}"
             )
 
-        elif action == "connect":
+        elif action in {"connect", "disconnect"}:
+            from_id = edit.get("from", "?")
+            to_id = edit.get("to", "?")
+
             parts.append(
-                f"connect {edit.get('from', '?')}"
-                + f"->{edit.get('to', '?')}"
+                f"{action} {from_id}->{to_id}"
+            )
+
+        elif action == "replace_graph":
+            units = edit.get("units")
+            connections = edit.get("connections")
+
+            unit_count = (
+                len(units)
+                if isinstance(units, list)
+                else "?"
+            )
+            connection_count = (
+                len(connections)
+                if isinstance(connections, list)
+                else "?"
+            )
+
+            parts.append(
+                "replace_graph "
+                f"({unit_count} units, "
+                f"{connection_count} connections)"
+            )
+
+        elif action == "replace_unit":
+            find_unit = edit.get("find_unit")
+            replace_with = edit.get("replace_with")
+
+            find_id = "?"
+            replacement_id = "?"
+            replacement_type = "?"
+
+            if isinstance(find_unit, dict):
+                find_id = find_unit.get("id", "?")
+
+            if isinstance(replace_with, dict):
+                replacement_id = replace_with.get("id", "?")
+                replacement_type = replace_with.get("type", "?")
+
+            parts.append(
+                f"replace_unit {find_id} with "
+                f"{replacement_id} ({replacement_type})"
+            )
+
+        elif action == "add_code_block":
+            code_block = edit.get("code_block")
+
+            if isinstance(code_block, dict):
+                unit_id = code_block.get("id", "?")
+                language = code_block.get("language", "?")
+                parts.append(
+                    f"add_code_block {unit_id} ({language})"
+                )
+            else:
+                parts.append("add_code_block ?")
+
+        elif action == "add_comment":
+            comment_id = edit.get("comment_id", "?")
+            parts.append(f"add_comment {comment_id}")
+
+        elif action == "remove_comment":
+            parts.append(
+                f"remove_comment {edit.get('comment_id', '?')}"
+            )
+
+        elif action == "add_todo_list":
+            title = edit.get("title")
+
+            if isinstance(title, str) and title.strip():
+                parts.append(f"add_todo_list {title.strip()}")
+            else:
+                parts.append("add_todo_list")
+
+        elif action == "remove_todo_list":
+            parts.append(
+                f"remove_todo_list "
+                f"{edit.get('todo_list_id', '?')}"
+            )
+
+        elif action == "add_task":
+            todo_list_id = edit.get("todo_list_id", "?")
+            text = edit.get("text")
+
+            if isinstance(text, str) and text.strip():
+                parts.append(
+                    f"add_task {todo_list_id}: "
+                    f"{text.strip()}"
+                )
+            else:
+                parts.append(f"add_task {todo_list_id}")
+
+        elif action == "remove_task":
+            parts.append(
+                f"remove_task {edit.get('task_id', '?')}"
+            )
+
+        elif action == "set_implementer":
+            parts.append(
+                f"set_implementer {edit.get('task_id', '?')} "
+                f"to {edit.get('implementer', '?')}"
+            )
+
+        elif action == "set_deadline":
+            parts.append(
+                f"set_deadline {edit.get('task_id', '?')} "
+                f"to {edit.get('deadline', '?')}"
+            )
+
+        elif action == "set_curator":
+            parts.append(
+                f"set_curator {edit.get('task_id', '?')} "
+                f"to {edit.get('curator', '?')}"
+            )
+
+        elif action == "set_todo_list_title":
+            parts.append(
+                f"set_todo_list_title "
+                f"{edit.get('todo_list_id', '?')} "
+                f"to {edit.get('title', '?')}"
+            )
+
+        elif action == "mark_completed":
+            completed = edit.get("completed", True)
+            parts.append(
+                f"mark_completed "
+                f"{edit.get('task_id', '?')} "
+                f"({completed})"
+            )
+
+        elif action == "add_environment":
+            parts.append(
+                f"add_environment {edit.get('env_id', '?')}"
+            )
+
+        elif action == "import_workflow":
+            source = edit.get("source", "?")
+            merge = edit.get("merge", False)
+
+            parts.append(
+                f"import_workflow {source}"
+                + (" (merge)" if merge else "")
             )
 
         else:
