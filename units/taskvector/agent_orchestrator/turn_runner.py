@@ -10,7 +10,6 @@ import asyncio
 import inspect
 import time
 import traceback
-from collections.abc import Callable
 from typing import Any
 
 from pydantic import ValidationError
@@ -22,7 +21,11 @@ from agents.chat.parser_follow_up.chain import (
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )
+from agents.chat.session.state import AgentChatHistory
 from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import Data
+from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.taskvector.agent_orchestrator.utils.follow_up_context_builder import (
@@ -57,13 +60,14 @@ from .utils.merge_final_graph import merge_latest_graph_for_final_output
 
 
 async def run_orchestrator_turn(
-    context: dict[str, Any],
+    context: Data,
     *,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: GraphStreamCallback | None = None,
     batch_update_publisher: BatchUpdatePublisher | None = None,
     run_id: str | None,
-) -> dict[str, Any]:
+) -> Data:
     from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
+    from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
     from agents.chat.context.language_control import (
         finalize_workflow_designer_turn_session_language,
         maybe_pin_session_language_from_workflow_response,
@@ -84,17 +88,16 @@ async def run_orchestrator_turn(
     from runtime.run import WorkflowTimeoutError
 
     # --- Safe defaults for the batch publisher ---
-
-    result: dict[str, Any] = {}
+    response = AgentWorkflowResponse()
+    result: Data = {}
     content: str = ""
-    apply_meta: dict[str, Any] = {}
-    response: dict[str, Any] = {}
+    apply_meta: Data = {}
 
     # Capture fallback graph so we can still assemble output on errors
     graph = context.get("graph")
     fallback_graph = coerce_graph(graph) if isinstance(graph, dict) else None
 
-    followup_error: dict[str, Any] | None = None
+    followup_error: Data | None = None
 
     _publish_in_progress = make_publish_in_progress(
         batch_update_publisher=batch_update_publisher,
@@ -166,10 +169,10 @@ async def run_orchestrator_turn(
         or WORKFLOW_DESIGNER_ROLE_ID
     )
 
-    history: list[Any] = list(context.get("history") or [])
+    history: AgentChatHistory = list(context.get("history") or [])
     session_language = str(context.get("session_language") or "")
-    last_apply_result: dict[str, Any] | None = context.get("last_apply_result")
-    graph: Any = context.get("graph")
+    last_apply_result: AgentApplyWorkflowEditsResult | None = context.get("last_apply_result")
+    graph: ProcessGraph = context.get("graph")
     initial_graph_md5 = graph_md5(graph) if isinstance(graph, dict) else None
     recent_changes: str | None = context.get("recent_changes")
     provider = str(context.get("provider") or "ollama")
@@ -183,8 +186,8 @@ async def run_orchestrator_turn(
         timeout_s = context.get("orchestrator_timeout_s")
 
     # ── Mutable references ──
-    graph_ref: list[Any] = [graph]
-    last_apply_result_ref: list[Any] = [last_apply_result]
+    graph_ref: list[ProcessGraph] = [graph]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult] = [last_apply_result]
     wf_language_hint: list[str] = [default_wf_language_hint(session_language)]
     session = SessionProxy(session_language=session_language, history=history)
 
