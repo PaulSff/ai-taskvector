@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from rag.content_types.registry import classify_content
 from units.registry import UnitSpec, register_unit
 
@@ -201,11 +202,11 @@ def _graph_to_data(
 
 
 def _rag_detect_origin_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Output 0: origin (content_kind); output 1: normalized graph; output 2: error; output 3: routing context."""
     g_in = inputs.get("graph") if inputs else None
     p_in = inputs.get("path") if inputs else None
