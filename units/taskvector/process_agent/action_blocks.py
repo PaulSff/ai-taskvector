@@ -23,7 +23,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from agents.tools.registry import TOOL_ACTION_BLOCKS, parse_action_block
+from agents.tools.registry import (
+    get_action_registration,
+    parse_action_block,
+)
 from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas.primitives import (
     JsonObject,
@@ -77,12 +80,11 @@ def _parsed_blocks_to_action_blocks(
     parsed_blocks: list[JsonValue],
 ) -> ParserOutput:
     """
-    Convert parsed JSON blocks into a normalized ParsedActions instance.
+    Convert parsed JSON blocks into normalized ParsedActions.
 
-    ParsedActions is used as the accumulator so the parser does not maintain
-    a second, duplicated set of local declarations.
+    Tool-specific normalization is performed by each registered action-block
+    handler. This parser only dispatches validated blocks.
     """
-
     actions = ParsedActions()
 
     for raw in _iter_action_objects(parsed_blocks):
@@ -96,19 +98,15 @@ def _parsed_blocks_to_action_blocks(
         if not isinstance(action, str):
             continue
 
-        registration = TOOL_ACTION_BLOCKS.get(action.strip())
+        registration = get_action_registration(action)
 
         if registration is None or registration.handle is None:
             continue
 
         registration.handle(actions, block)
 
-    actions.read_file = list(dict.fromkeys(actions.read_file))
-    actions.read_code_block_ids = list(
-        dict.fromkeys(actions.read_code_block_ids)
-    )
-
     return ParserOutput(actions=actions)
+
 
 
 def parse_workflow_edits(content: str) -> ParserOutput:
