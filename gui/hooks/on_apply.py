@@ -5,43 +5,68 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import flet as ft
+
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph  # adjust import
+
+GraphValidator = Callable[
+    [ProcessGraph | None],
+    Awaitable[tuple[ProcessGraph | None, str | None]],
+]
+
 
 async def on_apply_hook(
     *,
     token: int,
-    inner_msg: dict[str, Any],
-    page: Any,
+    inner_msg: Data,
+    page: ft.Page,
     is_current_run: Callable[[int], bool],
     toast: Callable[[Any, str], Awaitable[None]],
-    validate_graph_inline: Callable[[dict[str, Any]], Awaitable[tuple[Any, Any]]],
+    validate_graph_inline: GraphValidator,
     safe_page_update: Callable[[Any], None],
-    scroll_chat_to_bottom: Callable[
-        [], Awaitable[None]
-    ],  # not used here; included if we later need it
-    apply_fn_from_agent: Any,  # apply_from_agent
-    set_graph: Callable[[Any], None] | None,  # set_graph
-    state: dict[str, Any],
+    scroll_chat_to_bottom: Callable[[], Awaitable[None]],
+    apply_fn_from_agent: Callable[[ProcessGraph], Any] | None,
+    set_graph: Callable[[ProcessGraph], None] | None,
+    state: Data,
 ) -> None:
     if not is_current_run(token):
         return
 
     try:
-        graph_to_apply = inner_msg.get("graph")
-        if graph_to_apply is None:
+        graph = inner_msg.get("graph")
+
+        if graph is None:
             return
 
-        # de-dupe by content
-        graph_key = json.dumps(graph_to_apply, sort_keys=True, default=str)
+        if not isinstance(graph, ProcessGraph):
+            raise TypeError(
+                f"Expected graph to be ProcessGraph, got {type(graph).__name__}"
+            )
+
+        # De-dupe by graph content.
+        graph_key = json.dumps(
+            graph.model_dump(by_alias=True),
+            sort_keys=True,
+            default=str,
+        )
+
         if graph_key == state["last_graph_to_apply"]:
             return
+
         state["last_graph_to_apply"] = graph_key
 
-        apply_fn = apply_fn_from_agent if apply_fn_from_agent is not None else set_graph
+        apply_fn = (
+            apply_fn_from_agent
+            if apply_fn_from_agent is not None
+            else set_graph
+        )
+
         if apply_fn is None:
             return
 
-        # validate graph by running the workflow inline
-        pg, v_err = await validate_graph_inline(graph_to_apply)
+        pg, v_err = await validate_graph_inline(graph)
+
         if v_err or pg is None:
             state["graph_apply_error"] = (
                 f"Could not validate graph: {(v_err or '')[:120]}"
@@ -49,7 +74,6 @@ async def on_apply_hook(
             await toast(page, state["graph_apply_error"])
             return
 
-        # update canvas on every update event
         apply_fn(pg)
         state["graph_applied"] = True
         safe_page_update(page)

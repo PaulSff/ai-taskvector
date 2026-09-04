@@ -25,6 +25,7 @@ from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.utils.save_workflow import (
     save_workflow_version,
 )
+from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.chat_panel.chat import (
     CHAT_GRAPH_DRAG_GROUP,
@@ -317,7 +318,7 @@ async def main(page: ft.Page) -> None:
         "is_initial_apply_done": False,
     }
 
-    def _live_graph_dict() -> dict[str, Any] | None:
+    def _live_graph_dict() -> Data | None:
         g = graph_ref[0]
         if g is None:
             return None
@@ -325,7 +326,7 @@ async def main(page: ft.Page) -> None:
             return g.model_dump(by_alias=True)
         return g if isinstance(g, dict) else None
 
-    async def _apply_graph_from_external_turn(inner_msg: dict[str, object]) -> None:
+    async def _apply_graph_from_external_turn(inner_msg: Data) -> None:
         await on_apply_hook(
             token=0,
             inner_msg=inner_msg,
