@@ -2,13 +2,14 @@
 from units.taskvector.process_agent.action_blocks import (
     parse_action_blocks,
     parse_workflow_edits,
-    strip_json_blocks,
 )
 from units.taskvector.process_agent.process_agent import (
     PROCESS_AGENT_INPUT_PORTS,
     PROCESS_AGENT_OUTPUT_PORTS,
     register_process_agent,
 )
+
+from .parser import strip_json_blocks
 
 __all__ = [
     "PROCESS_AGENT_INPUT_PORTS",
