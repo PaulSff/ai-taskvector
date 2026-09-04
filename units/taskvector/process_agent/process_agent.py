@@ -1,31 +1,19 @@
 """
 ProcessAgent (Parser) unit: parses LLM response into generic action blocks.
 
-Uses the same JSON-block syntax for any domain (graph edits, config, etc.). Output is a list
-of action dicts (each has "action": str + payload) or a dict with "edits" and optional side
-channels. Downstream units decide which actions they consume (e.g. ApplyEdits uses only
-GraphEditAction; other units can consume different action types from the same stream).
+Uses the same JSON-block syntax for any domain (graph edits, tool calls).
 
 parse raw LLM output
         ↓
 normalize into ParserOutput
-        ├── edits: list[GraphEdit]
-        └── typed side-channel command fields
+        ├── actions: ParsedActions
+        │   ├── edits: list[GraphEdit]
+        │   └── tool_actions: dict[str, list[Data]]
+        └── error
         ↓
 workflow response
         ↓
 downstream consumers
-
-The output shape:
-
-    unit output
-    ├── actions
-    │   ├── edits: list[GraphEdit]
-    │   ├── read_file
-    │   ├── web_search
-    │   ├── report
-    │   └── ...
-    └── error
 """
 from agents.tools.types import ParserOutput
 from core.schemas.primitives import Data, Output
@@ -35,7 +23,7 @@ from .action_blocks import parse_action_blocks
 
 PROCESS_AGENT_INPUT_PORTS = [("action", "Any")]
 PROCESS_AGENT_OUTPUT_PORTS = [
-    ("actions", "Any"),
+    ("actions", "ParsedActions"),
     ("error", "str"),
 ]
 
