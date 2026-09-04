@@ -5,16 +5,18 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import flet as ft
 
 from agents.chat.agent_workflow.wf_response_schema import MergeResponse
-from agents.chat.role_turns.protocol import WorkflowStreamingRunner
 from agents.chat.session.state import ChatSessionState
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
+
+if TYPE_CHECKING:
+    from agents.chat.role_turns.protocol import WorkflowStreamingRunner
 
 
 @dataclass

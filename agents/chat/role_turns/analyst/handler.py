@@ -41,6 +41,7 @@ from agents.chat.parser_follow_up import (
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )
+from agents.chat.role_turns.context import RoleChatTurnContext
 from agents.chat.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
@@ -70,7 +71,6 @@ from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
 
-from ..context import RoleChatTurnContext
 from ..turn_edits import set_commenter_for_new_comments
 
 _ANALYST_WORKFLOW_PATH = get_role_chat_workflow_path(ANALYST_ROLE_ID).resolve()

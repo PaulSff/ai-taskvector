@@ -3,7 +3,6 @@
 Built-in handlers live in subpackages (``workflow_designer/``, ``analyst/``, ``rl_coach/``); see ``README.md`` in this directory.
 """
 
-from agents.chat.role_turns.context import RoleChatTurnContext
 from agents.chat.role_turns.protocol import RoleChatHandler
 from agents.chat.role_turns.registry import (
     clear_dynamic_handler_cache,
@@ -13,8 +12,7 @@ from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
 
 __all__ = [
     "RoleChatHandler",
-    "RoleChatTurnContext",
-    "set_commenter_for_new_comments",
     "clear_dynamic_handler_cache",
     "get_role_chat_handler",
+    "set_commenter_for_new_comments",
 ]

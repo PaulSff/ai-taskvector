@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
-from agents.chat.role_turns.context import RoleChatTurnContext
 from core.schemas.primitives import WorkflowInputs
 from runtime.executor import GraphStreamCallback
+
+if TYPE_CHECKING:
+    from agents.chat.role_turns.context import RoleChatTurnContext
+
 
 
 @runtime_checkable
