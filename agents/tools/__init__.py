@@ -8,7 +8,7 @@ from agents.tools.catalog import (
 )
 from agents.tools.registry import (
     TOOL_RUNNERS,
-    clear_tool_registry_for_tests,
+    clear_tool_registry,
     get_follow_up_runner,
     list_tool_ids,
     register_tool,
@@ -19,7 +19,7 @@ from agents.tools.workflow_path import get_tool_workflow_path
 __all__ = [
     "TOOL_RUNNERS",
     "FollowUpContribution",
-    "clear_tool_registry_for_tests",
+    "clear_tool_registry",
     "get_follow_up_runner",
     "get_tool_workflow_path",
     "list_tool_ids",
