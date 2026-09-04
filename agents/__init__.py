@@ -14,7 +14,8 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_SYSTEM,
     _load_template_from_json,
 )
-from core.graph import apply_workflow_edits, graph_summary
+from core.graph.batch_edits import apply_workflow_edits
+from core.graph.summary import graph_summary
 from core.gym.training_edits import apply_config_edit, deep_merge
 from services.workflows.edit_workflows import (
     apply_edit_via_workflow,

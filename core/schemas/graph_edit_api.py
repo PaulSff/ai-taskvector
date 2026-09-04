@@ -4,7 +4,6 @@ from typing import ClassVar, Literal, TypeGuard
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from core.graph.summary import graph_summary
 from core.schemas import NodePosition, ProcessGraph
 from core.schemas.primitives import Data, JsonValue, is_object_list
 
@@ -244,6 +243,7 @@ class AgentApplyWorkflowEditsResult(BaseModel):
     @computed_field
     @property
     def graph_after(self) -> Data:
+        from core.graph.summary import graph_summary
         return graph_summary(self.apply_result.graph)
 
     @computed_field

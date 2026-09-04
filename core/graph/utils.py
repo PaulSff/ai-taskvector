@@ -1,17 +1,22 @@
+from __future__ import annotations
+
 import json
 from collections.abc import MutableSequence
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from core.graph.core_config import (
     CUSTOM_CODE_UNIT_TYPES,
     ORIGIN_LANGUAGE,
 )
 from core.normalizer.runtime_detector import runtime_label
-from core.schemas.graph_edit_api import GraphEdit
 from core.schemas.primitives import Data, JsonValue
 from core.schemas.process_graph import Connection, PortSpec, Unit
 from units.registry import get_unit_spec
+
+if TYPE_CHECKING:
+    from core.schemas.graph_edit_api import GraphEdit
+
 
 # App setting: coding_is_allowed (read from config/app_settings.json so graph_edits has no gui dependency)
 _CODING_IS_ALLOWED_KEY = "coding_is_allowed"

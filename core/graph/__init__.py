@@ -1,6 +1,5 @@
 """Graph editing: schema, apply_graph_edit, import_resolver, batch_edits, summary, diff."""
 
-from core.graph.batch_edits import apply_workflow_edits
 from core.graph.diff import graph_diff
 from core.graph.graph_edits import (
     PIPELINE_TYPES,
@@ -33,7 +32,6 @@ __all__ = [
     "GraphEditUnit",
     "add_task",
     "apply_graph_edit",
-    "apply_workflow_edits",
     "canonical_types_without_code_block",
     "code_block_ids_from_graph",
     "create_new_todo_list",

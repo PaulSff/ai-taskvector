@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
-from core.graph import apply_workflow_edits
+from core.graph.batch_edits import apply_workflow_edits
 from core.graph.todo_list import (
     add_task,
     create_new_todo_list,
