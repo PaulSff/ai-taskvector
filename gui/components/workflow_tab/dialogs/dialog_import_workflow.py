@@ -10,6 +10,12 @@ import flet as ft
 from pydantic import ValidationError
 
 from agents.tools.import_workflow import import_workflow_graph_path
+from core.schemas.primitives import (
+    JsonDocument,
+    WorkflowInputs,
+    WorkflowOutputs,
+    is_json_object,
+)
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
     AUTO_IMPORT_WORKFLOW_PATH,
@@ -20,28 +26,47 @@ IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
 
 logger = logging.getLogger(__name__)
 
-def run_auto_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:
+def run_auto_import_workflow(
+    raw_data: JsonDocument,
+) -> tuple[dict | None, str]:
     from runtime.run import run_workflow
 
     if not AUTO_IMPORT_WORKFLOW_PATH.exists():
         return (None, f"Workflow file not found: {AUTO_IMPORT_WORKFLOW_PATH}")
 
-    initial_inputs = {"inject_graph": {"data": raw_data}}
+    initial_inputs: WorkflowInputs = {
+        "inject_graph": {
+            "template": raw_data,
+        }
+    }
+
     try:
         outputs = run_workflow(
             str(AUTO_IMPORT_WORKFLOW_PATH),
             initial_inputs=initial_inputs,
             format="dict",
         )
-    except (FileNotFoundError, OSError, PermissionError) as e:
-        return (None, str(e))
-    except (ValueError, TypeError) as e:
-        return (None, str(e))
+    except (FileNotFoundError, OSError, PermissionError) as exc:
+        return (None, str(exc))
+    except (ValueError, TypeError) as exc:
+        return (None, str(exc))
 
-    iw = (outputs or {}).get("import_workflow") or {}
+    iw = (outputs or {}).get("import_workflow")
+
+    if not isinstance(iw, dict):
+        return (None, "Invalid import_workflow output")
+
     err = iw.get("error") or ""
     graph = iw.get("graph")
-    return (graph, err or "")
+
+    if not isinstance(err, str):
+        err = str(err)
+
+    if graph is not None and not isinstance(graph, dict):
+        return (None, "Invalid graph output")
+
+    return graph, err
+
 
 
 IMPORT_FORMATS: list[tuple[str, str]] = [
@@ -127,32 +152,57 @@ def open_import_workflow_dialog(
             return json.loads(raw)
         return raw
 
-    def _run_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:
+    def _run_import_workflow(
+        raw_data: JsonDocument,
+    ) -> tuple[dict | None, str]:
         from runtime.run import run_workflow
 
         fmt = format_dropdown.value or "auto"
+
         if fmt == "auto":
             return run_auto_import_workflow(raw_data)
 
         path = IMPORT_WORKFLOW_PATH
-        initial_inputs = {"import_workflow": {"graph": raw_data, "origin": fmt}}
+
+        initial_inputs: WorkflowInputs = {
+            "import_workflow": {
+                "graph": raw_data,
+                "origin": fmt,
+            }
+        }
 
         if not path.exists():
             return (None, f"Workflow file not found: {path}")
 
         try:
-            outputs = run_workflow(
-                str(path), initial_inputs=initial_inputs, format="dict"
+            outputs: WorkflowOutputs = run_workflow(
+                str(path),
+                initial_inputs=initial_inputs,
+                format="dict",
             )
-        except (FileNotFoundError, OSError, PermissionError) as e:
-            return (None, str(e))
-        except (ValueError, TypeError) as e:
-            return (None, str(e))
+        except (FileNotFoundError, OSError, PermissionError) as exc:
+            return (None, str(exc))
+        except (ValueError, TypeError) as exc:
+            return (None, str(exc))
 
-        iw = (outputs or {}).get("import_workflow") or {}
-        err = iw.get("error") or ""
-        graph = iw.get("graph")
-        return (graph, err or "")
+        raw_iw = outputs.get("import_workflow")
+
+        if not is_json_object(raw_iw):
+            return (None, "Invalid import_workflow output")
+
+        raw_error = raw_iw.get("error", "")
+        err = raw_error if isinstance(raw_error, str) else str(raw_error)
+
+        raw_graph = raw_iw.get("graph")
+
+        if raw_graph is None:
+            return (None, err)
+
+        if not is_json_object(raw_graph):
+            return (None, "Invalid graph output")
+
+        return raw_graph, err
+
 
 
     async def _auto_save_imported(graph: ProcessGraph) -> None:
