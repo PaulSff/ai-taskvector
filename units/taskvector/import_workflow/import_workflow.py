@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from core.graph.import_resolver import load_workflow_to_canonical
 from core.normalizer.normalizer import to_process_graph
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 IMPORT_WORKFLOW_INPUT_PORTS = [("graph", "Any"), ("origin", "str")]
@@ -39,45 +40,84 @@ def _is_source_spec(graph: Any) -> bool:
 
 
 def _import_workflow_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Output 0: canonical graph dict or None; output 1: error string."""
     raw = inputs.get("graph") if inputs else None
-    origin_from_port = (inputs or {}).get("origin")
-    if isinstance(origin_from_port, str):
-        origin_from_port = origin_from_port.strip() or None
 
-    # Raw graph + origin from upstream (e.g. RagDetectOrigin): convert in place
+    raw_origin = inputs.get("origin") if inputs else None
+    origin_from_port: str | None = None
+
+    if isinstance(raw_origin, str):
+        origin_from_port = raw_origin.strip() or None
+
+    # Raw graph + origin from upstream:
+    # convert in place.
     if origin_from_port and isinstance(raw, (dict, list)):
-        fmt = origin_from_port.strip().lower()
-        if fmt == "generic" or fmt == "canonical":
+        fmt = origin_from_port.lower()
+
+        if fmt in {"generic", "canonical"}:
             fmt = "dict"
+
         try:
-            graph = to_process_graph(raw, format=cast(Any, fmt))
+            graph = to_process_graph(
+                raw,
+                format=cast(Any, fmt),
+            )
+
             out = (
                 graph.model_dump(by_alias=True)
                 if hasattr(graph, "model_dump")
                 else dict(graph)
             )
-            return ({"graph": out, "error": ""}, state)
-        except (TypeError, ValueError) as e:
-            return ({"graph": None, "error": str(e)}, state)
 
-    # Source path/URL: load and convert via resolver
+            return (
+                {
+                    "graph": out,
+                    "error": "",
+                },
+                state,
+            )
+
+        except (TypeError, ValueError) as exc:
+            return (
+                {
+                    "graph": None,
+                    "error": str(exc),
+                },
+                state,
+            )
+
+    # Source path/URL: load and convert via resolver.
     source, origin = _parse_input(raw)
+
     if not source:
         return (
             {
                 "graph": None,
-                "error": "no source (provide string path/URL or dict with 'source')",
+                "error": (
+                    "no source (provide string path/URL "
+                    "or dict with 'source')"
+                ),
             },
             state,
         )
-    canonical, err_msg = load_workflow_to_canonical(source, origin=origin)
-    return ({"graph": canonical, "error": err_msg or ""}, state)
+
+    canonical, err_msg = load_workflow_to_canonical(
+        source,
+        origin=origin,
+    )
+
+    return (
+        {
+            "graph": canonical,
+            "error": err_msg or "",
+        },
+        state,
+    )
 
 
 def register_import_workflow() -> None:
