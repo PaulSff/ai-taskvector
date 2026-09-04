@@ -165,3 +165,25 @@ def is_object_list(value: object) -> TypeGuard[list[object]]:
 
 def is_data(value: object) -> TypeGuard[Data]:
     return isinstance(value, dict)
+
+
+def require_json_value(value: object, *, field: str) -> JsonValue:
+    if not is_json_value(value):
+        raise TypeError(
+            f"{field} contains a non-JSON-serializable value: "
+            + f"{type(value).__name__}"
+        )
+    return value
+
+
+def require_json_object_from_object(
+    value: object,
+    *,
+    field: str,
+) -> JsonObject:
+    if not is_json_object(value):
+        raise TypeError(
+            f"{field} must be a JSON object, "
+            + f"got {type(value).__name__}"
+        )
+    return value
