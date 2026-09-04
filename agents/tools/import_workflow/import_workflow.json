@@ -1,0 +1,22 @@
+{
+  "units": [
+    {
+      "id": "import_workflow",
+      "type": "Import_workflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "origin", "type": "str"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [],
+  "metadata": {
+    "description": "Import workflow from external format: graph + origin → Import_workflow. Used when pasting or loading Node-RED/n8n/PyFlow into canonical form."
+  }
+}
