@@ -6,16 +6,20 @@ import json
 from json import JSONDecodeError
 from typing import cast
 
+from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
+from agents.tools.types import ParserOutput
 from core.normalizer.shared import serialize
-from core.schemas.primitives import is_json_value, is_string_keyed_dict
+from core.schemas.primitives import Data, is_json_value, is_string_keyed_dict
 
 
-def _string_key_dict(
-    value: dict[object, object],
-) -> dict[str, object]:
-    result: dict[str, object] = {}
+def _string_key_dict(value: object) -> Data:
+    if not isinstance(value, dict):
+        return {}
 
-    for key, item in value.items():
+    raw_dict = cast(dict[object, object], value)
+    result: Data = {}
+
+    for key, item in raw_dict.items():
         if isinstance(key, str):
             result[key] = item
 
@@ -23,15 +27,13 @@ def _string_key_dict(
 
 
 def normalize_follow_up_parser_output(
-    raw_po: object,
-) -> dict[str, object]:
-    if raw_po is None or raw_po == "":
+    raw_po: ParserOutput | list[object] | str | None,
+) -> Data:
+    if raw_po is None:
         return {"edits": []}
 
-    if isinstance(raw_po, dict):
-        return _string_key_dict(
-            cast(dict[object, object], raw_po)
-        )
+    if isinstance(raw_po, ParserOutput):
+        return {"edits": raw_po.actions.edits}
 
     if isinstance(raw_po, list):
         return {"edits": raw_po}
@@ -48,15 +50,12 @@ def normalize_follow_up_parser_output(
             return {"edits": []}
 
         if isinstance(parsed, dict):
-            return _string_key_dict(
-                cast(dict[object, object], parsed)
-            )
+            return _string_key_dict(parsed)
 
         if isinstance(parsed, list):
             return {"edits": parsed}
 
-    return {"edits": []}
-
+        return {"edits": []}
 
 # ---- START Formulas output normalizer ---
 def normalize_formula_output(raw: object) -> object:
@@ -88,16 +87,17 @@ def is_empty_formula_output(value: object) -> bool:
 
 
 def formulas_calc_display_appendix(
-    response: dict[str, object] | None,
+    response: AgentWorkflowResponse | None,
     *,
     max_json_chars: int = 8000,
 ) -> str:
-    if not isinstance(response, dict):
+    if response is None:
         return ""
 
-    raw_out = response.get("formulas_calc_output")
-    err_raw = response.get("formulas_calc_error")
-    err_s = err_raw.strip() if isinstance(err_raw, str) else ""
+    direct_response = response.direct_units_response
+
+    raw_out = direct_response.formulas_calc_output
+    err_s = direct_response.formulas_calc_error.strip()
 
     out = normalize_formula_output(raw_out)
 
@@ -120,15 +120,16 @@ def formulas_calc_display_appendix(
     return "\n".join(lines)
 
 
+
 def apply_meta_with_formulas_calc_tool_status(
-    workflow_response: dict[str, object] | None,
+    workflow_response: AgentWorkflowResponse | None,
     apply_meta: object,
-) -> dict[str, object]:
+) -> Data:
     """
-    When the merge response includes a ``formulas_calc`` parser action but
+    When the merged response includes a ``formulas_calc`` parser action but
     ApplyEdits did not run (``attempted`` is not True), surface success/failure
-    in ``apply`` so the chat bubble shows the same **Applied** / failed header
-    as graph edits.
+    in ``apply`` so the chat bubble shows the same Applied/failed header as
+    graph edits.
     """
     if is_string_keyed_dict(apply_meta):
         base: dict[str, object] = dict(apply_meta)
@@ -138,10 +139,11 @@ def apply_meta_with_formulas_calc_tool_status(
     if base.get("attempted") is True:
         return base
 
-    if not isinstance(workflow_response, dict):
+    if workflow_response is None:
         return base
 
-    parser_output = workflow_response.get("parser_output")
+    merged_response = workflow_response.merged_response
+    parser_output = merged_response.parser_output
 
     if not is_string_keyed_dict(parser_output):
         return base
@@ -154,8 +156,7 @@ def apply_meta_with_formulas_calc_tool_status(
     if formulas_calc.get("action") != "formulas_calc":
         return base
 
-    err_raw = workflow_response.get("formulas_calc_error")
-    err_s = err_raw.strip() if isinstance(err_raw, str) else ""
+    err_s = merged_response.formulas_calc_error.strip()
 
     if err_s:
         return {
