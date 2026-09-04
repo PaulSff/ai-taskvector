@@ -169,6 +169,27 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         height=75,
         icon="smart_toy",
     ),
+    "ApplyEdits": NodeStyle(
+        bgcolor="grey_800",
+        border_color="indigo_400",
+        width=180,
+        height=75,
+        icon="engineering",
+    ),
+    "ProcessAgent": NodeStyle(
+        bgcolor="grey_800",
+        border_color="indigo_400",
+        width=180,
+        height=75,
+        icon="settings_suggest",
+    ),
+    "GraphDiff": NodeStyle(
+        bgcolor="grey_800",
+        border_color="indigo_400",
+        width=180,
+        height=75,
+        icon="difference",
+    ),
     # Canonical training-flow units
     "StepDriver": NodeStyle(
         bgcolor="grey_800",
