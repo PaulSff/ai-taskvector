@@ -1,30 +1,42 @@
 """
-Register follow-up tool implementations by stable id.
+Generic tool and action-block registry.
 
-Follow-up runners have this signature::
+Tool modules register themselves with register_tool():
 
-    async def run(
-        ctx,
-        po,
-        *,
-        language_hint,
-    ) -> FollowUpContribution
+    register_tool(
+        "todo_manager",
+        run_todo_manager_follow_up,
+        action_blocks={
+            "add_task": AddTaskActionBlock,
+            "add_todo_list": AddTodoListActionBlock,
+        },
+    )
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from agents.tools.types import LanguageHintGetter, ParserOutput, ToolList
+from pydantic import BaseModel, ValidationError
+
+from agents.tools.types import LanguageHintGetter, ParsedActions, ParserOutput, ToolList
 
 if TYPE_CHECKING:
-    from agents.chat.context.follow_up_context import (
-        ParserFollowUpContext,
-    )
-    from agents.tools.types import (
-        FollowUpContribution,
-    )
+    from agents.chat.context.follow_up_context import ParserFollowUpContext
+    from agents.tools.types import FollowUpContribution
+
+
+type ActionBlockType = type[BaseModel]
+type ActionBlockTypes = ActionBlockType | Iterable[ActionBlockType]
+type ActionBlockHandler = Callable[[ParsedActions, BaseModel], None]
+
+
+@dataclass(frozen=True)
+class ActionRegistration:
+    models: tuple[type[BaseModel], ...]
+    handle: ActionBlockHandler | None = None
 
 
 class FollowUpRunner(Protocol):
@@ -37,112 +49,183 @@ class FollowUpRunner(Protocol):
     ) -> Awaitable[FollowUpContribution]:
         ...
 
-# Maps tool_id -> follow-up coroutine.
+
+# Stable tool ID -> follow-up runner.
 TOOL_RUNNERS: dict[str, FollowUpRunner] = {}
 
-_builtin_tools_loaded = False
+# Stable action ID -> action-block model candidates.
+TOOL_ACTION_BLOCKS: dict[str, ActionRegistration] = {}
 
 
-def _ensure_builtin_follow_up_tools() -> None:
-    global _builtin_tools_loaded
+def _clear_parser_cache() -> None:
+    """
+    Invalidate parser caches after registry changes.
 
-    if _builtin_tools_loaded:
-        return
-
-    from agents.tools.add_comment import run_add_comment_follow_up
-    from agents.tools.browse import run_browse_follow_up
-    from agents.tools.calendar import run_calendar_follow_up
-    from agents.tools.clone_role import run_clone_role_follow_up
-    from agents.tools.delete import run_delete_file_follow_up
-    from agents.tools.edit_file import run_edit_file_follow_up
-    from agents.tools.formulas_calc import run_formulas_calc_follow_up
-    from agents.tools.get_chats import run_get_chats_follow_up
-    from agents.tools.github import run_github_follow_up
-    from agents.tools.grep import run_grep_follow_up
-    from agents.tools.list_dir import run_list_dir_follow_up
-    from agents.tools.make_dir import run_make_dir_follow_up
-    from agents.tools.new_file import run_new_file_follow_up
-    from agents.tools.rag_search import run_rag_search_follow_up
-    from agents.tools.read_code_block import run_read_code_block_follow_up
-    from agents.tools.read_current_workflow import (
-        run_read_current_workflow_follow_up,
-    )
-    from agents.tools.read_file import run_read_file_follow_up
-    from agents.tools.rename import run_rename_follow_up
-    from agents.tools.report import run_report_follow_up
-    from agents.tools.run_workflow import run_run_workflow_follow_up
-    from agents.tools.send_message import run_send_message_follow_up
-    from agents.tools.todo_manager import run_todo_manager_follow_up
-    from agents.tools.web_search import run_web_search_follow_up
-
-    TOOL_RUNNERS.update(
-        {
-            "read_code_block": run_read_code_block_follow_up,
-            "read_current_workflow": run_read_current_workflow_follow_up,
-            "run_workflow": run_run_workflow_follow_up,
-            "grep": run_grep_follow_up,
-            "read_file": run_read_file_follow_up,
-            "formulas_calc": run_formulas_calc_follow_up,
-            "rag_search": run_rag_search_follow_up,
-            "web_search": run_web_search_follow_up,
-            "browse": run_browse_follow_up,
-            "github": run_github_follow_up,
-            "report": run_report_follow_up,
-            "add_comment": run_add_comment_follow_up,
-            "todo_manager": run_todo_manager_follow_up,
-            "get_chats": run_get_chats_follow_up,
-            "send_message": run_send_message_follow_up,
-            "calendar": run_calendar_follow_up,
-            "clone_role": run_clone_role_follow_up,
-            "list_dir": run_list_dir_follow_up,
-            "new_file": run_new_file_follow_up,
-            "edit_file": run_edit_file_follow_up,
-            "delete": run_delete_file_follow_up,
-            "make_dir": run_make_dir_follow_up,
-            "rename": run_rename_follow_up,
-        }.items()
-    )
-
-
+    The import is local to avoid a circular import during startup.
+    """
     from .types import ActionBlock
 
     ActionBlock._valid_parser_keys.cache_clear()
-    _builtin_tools_loaded = True
 
 
-def get_follow_up_runner(tool_id: str) -> FollowUpRunner | None:
-    """Return the registered follow-up coroutine, or None."""
-    _ensure_builtin_follow_up_tools()
+def _normalize_action_blocks(
+    action_blocks: ActionBlockTypes,
+) -> tuple[ActionBlockType, ...]:
+    if isinstance(action_blocks, type):
+        result = (action_blocks,)
+    else:
+        result = tuple(action_blocks)
+
+    if not result:
+        raise ValueError("At least one action-block type is required")
+
+    for action_block_type in result:
+        if not isinstance(action_block_type, type):
+            raise TypeError(
+                "Action blocks must be Pydantic model classes"
+            )
+
+        if not issubclass(action_block_type, BaseModel):
+            raise TypeError(
+                "Action blocks must inherit from pydantic.BaseModel"
+            )
+
+    return result
+
+
+def register_action_block(
+    action: str,
+    action_blocks: ActionBlockTypes,
+    *,
+    handler: ActionBlockHandler | None = None,
+    append: bool = False,
+) -> None:
+    """
+    Register one or more models for a parser action.
+
+    This is mainly useful when an action is added after the tool has already
+    been registered. Normal tool registration should use register_tool().
+    """
+    if not action:
+        raise ValueError("action is required")
+
+    normalized = _normalize_action_blocks(action_blocks)
+    existing = TOOL_ACTION_BLOCKS.get(action)
+
+    if append and existing is not None:
+        models = (*existing.models, *normalized)
+
+        # Preserve the existing handler unless a new one is supplied.
+        effective_handler = (
+            handler if handler is not None else existing.handle
+        )
+    else:
+        models = normalized
+        effective_handler = handler
+
+    TOOL_ACTION_BLOCKS[action] = ActionRegistration(
+        models=models,
+        handle=effective_handler,
+    )
+
+    _clear_parser_cache()
+
+
+def register_tool(
+    tool_id: str,
+    impl: FollowUpRunner,
+    *,
+    action_blocks: Mapping[str, ActionBlockTypes] | None = None,
+) -> None:
+    """
+    Register a tool runner and all parser action blocks owned by that tool.
+
+    A tool may expose multiple parser actions:
+
+        register_tool(
+            "todo_manager",
+            run_todo_manager_follow_up,
+            action_blocks={
+                "add_task": AddTaskActionBlock,
+                "add_todo_list": AddTodoListActionBlock,
+            },
+        )
+    """
+    tool_id = tool_id.strip()
+
+    if not tool_id:
+        raise ValueError("tool_id is required")
+
+    TOOL_RUNNERS[tool_id] = impl
+
+    for action, action_block_types in (action_blocks or {}).items():
+        register_action_block(action, action_block_types)
+
+    _clear_parser_cache()
+
+
+def parse_action_block(raw_action: dict) -> BaseModel:
+    """
+    Validate and instantiate an action block using its action value.
+    """
+    action = raw_action.get("action")
+
+    if not isinstance(action, str):
+        raise TypeError("action must be a string")
+
+    action = action.strip()
+
+    registration = TOOL_ACTION_BLOCKS.get(action)
+
+    if registration is None:
+        raise ValueError(f"Unknown action: {action!r}")
+
+    errors: list[ValidationError] = []
+
+    for action_block_type in registration.models:
+        try:
+            return action_block_type.model_validate(raw_action)
+        except ValidationError as error:
+            errors.append(error)
+
+    raise ValueError(
+        f"Invalid payload for action {action!r}: "
+        f"{len(errors)} candidate model(s) failed validation"
+    ) from errors[-1]
+
+
+def get_follow_up_runner(
+    tool_id: str,
+) -> FollowUpRunner | None:
     return TOOL_RUNNERS.get((tool_id or "").strip())
 
 
-def register_tool(tool_id: str, impl: FollowUpRunner) -> None:
-    """Register or replace a follow-up tool implementation."""
-    tid = tool_id.strip()
+def get_action_block_types(
+    action: str,
+) -> tuple[ActionBlockType, ...]:
+    registration = TOOL_ACTION_BLOCKS.get(action.strip())
 
-    if not tid:
-        raise ValueError("tool_id is required")
+    if registration is None:
+        return ()
 
-    TOOL_RUNNERS[tid] = impl
+    return registration.models
 
-    # The set of valid parser keys may have changed.
-    from .types import ActionBlock
 
-    ActionBlock._valid_parser_keys.cache_clear()
+def get_action_registration(
+    action: str,
+) -> ActionRegistration | None:
+    return TOOL_ACTION_BLOCKS.get((action or "").strip())
 
 
 def list_tool_ids() -> ToolList:
-    _ensure_builtin_follow_up_tools()
     return tuple(sorted(TOOL_RUNNERS))
 
 
-def clear_tool_registry_for_tests() -> None:
-    """Drop builtins so tests can isolate registry state."""
-    global _builtin_tools_loaded
+def list_action_ids() -> tuple[str, ...]:
+    return tuple(sorted(TOOL_ACTION_BLOCKS))
 
+
+def clear_tool_registry() -> None:
     TOOL_RUNNERS.clear()
-    _builtin_tools_loaded = False
-
-    from .types import ActionBlock
-
-    ActionBlock._valid_parser_keys.cache_clear()
+    TOOL_ACTION_BLOCKS.clear()
+    _clear_parser_cache()

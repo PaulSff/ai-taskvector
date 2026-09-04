@@ -130,37 +130,34 @@ class FollowUpContribution:
 
 @dataclass
 class ParsedActions:
-    # GraphEdits calls
+    """
+    Normalized actions emitted during parsing.
+
+    Graph edits remain a first-class built-in category. All other actions are
+    stored by their registered action ID.
+    """
+
     edits: list[GraphEdit] = field(default_factory=list)
-    # Tool calls
-    read_file: list[str] = field(default_factory=list)
-    read_code_block_ids: list[str] = field(default_factory=list)
-    read_current_workflow: bool = False
+    tool_actions: dict[str, list[Data]] = field(default_factory=dict)
 
-    web_search: str | None = None
-    web_search_max_results: int | None = None
-    browse_url: str | None = None
+    def add_tool_action(
+        self,
+        action: str,
+        value: Data,
+    ) -> None:
+        self.tool_actions.setdefault(action, []).append(value)
 
-    github: Data | None = None
-    report: Data | None = None
-    run_workflow: Data | None = None
-    grep: Data | None = None
-    formulas_calc: Data | None = None
-    delegate_request: Data | None = None
+    def get_tool_actions(
+        self,
+        action: str,
+    ) -> list[Data]:
+        return self.tool_actions.get(action, [])
 
-    send_message: list[Data] = field(default_factory=list)
-    get_unread: list[Data] = field(default_factory=list)
-
-    calendar: Data | None = None
-    clone_role: Data | None = None
-    rag_search: Data | None = None
-    list_dir: Data | None = None
-    new_file: Data | None = None
-    edit_file: Data | None = None
-    rename: Data | None = None
-    delete: Data | None = None
-    make_dir: Data | None = None
-    no_edit: Data | None = None
+    def has_tool_action(
+        self,
+        action: str,
+    ) -> bool:
+        return bool(self.tool_actions.get(action))
 
 
 @dataclass

@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.tools.types import ActionBlock
+from agents.tools.registry import register_action_block
+from agents.tools.types import ActionBlock, ParsedActions
 
 
 class CalendarDateTime(BaseModel):
@@ -63,3 +64,35 @@ CalendarActionBlock = (
     | ReserveActionBlock
     | CancelActionBlock
 )
+
+
+_CALENDAR_ACTION_BLOCK_TYPES = (
+    GetAllCalendarsActionBlock,
+    CheckAvailabilityActionBlock,
+    ReserveActionBlock,
+    CancelActionBlock,
+)
+
+
+def handle_calendar(
+    actions: ParsedActions,
+    block: BaseModel,
+) -> None:
+    if not isinstance(block, _CALENDAR_ACTION_BLOCK_TYPES):
+        raise TypeError(
+            f"Expected a calendar action block, got {type(block).__name__}"
+        )
+
+    actions.add_tool_action(
+        "calendar",
+        block.as_json_object(),
+    )
+
+
+
+def register_calendar_action_blocks() -> None:
+    register_action_block(
+        "calendar",
+        _CALENDAR_ACTION_BLOCK_TYPES,
+        handler=handle_calendar,
+    )
