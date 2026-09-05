@@ -8,15 +8,12 @@ Orchestrates tool follow-ups in catalog order (registered tool runners), then re
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 from copy import deepcopy
 from dataclasses import replace
-from typing import Any
 
 import agents.follow_ups as agents_follow_ups
 from agents.chat.agent_workflow import (
-    refresh_last_graph_apply_result,
     run_agent_workflow,
 )
 from agents.chat.agent_workflow.wf_response_schema import (
@@ -32,6 +29,7 @@ from agents.chat.context.context_signals import (
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
     ParserChainRunner,
+    PostEditFlags,
     PostExecutionFollowUpContext,
     WDFollowUpAcc,
 )
@@ -72,7 +70,9 @@ from agents.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE,
 )
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
+from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 
@@ -82,9 +82,10 @@ from .tool_follow_ups_runner import run_role_ordered_follow_ups
 #  PHASE 1: Execution follow_up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
-async def run_execute_follow_up_chain_async(
+async def run_execution_follow_up_chain_async(
     ctx: ExecutionFollowUpContext,
     resp: AgentWorkflowResponse,
+    flags: PostEditFlags,
 ) -> AgentWorkflowResponse | None:
     """
     Async version: If parser_output requests tools, fetch context and re-run
@@ -580,7 +581,7 @@ async def run_post_execution_follow_up_chain_async(
     result: Data,
     content_holder: list[str],
     parser_chain_runner: ParserChainRunner,
-    # flags: PostExecuteFlags,
+    flags: PostEditFlags,
 ) -> None:
     """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
     from agents.chat.context.todo_list_manager import graph_has_any_open_tasks
@@ -737,15 +738,21 @@ async def run_post_execution_follow_up_chain_async(
                     f"runtime_for_prompts:{post_round}:{_runtime is not None}"
                 )
                 _previous_turn = await ctx.format_previous_turn(ctx.state.history)
+
                 last_apply = ctx.last_apply_result_ref[0]
 
                 if asyncio.iscoroutine(last_apply):
                     last_apply = await last_apply
 
+                assert (
+                    last_apply is None
+                    or isinstance(last_apply, AgentApplyWorkflowEditsResult)
+                )
+
                 post_inputs = build_agent_workflow_initial_inputs(
                     post_user_msg,
                     _graph,
-                    last_apply if isinstance(last_apply, dict) else None,
+                    last_apply,
                     ctx.get_recent_changes() if ctx.get_recent_changes else None,
                     post_msg,
                     runtime=_runtime,
@@ -756,79 +763,115 @@ async def run_post_execution_follow_up_chain_async(
                     session_language=ctx.state.session_language,
                     analyst_mode=ctx.analyst_mode,
                 )
+
                 await _checkpoint(f"built_post_inputs:{post_round}")
 
-                post_stream_kw: dict[str, Any] = {"_run_token": ctx.token}
                 if ctx.agent_workflow_path is not None:
-                    post_stream_kw["workflow_path"] = ctx.agent_workflow_path
-                    await _checkpoint(f"using_agent_workflow_path:{post_round}")
+                    await _checkpoint(
+                        f"using_agent_workflow_path:{post_round}"
+                    )
                 else:
-                    await _checkpoint(f"no_agent_workflow_path:{post_round}")
+                    await _checkpoint(
+                        f"no_agent_workflow_path:{post_round}"
+                    )
 
-                await _checkpoint(f"before_run_workflow_streaming:{post_round}")
-                post_response = await ctx.run_workflow_streaming(
+                await _checkpoint(
+                    f"before_run_workflow_streaming:{post_round}"
+                )
+
+                previous_graph = ctx.graph_ref[0]
+
+                response = await ctx.run_workflow_streaming(
                     run_agent_workflow,
                     post_inputs,
                     ctx.overrides,
                     None,
-                    **post_stream_kw,
+                    _run_token=ctx.token,
+                    workflow_path=ctx.agent_workflow_path,
                 )
+                # invoke the callback to reconcile the graph
+                if ctx.on_workflow_response is not None:
+                    await ctx.on_workflow_response(
+                        response,
+                        previous_graph,
+                    )
+
                 await _checkpoint(f"after_run_workflow_streaming:{post_round}")
 
                 await _checkpoint(f"before_parser_chain:{post_round}")
-                post_chained = await parser_chain_runner(post_response)
-                await _checkpoint(f"after_parser_chain:{post_round}:{post_chained is None}")
 
-                if post_chained is None:
+                post_response = await parser_chain_runner(response)
+
+                await _checkpoint(
+                    f"after_parser_chain:{post_round}:{post_response is None}"
+                )
+
+                if post_response is None:
                     await _checkpoint(f"break_none_from_parser_chain:{post_round}")
                     break
-                post_response = post_chained
 
-                # breack if no_edit action is detected
-                post_kind = (post_response.get("result") or {}).get("kind")
-                if post_kind in ("no_edits", "no_edit"):
-                    await _checkpoint(f"break_no_edits_kind:{post_round}")
+                # Break when LLM emits a structured "no_action" action.
+                parser_output = response.merged_response.parser_output
+
+                parsed_actions = (
+                    parser_output.actions
+                    if parser_output is not None
+                    else ParsedActions()
+                )
+
+                if parsed_actions.has_tool_action("no_action"):
+                    await _checkpoint(f"break_no_action_parser_action:{post_round}")
                     break
 
-                # stop if parser chain emitted structured no_edit (LLM emitted a valid no_edit action)
-                post_no_edit = post_response.get("no_edit")
-                if isinstance(post_no_edit, dict) and post_no_edit.get("action") == "no_edit":
-                    await _checkpoint(f"break_no_edit_action:{post_round}")
-                    break
-
-                record_llm_prompt_view_if_present(post_response, ctx.record_llm_prompt_view)
+                record_llm_prompt_view_if_present(
+                    post_response,
+                    ctx.record_llm_prompt_view,
+                )
                 await _checkpoint(f"recorded_prompt_view:{post_round}")
+                merged_response = post_response.merged_response
 
-                post_raw = post_response.get("reply")
+                post_raw = merged_response.reply
 
                 if isinstance(post_raw, dict) and "action" in post_raw:
                     post_raw = post_raw.get("action") or ""
-                    await _checkpoint(f"extracted_action_from_reply:{post_round}")
-
-                # break the loop if no_edit action is detected from llm reply
-                if isinstance(post_raw, str) and post_raw.strip() == "no_edit":
-                    await _checkpoint(f"break_no_edit_action_fallback:{post_round}")
-                    break
+                    await _checkpoint(
+                        f"extracted_action_from_reply:{post_round}"
+                    )
 
                 post_reply = (
-                    post_raw if isinstance(post_raw, str) else str(post_raw or "")
+                    post_raw
+                    if isinstance(post_raw, str)
+                    else str(post_raw or "")
                 ).strip()
 
                 if not post_reply and ctx.stream_buffer_ref[0]:
-                    post_reply = (ctx.stream_buffer_ref[0] or "").strip()
-                    await _checkpoint(f"used_stream_buffer_fallback:{post_round}")
+                    post_reply = (
+                        ctx.stream_buffer_ref[0] or ""
+                    ).strip()
+                    await _checkpoint(
+                        f"used_stream_buffer_fallback:{post_round}"
+                    )
 
-                await _checkpoint(f"computed_post_reply_len:{post_round}:{len(post_reply)}")
+                await _checkpoint(
+                    f"computed_post_reply_len:{post_round}:{len(post_reply)}"
+                )
 
                 if post_reply:
                     content = content + "\n\n" + post_reply
                     content_holder[0] = content
                     result["content_for_display"] = content
-                    await _checkpoint(f"appended_post_reply:{post_round}:{len(content)}")
-
-                    last = ctx.state.history[-1] if ctx.state.history else None
                     await _checkpoint(
-                        f"history_last_present:{post_round}:{isinstance(last, dict)}"
+                        f"appended_post_reply:{post_round}:{len(content)}"
+                    )
+
+                    last = (
+                        ctx.state.history[-1]
+                        if ctx.state.history
+                        else None
+                    )
+                    await _checkpoint(
+                        f"history_last_present:{post_round}:"
+                        f"{isinstance(last, dict)}"
                     )
 
                     if (
@@ -837,13 +880,19 @@ async def run_post_execution_follow_up_chain_async(
                         and last.get("turn_id") == ctx.turn_id
                     ):
                         last["content"] = content
-                        wr = last.get("workflow_response")
-                        if isinstance(wr, dict):
-                            wr["reply"] = content
+
+                        workflow_response = last.get("workflow_response")
+                        if isinstance(workflow_response, dict):
+                            workflow_response["reply"] = content
                         else:
-                            last["workflow_response"] = {"reply": content}
+                            last["workflow_response"] = {
+                                "reply": content
+                            }
+
                         ctx.replace_agent_message_row(last)
-                        await _checkpoint(f"replaced_agent_row:{post_round}")
+                        await _checkpoint(
+                            f"replaced_agent_row:{post_round}"
+                        )
                     else:
                         ctx.append_message(
                             "agent",
@@ -859,109 +908,53 @@ async def run_post_execution_follow_up_chain_async(
                                 },
                             },
                         )
-                        await _checkpoint(f"appended_agent_message:{post_round}")
+                        await _checkpoint(
+                            f"appended_agent_message:{post_round}"
+                        )
 
-                await _checkpoint(f"before_workflow_response_question_check:{post_round}")
+                await _checkpoint(
+                    "before_workflow_response_question_check:"
+                    f"{post_round}"
+                )
 
-                # break the loop if the llm has just asked a question
+                # Stop automatic rounds if LLM asks a question.
                 if workflow_response_is_question(post_response):
-                    await _checkpoint(f"break_question_stop_auto_rounds:{post_round}")
+                    await _checkpoint(
+                        f"break_question_stop_auto_rounds:{post_round}"
+                    )
                     break
 
-                pw = post_response.get("result") or {}
-                post_kind = pw.get("kind")
-                post_graph = pw.get("graph")
+                post_result = merged_response.result
+                post_kind = post_result.get("kind")
+
                 await _checkpoint(
-                    f"post_result_fields:{post_round}:kind={post_kind}:{post_graph is not None}"
+                    f"post_result_fields:{post_round}:kind={post_kind}"
                 )
 
-                synced_post_graph = False
-                if (
-                    post_kind == "applied"
-                    and post_graph is not None
-                    and ctx.is_current_run(ctx.token)
-                ):
-                    await _checkpoint(f"attempt_canvas_sync:{post_round}")
-                    try:
-                        if isinstance(post_graph, dict):
-                            from agents.chat.agent_workflow.helpers import (
-                                validate_graph_to_apply_inline,
-                            )
-                            from agents.chat.context.todo_list_manager import (
-                                augment_graph_with_client_tasks,
-                            )
-                            from agents.chat.role_turns.turn_edits import (
-                                set_commenter_for_new_comments,
-                            )
+                post_errors = merged_response.workflow_errors
 
-                            _post_edits = pw.get("edits") or []
-                            await _checkpoint(
-                                f"set_commenter_for_new_comments:{post_round}:{len(_post_edits)}"
-                            )
-                            await set_commenter_for_new_comments(
-                                _post_edits, agent_role_id=ctx.agent_role_id
-                            )
-
-
-                            if isinstance(post_graph, dict):
-                                post_graph = ProcessGraph.model_validate(post_graph)
-
-                            post_graph, _post_supp = await augment_graph_with_client_tasks(
-                                post_graph,
-                                _post_edits,
-                                coding_is_allowed=get_coding_is_allowed(),
-                            )
-
-                            await _checkpoint(
-                                f"augment_graph_with_client_tasks:{post_round}"
-                            )
-                            post_pg, _p_err = await validate_graph_to_apply_inline(
-                                post_graph
-                            )
-                            await _checkpoint(
-                                f"validated_graph_to_apply_for_canvas:{post_round}:{post_pg is not None}"
-                            )
-                        else:
-                            post_pg = post_graph
-                            await _checkpoint(f"post_graph_not_dict:{post_round}")
-
-                        if post_pg is not None:
-                            ctx.apply_fn(post_pg)
-                            await _checkpoint(f"applied_post_graph:{post_round}")
-
-                            prev_apply = ctx.last_apply_result_ref[0]
-                            if asyncio.iscoroutine(prev_apply):
-                                prev_apply = await prev_apply
-
-                            ctx.last_apply_result_ref[
-                                0
-                            ] = await refresh_last_graph_apply_result(
-                                prev_apply,
-                                ctx.graph_ref[0],
-                                supplement_summary="",
-                            )
-
-                            synced_post_graph = True
-                            await _checkpoint(f"refreshed_last_apply_result:{post_round}")
-                        else:
-                            await _checkpoint(f"post_pg_is_none_no_apply:{post_round}")
-                    except (KeyError, TypeError, IndexError):
-                        await _checkpoint(f"canvas_sync_exception:{post_round}")
-
-                if not synced_post_graph and pw.get("last_apply_result"):
-                    ap = pw["last_apply_result"]
-                    ctx.last_apply_result_ref[0] = (
-                        ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
-                    )
-                    await _checkpoint(f"synced_last_apply_result_from_agent:{post_round}")
-
-                post_errors = post_response.get("workflow_errors") or []
                 await _checkpoint(
-                    f"workflow_errors:{post_round}:{len(post_errors) if isinstance(post_errors, list) else 'na'}"
+                    f"workflow_errors:{post_round}:{len(post_errors)}"
                 )
+
                 if post_errors and ctx.is_current_run(ctx.token):
-                    await _checkpoint(f"toast_workflow_error:{post_round}")
-                    await ctx.toast(f"Workflow error: {post_errors[0][1][:120]}")
+                    await _checkpoint(
+                        f"toast_workflow_error:{post_round}"
+                    )
+
+                    first_error = post_errors[0]
+                    error_message = (
+                        first_error[1]
+                        if (
+                            isinstance(first_error, tuple)
+                            and len(first_error) > 1
+                        )
+                        else str(first_error)
+                    )
+
+                    await ctx.toast(
+                        f"Workflow error: {error_message[:120]}"
+                    )
                     await _checkpoint(f"toast_sent:{post_round}")
 
             except (KeyError, TypeError, IndexError):
