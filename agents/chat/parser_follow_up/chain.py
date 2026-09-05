@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
+from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
@@ -126,9 +127,9 @@ async def run_execute_follow_up_chain_async(
             response_to_check,
             merged_response=replace(
                 merge_response,
-                result=dict(merge_response.result),
-                status=dict(merge_response.status),
-                workflow_errors=list(
+                result=deepcopy(merge_response.result),
+                status=deepcopy(merge_response.status),
+                workflow_errors=deepcopy(
                     merge_response.workflow_errors
                 ),
             ),
@@ -185,13 +186,6 @@ async def run_execute_follow_up_chain_async(
             flush=True,
         )
 
-        follow_up_msg = (
-            DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
-            )
-        )
-
         acc = WDFollowUpAcc()
 
         ctx.follow_up_source_response = response
@@ -234,8 +228,10 @@ async def run_execute_follow_up_chain_async(
                 context_chunks
             )
 
+        follow_up_messages: list[str] = []
+
         if read_code_ids_for_msg:
-            follow_up_msg = (
+            follow_up_messages.append(
                 READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
                     unit_ids=", ".join(
                         str(x) for x in read_code_ids_for_msg
@@ -244,55 +240,75 @@ async def run_execute_follow_up_chain_async(
                     session_language=_hint(),
                 )
             )
-        elif report_follow_up:
-            follow_up_msg = (
+
+        if report_follow_up:
+            follow_up_messages.append(
                 REPORT_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif any_empty_tool:
-            follow_up_msg = (
+
+        if any_empty_tool:
+            follow_up_messages.append(
                 TOOL_EMPTY_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif formulas_calc_follow_up:
-            follow_up_msg = (
+
+        if formulas_calc_follow_up:
+            follow_up_messages.append(
                 FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif calendar_follow_up:
-            follow_up_msg = (
+
+        if calendar_follow_up:
+            follow_up_messages.append(
                 CALENDAR_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif clone_role_follow_up:
-            follow_up_msg = (
+
+        if clone_role_follow_up:
+            follow_up_messages.append(
                 CLONE_ROLE_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif list_dir_follow_up:
-            follow_up_msg = (
+
+        if list_dir_follow_up:
+            follow_up_messages.append(
                 LIST_DIR_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
-        elif read_file_follow_up:
-            follow_up_msg = (
+
+        if read_file_follow_up:
+            follow_up_messages.append(
                 REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 )
             )
+
+        if follow_up_messages:
+            follow_up_msg = "\n\n".join(
+                follow_up_messages
+            )
+        else:
+            follow_up_msg = (
+                DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
+            )
+
 
         if not follow_up_context:
             await _checkpoint(
@@ -395,14 +411,12 @@ async def run_execute_follow_up_chain_async(
                 f"after_extend_initial_inputs:{i}"
             )
 
-        if hasattr(graph_ref, "model_dump"):
-            graph_data = graph_ref.model_dump(
-                by_alias=True
-            )
-        elif isinstance(graph_ref, dict):
-            graph_data = graph_ref
-        else:
-            graph_data = None
+        graph = ctx.graph_ref[0]
+
+        graph_summary = get_summary_params(
+            get_coding_is_allowed(),
+            graph,
+        )
 
         units_library_base = dict(
             ctx.overrides.get("units_library") or {}
@@ -441,19 +455,7 @@ async def run_execute_follow_up_chain_async(
         else:
             graph: ProcessGraph | None
 
-            if graph_data is None:
-                graph = None
-            elif isinstance(graph_data, ProcessGraph):
-                graph = graph_data
-            elif isinstance(graph_data, dict):
-                graph = ProcessGraph.model_validate(
-                    graph_data
-                )
-            else:
-                raise TypeError(
-                    "Unexpected graph type: "
-                    f"{type(graph_data).__name__}"
-                )
+            graph = ctx.graph_ref[0]
 
             graph_summary = get_summary_params(
                 get_coding_is_allowed(),
