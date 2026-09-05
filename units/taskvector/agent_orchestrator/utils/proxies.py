@@ -51,7 +51,7 @@ class ToolCtxProxy:
         self,
         *,
         graph_ref: list[ProcessGraph],
-        last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
+        last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None],
         follow_up_contexts: list[str],
         wf_language_hint: list[str],
         overrides: WorkflowInputs,
@@ -84,7 +84,7 @@ class ToolCtxProxy:
 
         self.graph_ref: list[ProcessGraph] = graph_ref
         self.last_apply_result_ref: list[
-            AgentApplyWorkflowEditsResult
+            AgentApplyWorkflowEditsResult | None
         ] = last_apply_result_ref
         self.follow_up_contexts: list[str] = follow_up_contexts
         self.wf_language_hint: list[str] = wf_language_hint

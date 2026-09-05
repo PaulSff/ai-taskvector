@@ -35,7 +35,7 @@ async def run_self_correction_retry_async(
     session: SessionProxy,
     role_config: RoleConfig,
     graph_ref: list[ProcessGraph],
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None],
     wf_language_hint: list[str],
     stream_cb: GraphStreamCallback| None,
     history: AgentChatHistory,

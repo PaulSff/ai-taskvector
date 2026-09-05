@@ -24,7 +24,7 @@ from agents.chat.agent_workflow.helpers import (
 )
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
-    PostExecuteFlags,
+    PostEditFlags,
     PostExecutionFollowUpContext,
 )
 from agents.chat.context.language_control import (
@@ -38,7 +38,7 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    run_execute_follow_up_chain_async,
+    run_execution_follow_up_chain_async,
     run_post_execution_follow_up_chain_async,
 )
 from agents.chat.role_turns.context import RoleChatTurnContext
@@ -216,7 +216,7 @@ class PlannerChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
 
-            return await run_execute_follow_up_chain_async(
+            return await run_execution_follow_up_chain_async(
                 parser_ctx,
                 resp,
             )
@@ -700,7 +700,7 @@ class PlannerChatHandler:
                     result=result,
                     content_holder=content_holder,
                     parser_chain_runner=_parser_output_follow_up_chain,
-                    flags=PostExecuteFlags(
+                    flags=PostEditFlags(
                         had_import_workflow=had_import_workflow,
                         had_todo=had_todo,
                         had_add_comment=had_add_comment,

@@ -18,7 +18,7 @@ def build_post_apply_context(
     role_config: RoleConfig,
     turn_id: str,
     graph_ref: list[ProcessGraph],
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None],
     wf_language_hint: list[str],
     recent_changes: str | None,
 ) -> PostExecutionFollowUpContext:
@@ -100,7 +100,6 @@ def build_post_apply_context(
         format_previous_turn=proxy.format_previous_turn,
         replace_agent_message_row=lambda _: None,
         stream_buffer_ref=[""],
-        apply_fn=apply_graph,
         agent_workflow_path=agent_workflow_path,
         analyst_mode=analyst_mode,
     )

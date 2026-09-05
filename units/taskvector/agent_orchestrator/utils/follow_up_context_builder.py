@@ -28,7 +28,7 @@ def build_parser_follow_up_context(
     follow_up_contexts: list[str],
     stream_cb: GraphStreamCallback | None,
     graph_ref: list[ProcessGraph],
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None],
     wf_language_hint: list[str],
     recent_changes: str | None,
 ) -> ExecutionFollowUpContext:

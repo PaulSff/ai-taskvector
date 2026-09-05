@@ -105,7 +105,7 @@ def _build_last_edit_block_string(
 def build_agent_workflow_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: AgentApplyWorkflowEditsResult,
+    last_apply_result: AgentApplyWorkflowEditsResult | None,
     recent_changes: str | None,
     follow_up_context: str = "",
     runtime: str = "native",

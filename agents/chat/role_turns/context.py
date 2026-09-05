@@ -42,7 +42,7 @@ class RoleChatTurnContext:
     set_graph: Callable[[Any], None]
     get_recent_changes: Callable[[], str | None] | None
     on_show_run_console: Callable[..., Any] | None
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
     stream_buffer_ref: list[str]
     is_current_run: Callable[[int], bool]
     toast: Callable[[str], Awaitable[None]]

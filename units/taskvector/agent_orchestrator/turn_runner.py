@@ -15,10 +15,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from agents.chat.context.follow_up_context import (
-    PostExecuteFlags,
+    PostEditFlags,
 )
 from agents.chat.parser_follow_up.chain import (
-    run_execute_follow_up_chain_async,
+    run_execution_follow_up_chain_async,
     run_post_execution_follow_up_chain_async,
 )
 from agents.chat.session.state import AgentChatHistory
@@ -187,7 +187,7 @@ async def run_orchestrator_turn(
 
     # ── Mutable references ──
     graph_ref: list[ProcessGraph] = [graph]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult] = [last_apply_result]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None] = [last_apply_result]
     wf_language_hint: list[str] = [default_wf_language_hint(session_language)]
     session = SessionProxy(session_language=session_language, history=history)
 
@@ -402,7 +402,7 @@ async def run_orchestrator_turn(
 
             async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
                 await _checkpoint("parser_chain_runner:enter")
-                chained = await run_execute_follow_up_chain_async(parser_ctx, resp)
+                chained = await run_execution_follow_up_chain_async(parser_ctx, resp)
                 await _checkpoint("parser_chain_runner:done")
                 return chained if chained is not None else resp
 
@@ -511,7 +511,7 @@ async def run_orchestrator_turn(
                         for e in _todo_edits
                     ) or graph_has_any_open_tasks(applied_graph)
 
-                    flags = PostExecuteFlags(
+                    flags = PostEditFlags(
                         had_import_workflow=any(
                             isinstance(e, dict) and e.get("action") == "import_workflow"
                             for e in _edits

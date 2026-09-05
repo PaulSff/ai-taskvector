@@ -52,7 +52,7 @@ class ExecutionFollowUpContext:
     append_message: Callable[..., None]
     prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
     run_workflow_streaming: WorkflowStreamingRunner
@@ -147,7 +147,7 @@ class PostExecutionFollowUpContext:
     append_message: Callable[..., None]
     prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult]
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
     run_workflow_streaming: WorkflowStreamingRunner
@@ -178,8 +178,8 @@ class PostExecutionFollowUpContext:
         )
 
 
-# @dataclass
-# class PostExecuteFlags:
-#     had_import_workflow: bool
-#     had_todo: bool
-#     had_add_comment: bool
+@dataclass
+class PostEditFlags:
+    had_import_workflow: bool
+    had_todo: bool
+    had_add_comment: bool

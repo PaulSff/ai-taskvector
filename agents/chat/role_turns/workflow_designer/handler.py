@@ -58,6 +58,7 @@ from agents.chat.agent_workflow.helpers import (
 from agents.chat.context import PostExecutionFollowUpContext
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
+    PostEditFlags,
 )
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
@@ -72,7 +73,7 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.chat.parser_follow_up import (
-    run_execute_follow_up_chain_async,
+    run_execution_follow_up_chain_async,
     run_post_execution_follow_up_chain_async,
 )
 from agents.chat.utils.workflow_output_normalizer import (
@@ -88,6 +89,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions
+from core.graph import GraphEditAction
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
@@ -113,6 +115,19 @@ _WORKFLOW_DESIGNER_PROMPT_PATH = (
     / "config"
     / "prompts"
     / "workflow_designer.json"
+)
+
+# edit actions to be supplemented with follow-up prompt lines
+IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
+ADD_COMMENT_ACTION: GraphEditAction = "add_comment"
+TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
+    {
+        "add_todo_list",
+        "remove_todo_list",
+        "add_task",
+        "remove_task",
+        "mark_completed",
+    }
 )
 
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
@@ -206,10 +221,33 @@ class WorkflowDesignerChatHandler:
         # All parser actions emitted during this handler turn are retained.
         turn_actions = ParsedActions()
 
+        had_import_workflow = False
+        had_todo = False
+        had_add_comment = False
+
+
         def collect_actions(
             workflow_response: AgentWorkflowResponse,
         ) -> None:
-            parser_output = workflow_response.merged_response.parser_output
+            nonlocal had_import_workflow
+            nonlocal had_todo
+            nonlocal had_add_comment
+
+            merged = workflow_response.merged_response
+
+            apply_result_value = (
+                merged.status.get("last_apply_result")
+                or merged.result.get("last_apply_result")
+                or {}
+            )
+
+            applied_ok = (
+                isinstance(apply_result_value, dict)
+                and apply_result_value.get("attempted") is True
+                and apply_result_value.get("success") is True
+            )
+
+            parser_output = merged.parser_output
             if parser_output is None:
                 return
 
@@ -219,6 +257,24 @@ class WorkflowDesignerChatHandler:
 
             for action, values in actions.tool_actions.items():
                 turn_actions.tool_actions.setdefault(action, []).extend(values)
+
+            if not applied_ok:
+                return
+
+            had_import_workflow = had_import_workflow or any(
+                edit.action == IMPORT_WORKFLOW_ACTION
+                for edit in actions.edits
+            )
+
+            had_todo = had_todo or any(
+                edit.action in TODO_ACTIONS
+                for edit in actions.edits
+            )
+
+            had_add_comment = had_add_comment or any(
+                edit.action == ADD_COMMENT_ACTION
+                for edit in actions.edits
+            )
 
         async def reconcile_workflow_response(
             workflow_response: AgentWorkflowResponse,
@@ -379,10 +435,16 @@ class WorkflowDesignerChatHandler:
                 on_workflow_response=on_workflow_response,
             )
 
-            return await run_execute_follow_up_chain_async(
+            return await run_execution_follow_up_chain_async(
                 parser_ctx,
                 resp,
+                flags=PostEditFlags(
+                    had_import_workflow=had_import_workflow,
+                    had_todo=had_todo,
+                    had_add_comment=had_add_comment,
+                ),
             )
+
 
         try:
             last_user_content: str | None = None
@@ -505,6 +567,44 @@ class WorkflowDesignerChatHandler:
             merged = response.merged_response
             result = merged.result
 
+            apply_result_value = (
+                merged.status.get("last_apply_result")
+                or result.get("last_apply_result")
+                or {}
+            )
+
+            applied_ok = (
+                isinstance(apply_result_value, dict)
+                and apply_result_value.get("attempted") is True
+                and apply_result_value.get("success") is True
+            )
+
+            if applied_ok:
+                parser_output = response.merged_response.parser_output
+
+                parsed_actions = (
+                    parser_output.actions
+                    if parser_output is not None
+                    else ParsedActions()
+                )
+
+                edits = parsed_actions.edits
+
+                had_import_workflow = any(
+                    edit.action == IMPORT_WORKFLOW_ACTION
+                    for edit in edits
+                )
+
+                had_todo = any(
+                    edit.action in TODO_ACTIONS
+                    for edit in edits
+                )
+
+                had_add_comment = any(
+                    edit.action == ADD_COMMENT_ACTION
+                    for edit in edits
+                )
+
             delegate_output = merged.delegate_request
 
             if turn_ctx.delegate_request_ref is not None:
@@ -614,12 +714,6 @@ class WorkflowDesignerChatHandler:
                 )
 
             result["content_for_display"] = content
-
-            apply_result_value = (
-                merged.status.get("last_apply_result")
-                or result.get("last_apply_result")
-                or {}
-            )
 
             result["apply_result"] = apply_result_value
 
@@ -744,6 +838,11 @@ class WorkflowDesignerChatHandler:
             result=result,
             content_holder=final_content_holder,
             parser_chain_runner=parser_output_follow_up_chain,
+            flags=PostEditFlags(
+                had_import_workflow=had_import_workflow,
+                had_todo=had_todo,
+                had_add_comment=had_add_comment,
+            ),
         )
 
         finalize_workflow_designer_turn_session_language(

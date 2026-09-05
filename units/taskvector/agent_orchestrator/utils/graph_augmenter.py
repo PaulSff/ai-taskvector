@@ -14,7 +14,7 @@ async def apply_and_augment_graph(
     edits: list[GraphEdit],
     ctx: Data,
     graph_ref: list[ProcessGraph],
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult],
+    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None],
 ) -> tuple[ProcessGraph | None, list[str], str | None]:
     from agents.chat.agent_workflow.helpers import (
         refresh_last_graph_apply_result,
