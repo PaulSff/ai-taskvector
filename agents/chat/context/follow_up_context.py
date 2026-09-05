@@ -9,8 +9,8 @@ from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
     MergeResponse,
 )
-from agents.chat.context.language_control import SessionLanguageSink
 from agents.chat.role_turns.protocol import WorkflowStreamingRunner
+from agents.chat.session import ChatSessionState
 from agents.tools.catalog import OrderedToolsForRole
 from agents.tools.types import ParsedActions, ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
@@ -39,7 +39,7 @@ class ExecutionFollowUpContext:
 
     page: object | None
     graph_ref: list[ProcessGraph]
-    state: SessionLanguageSink
+    state: ChatSessionState
     token: int
     turn_id: str
     agent_label: str
@@ -96,10 +96,7 @@ class ExecutionFollowUpContext:
     # RL Coach and similar agents can merge training injects after
     # build_agent_workflow_initial_inputs.
     extend_agent_initial_inputs_async: (
-        Callable[
-            [dict[str, dict[str, object]]],
-            Awaitable[dict[str, dict[str, object]]],
-        ]
+        Callable[[WorkflowInputs], Awaitable[WorkflowInputs]]
         | None
     ) = None
 
@@ -137,7 +134,7 @@ class WDFollowUpAcc:
 @dataclass
 class PostExecutionFollowUpContext:
     graph_ref: list[ProcessGraph]
-    state: SessionLanguageSink
+    state: ChatSessionState
     token: int
     turn_id: str
     agent_role_id: str
