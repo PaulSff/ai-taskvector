@@ -12,7 +12,6 @@ import time
 from copy import deepcopy
 from dataclasses import replace
 
-import agents.follow_ups as agents_follow_ups
 from agents.chat.agent_workflow import (
     run_agent_workflow,
 )
@@ -38,20 +37,11 @@ from agents.chat.context.language_control import (
 )
 from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from agents.chat.context.todo_list_manager import get_summary_params
+from agents.chat.parser_follow_up.post_execution_messages import get_post_apply_messages
 from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
 )
 from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
-from agents.prompts import (
-    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
-    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
-    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
-    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
-    WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
-)
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
@@ -297,6 +287,33 @@ async def run_execution_follow_up_chain_async(
                     session_language=_hint(),
                 )
             )
+        # add post-apply messages for todo_tasks, comments
+        post_apply_messages = get_post_apply_messages(
+            i,
+            flags=flags,
+            language_hint=_hint,
+            graph=ctx.graph_ref[0],
+        )
+
+        if post_apply_messages is not None:
+            post_apply_agent_message, post_apply_user_message = (
+                post_apply_messages
+            )
+
+            ctx.append_message(
+                "agent",
+                post_apply_agent_message,
+                meta={
+                    "turn_id": ctx.turn_id,
+                    "agent": ctx.agent_label,
+                    "source": "post_apply_follow_up",
+                    "workflow_response": {
+                        "reply": post_apply_agent_message,
+                    },
+                },
+            )
+
+            follow_up_messages.append(post_apply_user_message)
 
         if follow_up_messages:
             follow_up_msg = "\n\n".join(
@@ -309,7 +326,6 @@ async def run_execution_follow_up_chain_async(
                     session_language=_hint(),
                 )
             )
-
 
         if not follow_up_context:
             await _checkpoint(
@@ -584,7 +600,6 @@ async def run_post_execution_follow_up_chain_async(
     flags: PostEditFlags,
 ) -> None:
     """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
-    from agents.chat.context.todo_list_manager import graph_has_any_open_tasks
 
     def _hint() -> str:
         return ctx.wf_language_hint[0]
@@ -595,82 +610,18 @@ async def run_post_execution_follow_up_chain_async(
             flush=True,
         )
 
-    def _post_apply_messages(round_idx: int) -> tuple[str, str] | None:
-        if round_idx == 0:
-            if flags.had_import_workflow:
-                return (
-                    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                )
-            if flags.had_add_comment and flags.had_todo:
-                return (
-                    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                )
-            if flags.had_add_comment:
-                return (
-                    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                )
-            if flags.had_todo:
-                return (
-                    WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                    WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    ),
-                )
-            return (
-                agents_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT.format(
-                    language=_hint(),
-                    session_language=_hint(),
-                ),
-                agents_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
-                    language=_hint(),
-                    session_language=_hint(),
-                ),
-            )
-        if not graph_has_any_open_tasks(ctx.graph_ref[0]):
-            return None
-        return (
-            WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
-                language=_hint(),
-                session_language=_hint(),
-            ),
-            WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
-            ),
-        )
-
     content = content_holder[0]
     await _checkpoint("start")
     for post_round in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{post_round}")
 
         try:
-            pair = _post_apply_messages(post_round)
+            pair = get_post_apply_messages(
+                post_round,
+                flags=flags,
+                language_hint=_hint,
+                graph=ctx.graph_ref[0],
+            )
 
             # print("[phase2] DEBUG post_round", post_round, "pair=", pair, flush=True)
 
