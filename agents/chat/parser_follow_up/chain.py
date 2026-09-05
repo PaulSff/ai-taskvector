@@ -75,7 +75,7 @@ from core.schemas import ProcessGraph
 from core.schemas.primitives import Data
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 
-from .role_follow_ups_runner import run_role_ordered_follow_ups
+from .tool_follow_ups_runner import run_role_ordered_follow_ups
 
 # ─────────────────────────────────────────────────────────────────────────────────
 #  PHASE 1: Execution follow_up rounds
