@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
+from dataclasses import replace
 from typing import Any
 
 import agents.follow_ups as agents_follow_ups
@@ -40,7 +41,6 @@ from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_p
 from agents.chat.context.todo_list_manager import get_summary_params
 from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
-    normalize_follow_up_parser_output,
 )
 from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.prompts import (
@@ -86,7 +86,9 @@ async def run_execute_follow_up_chain_async(
     resp: AgentWorkflowResponse,
 ) -> AgentWorkflowResponse | None:
     """
-    Async version: If parser_output requests tools, fetch context and re-run agent_workflow.
+    Async version: If parser_output requests tools, fetch context and re-run
+    agent_workflow.
+
     Returns None when the user cancelled the run mid-chain.
     """
 
@@ -94,36 +96,53 @@ async def run_execute_follow_up_chain_async(
         return ctx.wf_language_hint[0]
 
     async def _checkpoint(name: str) -> None:
-        print(f"[parser_follow_up_chain] checkpoint: {name} ts={time.time():.3f}")
-
-    _ = maybe_pin_session_language_from_workflow_response(ctx.state, resp)
-    ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
-    preserved_apply_failure: Data = {}
-    preserved_apply_failure_set = False
-
-    def _capture_apply_failure(r: Data) -> None:
-        nonlocal preserved_apply_failure, preserved_apply_failure_set
-        if not workflow_merge_response_apply_failed(r):
-            return
-        preserved_apply_failure = {
-            "result": dict(r.get("result") or {}),
-            "status": dict(r.get("status") or {})
-            if isinstance(r.get("status"), dict)
-            else r.get("status"),
-            "workflow_errors": list(r.get("workflow_errors") or []),
-        }
-        preserved_apply_failure_set = True
-
-    response = resp
-    if asyncio.iscoroutine(response):
-        response = await response
-    if not isinstance(response, dict):
-        raise TypeError(
-            f"run_execute_follow_up_chain_async got {type(response).__name__}, expected dict"
+        print(
+            f"[parser_follow_up_chain] "
+            f"checkpoint: {name} ts={time.time():.3f}"
         )
 
-    record_llm_prompt_view_if_present(resp, ctx.record_llm_prompt_view)
-    _capture_apply_failure(resp)
+    _ = maybe_pin_session_language_from_workflow_response(
+        ctx.state,
+        resp,
+    )
+
+    ctx.wf_language_hint[0] = default_wf_language_hint(
+        ctx.state.session_language
+    )
+
+    preserved_apply_failure: AgentWorkflowResponse | None = None
+
+    def get_apply_failure(
+        response_to_check: AgentWorkflowResponse,
+    ) -> AgentWorkflowResponse | None:
+        if not workflow_merge_response_apply_failed(
+            response_to_check
+        ):
+            return None
+
+        merge_response = response_to_check.merged_response
+
+        return replace(
+            response_to_check,
+            merged_response=replace(
+                merge_response,
+                result=dict(merge_response.result),
+                status=dict(merge_response.status),
+                workflow_errors=list(
+                    merge_response.workflow_errors
+                ),
+            ),
+        )
+
+    response: AgentWorkflowResponse = resp
+
+    record_llm_prompt_view_if_present(
+        response,
+        ctx.record_llm_prompt_view,
+    )
+
+    preserved_apply_failure = get_apply_failure(response)
+
     await _checkpoint("after_primer")
 
     if workflow_response_is_question(response):
@@ -133,114 +152,176 @@ async def run_execute_follow_up_chain_async(
     for i in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{i}")
 
-        po = normalize_follow_up_parser_output(response.get("parser_output"))
+        po = response.merged_response.parser_output
 
-        purple = "\033[94m"  # 256-color blue
+        if po is None:
+            raise ValueError(
+                "Expected parser_output before running "
+                "follow-up handlers"
+            )
+
+        purple = "\033[94m"
         reset = "\033[0m"
 
         msg = (
-            "[parser_follow_up_chain] LLM tool call: po type="
+            "[parser_follow_up_chain] LLM tool call: "
+            "po type="
             + type(po).__name__
             + " keys="
-            + (str(list(po.keys())) if isinstance(po, dict) else "None")
+            + (
+                str(list(po.keys()))
+                if isinstance(po, dict)
+                else "None"
+            )
         )
 
         print(f"{purple}{msg}{reset}", flush=True)
 
-        grey = "\033[38;5;245m"  # 256-color grey
-        reset = "\033[0m"
+        grey = "\033[38;5;245m"
 
-        print(f"{grey}" + "[parser_follow_up_chain] po=" + str(repr(po)) + f"{reset}", flush=True)
-
-
-        follow_up_msg = DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
-            language=_hint(),
-            session_language=_hint(),
+        print(
+            f"{grey}[parser_follow_up_chain] "
+            f"po={po!r}{reset}",
+            flush=True,
         )
+
+        follow_up_msg = (
+            DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        )
+
         acc = WDFollowUpAcc()
+
         ctx.follow_up_source_response = response
 
-        await _checkpoint(f"before_ordered_followups:{i}")
-        await run_role_ordered_follow_ups(ctx, po, response, _hint, acc)
-        await _checkpoint(f"after_ordered_followups:{i}")
+        await _checkpoint(
+            f"before_ordered_followups:{i}"
+        )
+
+        await run_role_ordered_follow_ups(
+            ctx,
+            po,
+            response,
+            _hint,
+            acc,
+        )
+
+        await _checkpoint(
+            f"after_ordered_followups:{i}"
+        )
 
         context_chunks = acc.context_chunks
         any_empty_tool = acc.any_empty_tool
         read_code_ids_for_msg = acc.read_code_ids_for_msg
-        implementation_links_for_types = acc.implementation_links_for_types
+        implementation_links_for_types = (
+            acc.implementation_links_for_types
+        )
         report_follow_up = acc.report_follow_up
-        formulas_calc_follow_up = acc.formulas_calc_follow_up
+        formulas_calc_follow_up = (
+            acc.formulas_calc_follow_up
+        )
         calendar_follow_up = acc.calendar_follow_up
         clone_role_follow_up = acc.clone_role_follow_up
         list_dir_follow_up = acc.list_dir_follow_up
         read_file_follow_up = acc.read_file_follow_up
 
         follow_up_context: str | None = None
+
         if context_chunks:
-            follow_up_context = "\n\n---\n\n".join(context_chunks)
+            follow_up_context = "\n\n---\n\n".join(
+                context_chunks
+            )
 
         if read_code_ids_for_msg:
-            follow_up_msg = READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
-                unit_ids=", ".join(str(x) for x in read_code_ids_for_msg),
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+                    unit_ids=", ".join(
+                        str(x) for x in read_code_ids_for_msg
+                    ),
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif report_follow_up:
-            follow_up_msg = REPORT_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                REPORT_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif any_empty_tool:
-            follow_up_msg = TOOL_EMPTY_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                TOOL_EMPTY_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif formulas_calc_follow_up:
-            follow_up_msg = FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif calendar_follow_up:
-            follow_up_msg = CALENDAR_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                CALENDAR_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif clone_role_follow_up:
-            follow_up_msg = CLONE_ROLE_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                CLONE_ROLE_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif list_dir_follow_up:
-            follow_up_msg = LIST_DIR_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                LIST_DIR_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
         elif read_file_follow_up:
-            follow_up_msg = REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE.format(
-                language=_hint(),
-                session_language=_hint(),
+            follow_up_msg = (
+                REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE.format(
+                    language=_hint(),
+                    session_language=_hint(),
+                )
             )
 
         if not follow_up_context:
-            await _checkpoint(f"break_no_follow_up_context:{i}")
+            await _checkpoint(
+                f"break_no_follow_up_context:{i}"
+            )
             break
 
         ctx.follow_up_contexts.append(follow_up_context)
-        await _checkpoint(f"appended_follow_up_context:{i}")
+
+        await _checkpoint(
+            f"appended_follow_up_context:{i}"
+        )
 
         if not ctx.is_current_run(ctx.token):
-            await _checkpoint(f"return_none_cancelled_pre_llm:{i}")
+            await _checkpoint(
+                f"return_none_cancelled_pre_llm:{i}"
+            )
             return None
 
-        prev_reply = response.get("reply")
         prev_content = (
-            prev_reply.get("action")
-            if isinstance(prev_reply, dict) and "action" in prev_reply
-            else (prev_reply if isinstance(prev_reply, str) else str(prev_reply or ""))
-        )
-        prev_content = (prev_content or "").strip()
+            response.merged_response.reply or ""
+        ).strip()
+
         if prev_content:
-            prev_show = prev_content + formulas_calc_display_appendix(response)
+            prev_show = (
+                prev_content
+                + formulas_calc_display_appendix(response)
+            )
+
             ctx.append_message(
                 "agent",
                 prev_show,
@@ -248,142 +329,240 @@ async def run_execute_follow_up_chain_async(
                     "turn_id": ctx.turn_id,
                     "agent": ctx.agent_label,
                     "source": "agent_response",
-                    "workflow_response": {"reply": prev_show},
+                    "workflow_response": {
+                        "reply": prev_show,
+                    },
                 },
             )
 
         ctx.prepare_stream_row()
-        follow_up_msg = ctx.normalize_user_message_for_workflow(follow_up_msg)
-        _graph = ctx.graph_ref[0]
-        _runtime = await ctx.get_runtime_for_prompts(_graph)
-        _previous_turn = await ctx.format_previous_turn(ctx.state.history)
 
-        # print("[phase1] DEBUG follow_up_msg =", follow_up_msg, flush=True)
-        # print("[phase1] DEBUG follow_up_context set?", bool(follow_up_context), flush=True)
+        follow_up_msg = (
+            ctx.normalize_user_message_for_workflow(
+                follow_up_msg
+            )
+        )
 
-        initial_inputs = build_agent_workflow_initial_inputs(
-            follow_up_msg,
-            _graph,
-            ctx.last_apply_result_ref[0],
-            ctx.get_recent_changes() if ctx.get_recent_changes else None,
-            follow_up_context,
-            runtime=_runtime,
-            coding_is_allowed=get_coding_is_allowed(),
-            contribution_is_allowed=get_contribution_is_allowed(),
-            previous_turn=_previous_turn,
-            language_hint=_hint(),
-            session_language=ctx.state.session_language,
-            analyst_mode=ctx.analyst_mode,
+        graph_ref = ctx.graph_ref[0]
+
+        runtime = await ctx.get_runtime_for_prompts(
+            graph_ref
+        )
+
+        previous_turn = await ctx.format_previous_turn(
+            ctx.state.history
+        )
+
+        initial_inputs = (
+            build_agent_workflow_initial_inputs(
+                follow_up_msg,
+                graph_ref,
+                ctx.last_apply_result_ref[0],
+                (
+                    ctx.get_recent_changes()
+                    if ctx.get_recent_changes
+                    else None
+                ),
+                follow_up_context,
+                runtime=runtime,
+                coding_is_allowed=(
+                    get_coding_is_allowed()
+                ),
+                contribution_is_allowed=(
+                    get_contribution_is_allowed()
+                ),
+                previous_turn=previous_turn,
+                language_hint=_hint(),
+                session_language=(
+                    ctx.state.session_language
+                ),
+                analyst_mode=ctx.analyst_mode,
+            )
         )
 
         if ctx.extend_agent_initial_inputs_async is not None:
-            await _checkpoint(f"before_extend_initial_inputs:{i}")
-            initial_inputs = await ctx.extend_agent_initial_inputs_async(initial_inputs)
-            await _checkpoint(f"after_extend_initial_inputs:{i}")
+            await _checkpoint(
+                f"before_extend_initial_inputs:{i}"
+            )
 
-        _gd = (
-            _graph.model_dump(by_alias=True)
-            if hasattr(_graph, "model_dump")
-            else (_graph if isinstance(_graph, dict) else None)
+            initial_inputs = (
+                await ctx.extend_agent_initial_inputs_async(
+                    initial_inputs
+                )
+            )
+
+            await _checkpoint(
+                f"after_extend_initial_inputs:{i}"
+            )
+
+        if hasattr(graph_ref, "model_dump"):
+            graph_data = graph_ref.model_dump(
+                by_alias=True
+            )
+        elif isinstance(graph_ref, dict):
+            graph_data = graph_ref
+        else:
+            graph_data = None
+
+        units_library_base = dict(
+            ctx.overrides.get("units_library") or {}
         )
-        ul_base = dict(ctx.overrides.get("units_library") or {})
 
         if implementation_links_for_types:
-            ul_merged = {
-                **ul_base,
+            units_library = {
+                **units_library_base,
                 "implementation_links_for_types": list(
-                    dict.fromkeys(implementation_links_for_types)
+                    dict.fromkeys(
+                        implementation_links_for_types
+                    )
                 ),
             }
         else:
-            ul_merged = {
-                k: v
-                for k, v in ul_base.items()
-                if k != "implementation_links_for_types"
+            units_library = {
+                key: value
+                for key, value in units_library_base.items()
+                if key != "implementation_links_for_types"
             }
 
         if ctx.analyst_mode:
-            gs = dict(ctx.overrides.get("graph_summary") or {})
-            gs.setdefault("include_structure", False)
-            gs.setdefault("include_code_block_source", False)
+            graph_summary = dict(
+                ctx.overrides.get("graph_summary") or {}
+            )
+
+            graph_summary.setdefault(
+                "include_structure",
+                False,
+            )
+
+            graph_summary.setdefault(
+                "include_code_block_source",
+                False,
+            )
         else:
             graph: ProcessGraph | None
 
-            if _gd is None:
+            if graph_data is None:
                 graph = None
-            elif isinstance(_gd, ProcessGraph):
-                graph = _gd
-            elif isinstance(_gd, dict):
-                graph = ProcessGraph.model_validate(_gd)
+            elif isinstance(graph_data, ProcessGraph):
+                graph = graph_data
+            elif isinstance(graph_data, dict):
+                graph = ProcessGraph.model_validate(
+                    graph_data
+                )
             else:
                 raise TypeError(
-                    f"Unexpected graph type: {type(_gd).__name__}"
+                    "Unexpected graph type: "
+                    f"{type(graph_data).__name__}"
                 )
 
-            gs = get_summary_params(
+            graph_summary = get_summary_params(
                 get_coding_is_allowed(),
                 graph,
             )
 
         follow_up_overrides = {
             **ctx.overrides,
-            "graph_summary": gs,
-            "rag_search": {**(ctx.overrides.get("rag_search") or {}), "ignore": True},
-            "units_library": ul_merged,
+            "graph_summary": graph_summary,
+            "rag_search": {
+                **(
+                    ctx.overrides.get("rag_search")
+                    or {}
+                ),
+                "ignore": True,
+            },
+            "units_library": units_library,
         }
 
-        stream_kw: dict[str, Any] = {"_run_token": ctx.token}
-        if ctx.agent_workflow_path is not None:
-            stream_kw["workflow_path"] = ctx.agent_workflow_path
-
-        await _checkpoint(f"before_run_workflow_streaming:{i}")
-
-        async def _run_agent_workflow_async(*a: Any, **k: Any) -> Any:
-            return await run_agent_workflow(*a, **k)
-
-        response = await ctx.run_workflow_streaming(
-            _run_agent_workflow_async,
-            initial_inputs,
-            follow_up_overrides,
-            None,
-            **stream_kw,
+        await _checkpoint(
+            f"before_run_workflow_streaming:{i}"
         )
 
-        await _checkpoint(f"after_run_workflow_streaming:{i}")
+        # run workflow streaming and invoke the callback
+        previous_graph = ctx.graph_ref[0]
 
-        if asyncio.iscoroutine(response):
-            response = await response
-        if not isinstance(response, dict):
-            raise TypeError(
-                f"run_workflow_streaming returned {type(response).__name__}, expected dict"
+        if ctx.agent_workflow_path is None:
+            response = await ctx.run_workflow_streaming(
+                run_agent_workflow,
+                initial_inputs,
+                follow_up_overrides,
+                None,
+                _run_token=ctx.token,
+            )
+        else:
+            response = await ctx.run_workflow_streaming(
+                run_agent_workflow,
+                initial_inputs,
+                follow_up_overrides,
+                None,
+                _run_token=ctx.token,
+                workflow_path=ctx.agent_workflow_path,
             )
 
-        record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)
-        _ = maybe_pin_session_language_from_workflow_response(ctx.state, response)
-        ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
+        if ctx.on_workflow_response is not None:
+            await ctx.on_workflow_response(
+                response,
+                previous_graph,
+            )
+
+        await _checkpoint(
+            f"after_run_workflow_streaming:{i}"
+        )
+
+        record_llm_prompt_view_if_present(
+            response,
+            ctx.record_llm_prompt_view,
+        )
+
+        _ = maybe_pin_session_language_from_workflow_response(
+            ctx.state,
+            response,
+        )
+
+        ctx.wf_language_hint[0] = (
+            default_wf_language_hint(
+                ctx.state.session_language
+            )
+        )
 
         if workflow_response_is_question(response):
-            await _checkpoint(f"break_question_after_stream:{i}")
+            await _checkpoint(
+                f"break_question_after_stream:{i}"
+            )
             break
 
-        _capture_apply_failure(response)
+        new_apply_failure = get_apply_failure(response)
+
+        if new_apply_failure is not None:
+            preserved_apply_failure = new_apply_failure
 
         if not ctx.is_current_run(ctx.token):
-            await _checkpoint(f"return_none_cancelled_post_llm:{i}")
+            await _checkpoint(
+                f"return_none_cancelled_post_llm:{i}"
+            )
             return None
 
-        await _checkpoint(f"end_round_no_question:{i}")
+        await _checkpoint(
+            f"end_round_no_question:{i}"
+        )
 
-    await _checkpoint("exit_after_rounds_or_break")
+    await _checkpoint(
+        "exit_after_rounds_or_break"
+    )
 
-    if preserved_apply_failure_set:
-        final_r = response.get("result") or {}
-        if final_r.get("kind") != "applied":
-            response = merge_preserved_apply_failure_into_response(
-                response, preserved_apply_failure
-            )
+    if (
+        preserved_apply_failure is not None
+        and response.merged_response.result.get("kind")
+        != "applied"
+    ):
+        response = merge_preserved_apply_failure_into_response(
+            response,
+            preserved_apply_failure,
+        )
 
-    await _checkpoint("return_final_response")
+    await _checkpoint(
+        "return_final_response"
+    )
+
     return response
 
 

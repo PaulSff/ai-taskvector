@@ -15,6 +15,7 @@ from typing import Protocol
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
 )
+from agents.chat.session.state import ChatSessionState
 
 
 class SessionLanguageSink(Protocol):
@@ -44,7 +45,7 @@ def parse_session_language_command(text: str) -> str | None:
 
 
 def maybe_pin_session_language_from_workflow_response(
-    state: SessionLanguageSink,
+    state: ChatSessionState,
     response: AgentWorkflowResponse | None,
 ) -> bool:
     """
@@ -66,7 +67,7 @@ def maybe_pin_session_language_from_workflow_response(
 
 
 def finalize_workflow_designer_turn_session_language(
-    state: SessionLanguageSink,
+    state: ChatSessionState,
     response: AgentWorkflowResponse | None,
     *,
     debug_log: Callable[[str], None] | None = None,
