@@ -88,6 +88,7 @@ Extra actions:
 {tool:add_comment}
 {tool:todo_manager}
 {tool:delegate_request}
+{tool:no_action}
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
 

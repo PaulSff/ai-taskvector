@@ -44,6 +44,7 @@ tools:
 - report
 - add_comment
 - todo_manager
+- no_action
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2555
   response_sub_endpoint: tcp://127.0.0.1:2556

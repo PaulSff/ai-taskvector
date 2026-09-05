@@ -75,7 +75,7 @@ Actions:
 {tool:add_comment}
 {tool:read_current_workflow}
 {tool:todo_manager}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
+{tool:no_action}
 
 No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""
 

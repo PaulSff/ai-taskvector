@@ -210,7 +210,7 @@ Extra actions:
 {tool:add_comment}
 {tool:report}
 {tool:todo_manager}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)"""
+{tool:no_action}"""
 
 _WORKFLOW_DESIGNER_SYSTEM_RAW = (
     f"{_workflow_designer_introduction_block()}\n\n"

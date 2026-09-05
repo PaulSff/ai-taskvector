@@ -90,7 +90,7 @@ Actions:
 {tool:add_comment}
 {tool:todo_manager}
 {tool:rag_search}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
+{tool:no_action}
 
 No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""
 

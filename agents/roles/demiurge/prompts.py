@@ -87,7 +87,7 @@ Actions:
 {tool:github}
 {tool:read_current_workflow}
 {tool:todo_manager}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
+{tool:no_action}
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
 

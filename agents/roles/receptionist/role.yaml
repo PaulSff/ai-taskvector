@@ -46,6 +46,7 @@ tools:
 - get_chats
 - send_message
 - calendar
+- no_action
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2363
   response_sub_endpoint: tcp://127.0.0.1:2364

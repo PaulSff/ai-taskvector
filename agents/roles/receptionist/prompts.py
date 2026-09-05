@@ -13,8 +13,6 @@ Receptionist omits ``read_code_block`` and ``run_workflow``; includes ``read_cur
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 # Section ids must stay aligned with ``receptionist_workflow.json`` / merge keys (inject placeholders in dynamic).
@@ -93,7 +91,7 @@ Extra actions:
 {tool:get_chats}
 {tool:send_message}
 {tool:calendar}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
+{tool:no_action}
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
 

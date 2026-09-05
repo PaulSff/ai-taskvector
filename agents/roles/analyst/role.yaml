@@ -53,6 +53,7 @@ tools:
 - todo_manager
 - get_chats
 - send_message
+- no_action
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2333
   response_sub_endpoint: tcp://127.0.0.1:2334
