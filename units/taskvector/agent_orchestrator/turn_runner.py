@@ -7,13 +7,16 @@ Called from AgentOrchestrator._agent_orchestrator_step (sync unit step function)
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 import traceback
-from typing import Any
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
+from typing import cast
 
 from pydantic import ValidationError
 
+from agents.chat.agent_workflow import AgentWorkflowResponse
 from agents.chat.context.follow_up_context import (
     PostEditFlags,
 )
@@ -22,9 +25,10 @@ from agents.chat.parser_follow_up.chain import (
     run_post_execution_follow_up_chain_async,
 )
 from agents.chat.session.state import AgentChatHistory
+from core.normalizer.shared import as_workflow_inputs, to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
-from core.schemas.primitives import Data
+from core.schemas.primitives import Data, WorkflowInputs
 from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
@@ -45,13 +49,16 @@ from units.taskvector.agent_orchestrator.utils.post_apply_context_builder import
 from units.taskvector.agent_orchestrator.utils.proxies import (
     SessionProxy,
 )
-from units.taskvector.agent_orchestrator.utils.role_config import get_role_config
 from units.taskvector.agent_orchestrator.utils.self_correction_driver import (
     run_self_correction_retry_async,
 )
 from units.taskvector.agent_orchestrator.utils.time import now_ts
 
-from .utils.batch_update_helpers import make_publish_in_progress
+from .utils.batch_update_helpers import (
+    ProgressResponse,
+    ProgressResult,
+    make_publish_in_progress,
+)
 from .utils.batch_update_publisher import BatchUpdatePublisher
 from .utils.graph_hasher import graph_md5
 from .utils.merge_final_graph import merge_latest_graph_for_final_output
@@ -67,7 +74,6 @@ async def run_orchestrator_turn(
     run_id: str | None,
 ) -> Data:
     from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
-    from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
     from agents.chat.context.language_control import (
         finalize_workflow_designer_turn_session_language,
         maybe_pin_session_language_from_workflow_response,
@@ -88,16 +94,35 @@ async def run_orchestrator_turn(
     from runtime.run import WorkflowTimeoutError
 
     # --- Safe defaults for the batch publisher ---
-    response = AgentWorkflowResponse()
-    result: Data = {}
+    response = ProgressResponse()
+    result: ProgressResult = {}
     content: str = ""
     apply_meta: Data = {}
 
     # Capture fallback graph so we can still assemble output on errors
-    graph = context.get("graph")
-    fallback_graph = coerce_graph(graph) if isinstance(graph, dict) else None
+    raw_graph = context.get("graph")
+
+    if raw_graph is None:
+        raise ValueError("Missing process graph")
+
+    graph: ProcessGraph = ProcessGraph.model_validate(raw_graph)
+
+    fallback_graph: ProcessGraph | None = graph
 
     followup_error: Data | None = None
+
+    def _get_progress_response() -> ProgressResponse | None:
+        if isinstance(response, dict):
+            return cast(ProgressResponse, response)
+        return None
+
+    def _get_run_output() -> Data:
+        if not isinstance(response, Mapping):
+            return {}
+
+        run_output = response.get("run_output")
+        return run_output if isinstance(run_output, dict) else {}
+
 
     _publish_in_progress = make_publish_in_progress(
         batch_update_publisher=batch_update_publisher,
@@ -107,14 +132,14 @@ async def run_orchestrator_turn(
         get_turn_id=lambda: turn_id,
         get_messenger=lambda: messenger,
         get_follow_up_contexts=lambda: follow_up_contexts,
-        get_graph_ref=lambda: coerce_graph(graph_ref[0]),
-        get_last_apply_result=lambda: last_apply_result_ref[0] or {},
+        get_graph_ref=lambda: graph_ref[0],
+        get_last_apply_result=lambda: last_apply_result_ref[0],
         get_result=lambda: result,
         get_content=lambda: content,
-        get_response=lambda: response,
+        get_response=_get_progress_response,
         get_apply_meta=lambda: apply_meta,
         get_session_language=lambda: session.session_language,
-        get_run_output=lambda: (response or {}).get("run_output") or {},
+        get_run_output=_get_run_output,
         get_source=lambda: "agent_response",
     )
 
@@ -169,15 +194,32 @@ async def run_orchestrator_turn(
         or WORKFLOW_DESIGNER_ROLE_ID
     )
 
-    history: AgentChatHistory = list(context.get("history") or [])
+    raw_history = context.get("history")
+
+    history: AgentChatHistory = (
+        list(raw_history)
+        if isinstance(raw_history, list)
+        else []
+    )
+
     session_language = str(context.get("session_language") or "")
-    last_apply_result: AgentApplyWorkflowEditsResult | None = context.get("last_apply_result")
-    graph: ProcessGraph = context.get("graph")
+    raw_last_apply_result = context.get("last_apply_result")
+
+    last_apply_result: AgentApplyWorkflowEditsResult | None = (
+        AgentApplyWorkflowEditsResult.model_validate(raw_last_apply_result)
+        if raw_last_apply_result is not None
+        else None
+    )
+
     initial_graph_md5 = graph_md5(graph) if isinstance(graph, dict) else None
-    recent_changes: str | None = context.get("recent_changes")
-    provider = str(context.get("provider") or "ollama")
-    cfg = dict(context.get("cfg") or {})
-    mydata_dir = str(context.get("mydata_dir") or ".")
+    raw_recent_changes = context.get("recent_changes")
+
+    recent_changes: str | None = (
+        raw_recent_changes
+        if isinstance(raw_recent_changes, str)
+        else None
+    )
+
     coding_is_allowed = bool(context.get("coding_is_allowed", True))
     contribution_is_allowed = bool(context.get("contribution_is_allowed", False))
 
@@ -193,33 +235,26 @@ async def run_orchestrator_turn(
 
     # ── Role resolution ──
     try:
-        role = get_role(role_id)
-    except (KeyError, ValueError):
+        role_config = get_role(role_id)
+    except (FileNotFoundError, KeyError, ValueError, TypeError):
         role_id = WORKFLOW_DESIGNER_ROLE_ID
-        role = get_role(role_id)
 
-    agent_display = role.role_name or role_id
+        try:
+            role_config = get_role(role_id)
+        except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
+            return {
+                "status": None,
+                "token": None,
+                "message": None,
+                "role": None,
+                "error": {
+                    "type": "error",
+                    "error": f"Role config failed: {exc}",
+                },
+            }
 
-    # ── Role config ──
-    try:
-        role_config = get_role_config(
-            role_id,
-            {
-                "provider": provider,
-                "cfg": cfg,
-                "mydata_dir": mydata_dir,
-                "coding_is_allowed": coding_is_allowed,
-                "contribution_is_allowed": contribution_is_allowed,
-            },
-        )
-    except (KeyError, ValueError, TypeError) as exc:
-        return {
-            "status": None,
-            "token": None,
-            "message": None,
-            "role": None,
-            "error": {"type": "error", "error": f"Role config failed: {exc}"},
-        }
+    agent_display = role_config.role_name or role_id
+
 
     # ── graph_summary override ──
     try:
@@ -233,22 +268,36 @@ async def run_orchestrator_turn(
             else None
         )
 
-        if role_config["analyst_mode"]:
-            role_config["overrides"]["graph_summary"] = {
+        raw_overrides = role_config.chat_overrides
+
+        if isinstance(raw_overrides, dict):
+            overrides: dict[str, object] = dict(raw_overrides)
+        else:
+            overrides = {}
+
+        if role_config.analyst_mode:
+            overrides["graph_summary"] = {
                 "include_code_block_source": False,
                 "include_structure": False,
             }
         else:
-            role_config["overrides"]["graph_summary"] = get_summary_params(
+            overrides["graph_summary"] = get_summary_params(
                 coding_is_allowed,
                 graph_for_summary,
             )
+
+        role_config = replace(
+            role_config,
+            chat_overrides=overrides,
+        )
 
     except (ImportError, KeyError, TypeError, ValueError, ValidationError):
         pass
 
     turn_id = new_id()
     follow_up_contexts: list[str] = []
+
+    analyst_mode = role_config.analyst_mode
 
     # ── Build initial workflow inputs ──
     initial_inputs = await build_initial_inputs(
@@ -261,84 +310,147 @@ async def run_orchestrator_turn(
         wf_language_hint[0],
         coding_is_allowed=coding_is_allowed,
         contribution_is_allowed=contribution_is_allowed,
-        analyst_mode=role_config["analyst_mode"],
+        analyst_mode=analyst_mode,
     )
 
     # ── Run main workflow ──
     try:
         _maybe_thinking_on()
 
+        raw_overrides = role_config.chat_overrides
+
+        param_overrides: WorkflowInputs | None = (
+            as_workflow_inputs(to_json_value(raw_overrides))
+            if raw_overrides is not None
+            else None
+        )
+
+        workflow_path_value = role_config.chat_workflow
+
+        if workflow_path_value is not None and not isinstance(
+            workflow_path_value,
+            (str, Path),
+        ):
+            raise TypeError("chat_workflow must be a string, Path, or None")
+
+        workflow_path: str | Path | None = workflow_path_value
+
+        raw_timeout = timeout_s
+
+        if raw_timeout is not None and not isinstance(
+            raw_timeout,
+            (int, float),
+        ):
+            raise TypeError("timeout_s must be a number or None")
+
+        timeout: float | None = (
+            float(raw_timeout)
+            if raw_timeout is not None
+            else None
+        )
+        # run the agent role workflow
         if timeout_s is not None:
             response = await _await_with_log(
                 "run_agent_workflow(timed)",
                 asyncio.wait_for(
                     run_agent_workflow(
                         initial_inputs,
-                        role_config["overrides"],
+                        param_overrides,
                         None,
                         stream_callback,
-                        workflow_path=role_config["workflow_path"],
+                        workflow_path=workflow_path,
                     ),
-                    timeout=timeout_s,
+                    timeout=timeout,
                 ),
             )
-            # --- robustness normalization ---
+
+            # --- response normalization ---
             if asyncio.iscoroutine(response):
                 response = await response
-            if not isinstance(response, dict):
+
+            if isinstance(response, AgentWorkflowResponse):
+                normalized_response = response
+            elif isinstance(response, Mapping):
+                normalized_response = AgentWorkflowResponse.from_dict(response)
+            else:
                 raise TypeError(
-                    f"Expected workflow response dict, got {type(response).__name__}"
+                    "Expected AgentWorkflowResponse or mapping, "
+                    f"got {type(response).__name__}"
                 )
+
+            response = normalized_response
             # ---------------------------------------------------------------------
         else:
             response = await _await_with_log(
                 "run_agent_workflow",
                 run_agent_workflow(
                     initial_inputs,
-                    role_config["overrides"],
+                    param_overrides,
                     None,
                     stream_callback,
-                    workflow_path=role_config["workflow_path"],
+                    workflow_path=workflow_path,
                 ),
             )
-            # --- robustness normalization ---
+            # --- response normalization ---
             if asyncio.iscoroutine(response):
                 response = await response
-            if not isinstance(response, dict):
+
+            if isinstance(response, AgentWorkflowResponse):
+                normalized_response = response
+            elif isinstance(response, Mapping):
+                normalized_response = AgentWorkflowResponse.from_dict(response)
+            else:
                 raise TypeError(
-                    f"Expected workflow response dict, got {type(response).__name__}"
+                    "Expected AgentWorkflowResponse or mapping, "
+                    f"got {type(response).__name__}"
                 )
+
+            response = normalized_response
             # ---------------------------------------------------------------------
 
     except WorkflowTimeoutError as ex:
         _maybe_thinking_off()
+
         timeout_s2 = getattr(ex, "timeout_s", 300)
         content = (
             f"(Request timed out after {timeout_s2:.0f}s. "
             "Try again or check that the LLM/service is responding.)"
         )
+
         result = {
             "kind": "parse_error",
             "content_for_display": content,
-            "apply_result": {},
+            "apply_result": None,
             "edits": [],
         }
-        last_apply_result_ref[0] = {}
+
+        last_apply_result_ref[0] = None
         await _checkpoint("after:WorkflowTimeoutError")
-        followup_error = {"type": "WorkflowTimeoutError", "error": str(ex)}
+
+        followup_error = {
+            "type": "WorkflowTimeoutError",
+            "error": str(ex),
+        }
 
     except (ValueError, TypeError, RuntimeError) as exc:
         _maybe_thinking_off()
+
         content = f"(Workflow error: {exc})"
         result = {
             "kind": "parse_error",
             "content_for_display": content,
-            "apply_result": {},
+            "apply_result": None,
             "edits": [],
         }
-        last_apply_result_ref[0] = {}
+
+        last_apply_result_ref[0] = None
         await _checkpoint("after:WorkflowException")
-        followup_error = {"type": type(exc).__name__, "error": str(exc)}
+
+        followup_error = {
+            "type": type(exc).__name__,
+            "error": str(exc),
+        }
+
 
     else:
         # ---stop inline status "Thinking" ---
@@ -352,7 +464,14 @@ async def run_orchestrator_turn(
 
             # ── Check delegation ──
             await _checkpoint("before:delegate_check")
-            dr_out = (response or {}).get("delegate_request")
+
+            def _response_field(name: str) -> object:
+                if isinstance(response, Mapping):
+                    return response.get(name)
+
+                return getattr(response, name, None)
+
+            dr_out = _response_field("delegate_request")
             if isinstance(dr_out, dict) and dr_out.get("ok") is True:
                 dt = str(dr_out.get("delegate_to") or "").strip().lower()
                 if dt and dt != role_id.lower():
@@ -379,10 +498,7 @@ async def run_orchestrator_turn(
 
             if asyncio.iscoroutine(response):
                 response = await response
-            if not isinstance(response, dict):
-                raise TypeError(
-                    f"Expected workflow response dict, got {type(response).__name__}"
-                )
+
 
             await _checkpoint("before:build_parser_follow_up_context")
             parser_ctx = build_parser_follow_up_context(
@@ -400,11 +516,16 @@ async def run_orchestrator_turn(
                 recent_changes=recent_changes,
             )
 
-            async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
+            async def _parser_chain_runner_async(
+                resp: AgentWorkflowResponse,
+            ) -> AgentWorkflowResponse:
                 await _checkpoint("parser_chain_runner:enter")
+
                 chained = await run_execution_follow_up_chain_async(parser_ctx, resp)
+
                 await _checkpoint("parser_chain_runner:done")
                 return chained if chained is not None else resp
+
 
             response = await _await_with_log(
                 "parser_follow_up_chain",
@@ -412,38 +533,63 @@ async def run_orchestrator_turn(
             )
 
             await _checkpoint("before:build_content_result")
-            raw_reply = response.get("reply")
+
+            merged_response = response.merged_response
+
+            raw_reply: object = merged_response.reply
+
             if isinstance(raw_reply, dict) and "action" in raw_reply:
                 raw_reply = raw_reply.get("action") or ""
+
             content = (
                 raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
             ).strip() or "(No response from model.)"
 
-            wf_result = response.get("result") or {}
-            result = dict(wf_result)
+            result = cast(ProgressResult, merged_response.result)
 
             edits = result.get("edits") or []
+
             await _checkpoint("before:set_commenter_for_new_comments")
             await set_commenter_for_new_comments(edits, agent_role_id=role_id)
 
             result["edits"] = edits
-            result["apply_result"] = (
-                response.get("status") or wf_result.get("last_apply_result") or {}
+
+            last_apply_result = merged_response.result.get("last_apply_result")
+
+            raw_apply_result: object = (
+                merged_response.status
+                or last_apply_result
+                or result.get("apply_result")
             )
-            ar0 = result.get("apply_result") or {}
+
+            apply_result: AgentApplyWorkflowEditsResult | None = None
+
+            if isinstance(raw_apply_result, AgentApplyWorkflowEditsResult):
+                apply_result = raw_apply_result
+            elif isinstance(raw_apply_result, dict):
+                try:
+                    apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                        raw_apply_result
+                    )
+                except ValidationError:
+                    apply_result = None
+
+            result["apply_result"] = apply_result
+
+            ar0 = result.get("apply_result")
+
             if (
                 result.get("kind") != "apply_failed"
-                and isinstance(ar0, dict)
-                and ar0.get("attempted") is True
-                and ar0.get("success") is False
+                and ar0 is not None
+                and ar0.attempted
+                and not ar0.success
             ):
                 result["kind"] = "apply_failed"
 
             result["content_for_display"] = content
-            ap = wf_result.get("last_apply_result")
-            last_apply_result_ref[0] = (
-                ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
-            )
+
+            last_apply_result_ref[0] = apply_result
+
             await _checkpoint("after:build_content_result")
 
             _publish_in_progress(
@@ -452,26 +598,33 @@ async def run_orchestrator_turn(
             )
 
             await _checkpoint("before:handle_kind_branch")
+
             if result.get("kind") == "applied" and result.get("graph") is not None:
                 await _checkpoint("branch:applied")
 
-                applied_graph, _supplements, _v_err = await _await_with_log(
-                    "apply_and_augment_graph",
-                    apply_and_augment_graph(
-                        result["graph"],
-                        result.get("edits") or [],
-                        {"coding_is_allowed": coding_is_allowed},
-                        graph_ref,
-                        last_apply_result_ref,
-                    ),
-                )
+                graph_to_apply = result.get("graph")
 
-                if applied_graph is not None:
-                    result["graph"] = applied_graph
-                    _publish_in_progress(
-                        stage="turn:graph_applied",
-                        kind=result.get("kind"),
+                if result.get("kind") == "applied" and graph_to_apply is not None:
+                    await _checkpoint("branch:applied")
+
+                    applied_graph, _supplements, _v_err = await _await_with_log(
+                        "apply_and_augment_graph",
+                        apply_and_augment_graph(
+                            graph_to_apply,
+                            result.get("edits") or [],
+                            {"coding_is_allowed": coding_is_allowed},
+                            graph_ref,
+                            last_apply_result_ref,
+                        ),
                     )
+
+                    if applied_graph is not None:
+                        result["graph"] = applied_graph
+
+                        _publish_in_progress(
+                            stage="turn:graph_applied",
+                            kind=result.get("kind"),
+                        )
 
                     content_holder = [content]
                     await _checkpoint("before:build_post_apply_context")
@@ -523,7 +676,7 @@ async def run_orchestrator_turn(
                         ),
                     )
 
-                    async def _parser_chain_for_post(r: dict[str, Any]) -> dict[str, Any]:
+                    async def _parser_chain_for_post(r: AgentWorkflowResponse) -> AgentWorkflowResponse:
                         return await _parser_chain_runner_async(r)
 
                     await _checkpoint("before:run_post_execution_follow_up_chain_async")
@@ -546,19 +699,34 @@ async def run_orchestrator_turn(
 
                     content = content_holder[0]
 
-            elif result.get("kind") == "apply_failed" and not role_config["analyst_mode"]:
+            elif (
+                result.get("kind") == "apply_failed"
+                and not role_config.analyst_mode
+            ):
                 await _checkpoint("branch:apply_failed")
-                failed_apply = (
-                    result.get("last_apply_result") or result.get("apply_result") or {}
-                )
-                last_apply_result_ref[0] = (
-                    failed_apply
-                    if isinstance(failed_apply, dict)
-                    and not inspect.isawaitable(failed_apply)
-                    else {}
+
+                raw_failed_apply = (
+                    result.get("last_apply_result")
+                    or result.get("apply_result")
                 )
 
+                if not isinstance(raw_failed_apply, AgentApplyWorkflowEditsResult):
+                    if not isinstance(raw_failed_apply, dict):
+                        return {}
+
+                    try:
+                        failed_apply = AgentApplyWorkflowEditsResult(
+                            **raw_failed_apply
+                        )
+                    except (TypeError, ValueError):
+                        return {}
+                else:
+                    failed_apply = raw_failed_apply
+
+                last_apply_result_ref[0] = failed_apply
+
                 await _checkpoint("before:self_correction_retry")
+
                 (
                     _retry_resp,
                     retry_result,
@@ -580,6 +748,7 @@ async def run_orchestrator_turn(
                         role_id,
                     ),
                 )
+
                 await _checkpoint("after:self_correction_retry_async")
 
                 _publish_in_progress(
@@ -610,37 +779,69 @@ async def run_orchestrator_turn(
             result = {
                 "kind": "parse_error",
                 "content_for_display": content,
-                "apply_result": {},
+                "apply_result": None,
                 "edits": [],
             }
-            last_apply_result_ref[0] = {}
+            last_apply_result_ref[0] = None
             await _checkpoint("after:followup_error_outer_handler")
 
 
     # ── Merge final graph with the most resent version ──
-    graph_ref[0] = await merge_latest_graph_for_final_output(
+    merged_graph = await merge_latest_graph_for_final_output(
         graph_ref=graph_ref,
         initial_graph_md5=initial_graph_md5,
     )
 
+    if merged_graph is not None:
+        graph_ref[0] = merged_graph
+
     # ── Assemble final output ──
     await _checkpoint("before:assemble_final_output")
 
-    response_dict: dict[str, Any] = response if isinstance(response, dict) else {}
+    progress_response: ProgressResponse = {}
+    run_output: Data = {}
+
+    if isinstance(response, dict):
+        progress_response = {
+            "llm_user_message": (
+                response.get("llm_user_message")
+                if isinstance(response.get("llm_user_message"), str)
+                else None
+            ),
+            "llm_system_prompt": (
+                response.get("llm_system_prompt")
+                if isinstance(response.get("llm_system_prompt"), str)
+                else None
+            ),
+        }
+
+        raw_run_output = response.get("run_output")
+
+        if isinstance(raw_run_output, dict):
+            run_output = raw_run_output
+
+    workflow_response: AgentWorkflowResponse | None = (
+        response if isinstance(response, AgentWorkflowResponse) else None
+    )
 
     display_content = str(result.get("content_for_display") or content)
-    display_content = display_content + formulas_calc_display_appendix(response_dict)
-    apply_meta = apply_meta_with_formulas_calc_tool_status(
-        response_dict, result.get("apply_result", {})
+
+    display_content += formulas_calc_display_appendix(
+        workflow_response
     )
+
+    apply_meta = apply_meta_with_formulas_calc_tool_status(
+        workflow_response,
+        result.get("apply_result", {}),
+    )
+
 
     _publish_in_progress(
         stage="turn:completed",
         kind=result.get("kind"),
     )
 
-
-    final_message: dict[str, Any] = {
+    final_message: Data = {
         "id": new_id(),
         "ts": now_ts(),
         "role": "agent",
@@ -654,14 +855,14 @@ async def run_orchestrator_turn(
         },
         "parsed_edits": result.get("edits", []),
         "apply": apply_meta,
-        "graph": coerce_graph(graph_ref[0]),
-        "run_output": response_dict.get("run_output") or {},
+        "graph": graph_ref[0],
+        "run_output": run_output,
         "follow_up_contexts": follow_up_contexts,
         "last_apply_result": last_apply_result_ref[0],
         "session_language": session.session_language,
         "messenger": messenger,
-        "llm_user_message": response_dict.get("llm_user_message"),
-        "llm_system_prompt": response_dict.get("llm_system_prompt"),
+        "llm_user_message": progress_response.get("llm_user_message"),
+        "llm_system_prompt": progress_response.get("llm_system_prompt"),
     }
 
     out = {
