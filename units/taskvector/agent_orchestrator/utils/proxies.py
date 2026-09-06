@@ -8,7 +8,7 @@ from agents.chat.agent_workflow.wf_response_schema import (
     MergeResponse,
 )
 from agents.chat.role_turns.protocol import WorkflowRunner
-from agents.chat.session.state import AgentChatHistory
+from agents.chat.session.state import AgentChatHistory, ChatSessionState
 from agents.tools.catalog import OrderedToolsForRole
 from agents.tools.types import ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
@@ -17,7 +17,7 @@ from core.schemas.process_graph import ProcessGraph
 from runtime.executor import GraphStreamCallback
 
 
-class SessionProxy:
+class SessionProxy(ChatSessionState):
     """
     Minimal session state object satisfying the SessionLanguageSink protocol
     from agents.chat.context.language_control.
