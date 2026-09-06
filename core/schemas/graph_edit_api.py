@@ -264,3 +264,21 @@ def is_graph_edit_list(
         return False
 
     return all(is_graph_edit(item) for item in value)
+
+
+IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
+COMMENT_ACTIONS: frozenset[GraphEditAction] = frozenset(
+    {
+        "add_comment",
+        "remove_comment"
+    }
+)
+TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
+    {
+        "add_todo_list",
+        "remove_todo_list",
+        "add_task",
+        "remove_task",
+        "mark_completed",
+    }
+)

@@ -20,6 +20,7 @@ from agents.chat.agent_workflow import AgentWorkflowResponse
 from agents.chat.context.follow_up_context import (
     PostEditFlags,
 )
+from agents.chat.context.todo_list_manager.helpers import graph_has_any_open_tasks
 from agents.chat.parser_follow_up.chain import (
     run_execution_follow_up_chain_async,
     run_post_execution_follow_up_chain_async,
@@ -27,7 +28,12 @@ from agents.chat.parser_follow_up.chain import (
 from agents.chat.session.state import AgentChatHistory
 from core.normalizer.shared import as_workflow_inputs, to_json_value
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    COMMENT_ACTIONS,
+    IMPORT_WORKFLOW_ACTION,
+    TODO_ACTIONS,
+    AgentApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data, WorkflowInputs
 from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
@@ -640,39 +646,30 @@ async def run_orchestrator_turn(
                     )
                     await _checkpoint("after:build_post_apply_context")
 
-                    from agents.chat.context.todo_list_manager import (
-                        graph_has_any_open_tasks,
-                    )
-
-                    _todo_actions = frozenset(
-                        {
-                            "add_todo_list",
-                            "remove_todo_list",
-                            "add_task",
-                            "remove_task",
-                            "mark_completed",
-                        }
-                    )
                     _edits = result.get("edits") or []
+
                     _todo_edits = [
-                        e
-                        for e in _edits
-                        if isinstance(e, dict) and e.get("action") in _todo_actions
+                        edit
+                        for edit in _edits
+                        if isinstance(edit, dict) and edit.get("action") in TODO_ACTIONS
                     ]
+
                     had_todo_followup = any(
-                        e.get("action") not in ("add_todo_list",)
-                        for e in _todo_edits
+                        edit.get("action") != "add_todo_list"
+                        for edit in _todo_edits
                     ) or graph_has_any_open_tasks(applied_graph)
 
                     flags = PostEditFlags(
                         had_import_workflow=any(
-                            isinstance(e, dict) and e.get("action") == "import_workflow"
-                            for e in _edits
+                            isinstance(edit, dict)
+                            and edit.get("action") == IMPORT_WORKFLOW_ACTION
+                            for edit in _edits
                         ),
                         had_todo=had_todo_followup,
                         had_add_comment=any(
-                            isinstance(e, dict) and e.get("action") == "add_comment"
-                            for e in _edits
+                            isinstance(edit, dict)
+                            and edit.get("action") in COMMENT_ACTIONS
+                            for edit in _edits
                         ),
                     )
 

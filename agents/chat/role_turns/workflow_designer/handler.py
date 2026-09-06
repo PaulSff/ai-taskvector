@@ -90,9 +90,11 @@ from agents.roles.workflow_designer.workflow_inputs import (
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions
-from core.graph import GraphEditAction
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
+    COMMENT_ACTIONS,
+    IMPORT_WORKFLOW_ACTION,
+    TODO_ACTIONS,
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
 )
@@ -119,19 +121,6 @@ _WORKFLOW_DESIGNER_PROMPT_PATH = (
     / "config"
     / "prompts"
     / "workflow_designer.json"
-)
-
-# edit actions to be supplemented with follow-up prompt lines
-IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
-ADD_COMMENT_ACTION: GraphEditAction = "add_comment"
-TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
-    {
-        "add_todo_list",
-        "remove_todo_list",
-        "add_task",
-        "remove_task",
-        "mark_completed",
-    }
 )
 
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
@@ -301,7 +290,7 @@ class WorkflowDesignerChatHandler:
             )
 
             had_add_comment = had_add_comment or any(
-                edit.action == ADD_COMMENT_ACTION
+                edit.action in COMMENT_ACTIONS
                 for edit in actions.edits
             )
 
@@ -619,7 +608,7 @@ class WorkflowDesignerChatHandler:
                 )
 
                 had_add_comment = any(
-                    edit.action == ADD_COMMENT_ACTION
+                    edit.action in COMMENT_ACTIONS
                     for edit in edits
                 )
 
