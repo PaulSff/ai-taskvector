@@ -11,6 +11,7 @@ import flet as ft
 
 from agents.chat.agent_workflow.wf_response_schema import MergeResponse
 from agents.chat.session.state import ChatSessionState
+from agents.roles.types import RoleConfig
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
@@ -31,7 +32,7 @@ class RoleChatTurnContext:
     agent_display: str
     profile: str
     provider: str
-    cfg: Data
+    cfg: RoleConfig
     rag_index_dir: Path
     rag_embedding_model: str
     mydata_dir: Path
