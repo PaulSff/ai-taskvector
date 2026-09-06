@@ -24,6 +24,7 @@ from .helpers import (
     get_optional_data,
     get_optional_parser_output,
     get_optional_str,
+    get_progress_result,
     get_str,
     get_units_response,
 )
@@ -173,7 +174,10 @@ The processing order is therefore:
 
     merged_response = MergeResponse(
         reply=get_str(merge_response_data, "reply"),
-        result=get_data(merge_response_data, "result"),
+        result=get_progress_result(
+                merge_response_data,
+                "result",
+            ),
         status=get_data(merge_response_data, "status"),
         graph=get_graph(merge_response_data, "graph"),
         diff=get_str(merge_response_data, "diff"),
