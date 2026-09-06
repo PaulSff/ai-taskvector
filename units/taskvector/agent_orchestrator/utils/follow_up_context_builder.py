@@ -32,31 +32,23 @@ def build_parser_follow_up_context(
     wf_language_hint: list[str],
     recent_changes: str | None,
 ) -> ExecutionFollowUpContext:
-    chat_config = role_config.chat
-
-    overrides = (
-        chat_config.overrides
-        if chat_config is not None and chat_config.overrides is not None
-        else {}
-    )
+    overrides = role_config.chat_overrides or {}
 
     agent_workflow_path = (
-        Path(chat_config.workflow)
-        if chat_config is not None and chat_config.workflow
+        Path(role_config.chat_workflow)
+        if role_config.chat_workflow
         else None
     )
 
-    analyst_mode = (
-        chat_config.analyst_mode
-        if chat_config is not None
-        else False
-    )
+    analyst_mode = role_config.analyst_mode
 
     max_rounds = (
         role_config.follow_up_max_rounds
         if role_config.follow_up_max_rounds is not None
         else 0
     )
+
+    ordered_follow_up_tools = ordered_tools_for_role_id(role_config.id)
 
     proxy = ToolCtxProxy(
         graph_ref=graph_ref,
@@ -74,7 +66,7 @@ def build_parser_follow_up_context(
         turn_id=turn_id,
         agent_label=agent_display,
         max_rounds=max_rounds,
-        ordered_follow_up_tools=ordered_tools_for_role_id(role_config.id),
+        ordered_follow_up_tools=ordered_follow_up_tools,
     )
 
     return ExecutionFollowUpContext(
@@ -92,7 +84,9 @@ def build_parser_follow_up_context(
         set_inline_status=proxy.set_inline_status,
         append_message=proxy.append_message,
         prepare_stream_row=proxy.prepare_stream_row,
-        normalize_user_message_for_workflow=proxy.normalize_user_message_for_workflow,
+        normalize_user_message_for_workflow=(
+            proxy.normalize_user_message_for_workflow
+        ),
         last_apply_result_ref=last_apply_result_ref,
         get_recent_changes=proxy.get_recent_changes,
         overrides=overrides,
@@ -107,5 +101,5 @@ def build_parser_follow_up_context(
         agent_role_id=role_id,
         agent_workflow_path=agent_workflow_path,
         analyst_mode=analyst_mode,
-        ordered_follow_up_tools=ordered_tools_for_role_id(role_config.id),
+        ordered_follow_up_tools=ordered_follow_up_tools,
     )
