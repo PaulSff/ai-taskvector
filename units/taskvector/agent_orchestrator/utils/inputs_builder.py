@@ -9,7 +9,7 @@ from core.schemas.primitives import WorkflowInputs
 async def build_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: AgentApplyWorkflowEditsResult,
+    last_apply_result: AgentApplyWorkflowEditsResult | None,
     recent_changes: str | None,
     session_language: str,
     history: AgentChatHistory,
