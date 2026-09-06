@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
 
 import yaml
 
-from agents.roles.chat_config import parse_role_chat_config
-from agents.roles.types import RoleConfig, RoleIds
+from agents.roles.types import RoleConfig, RoleIds, parse_role_config
 from agents.tools.types import ToolList
 from core.schemas.primitives import Data
 
@@ -17,11 +15,11 @@ _CACHE: dict[str, RoleConfig] = {}
 
 
 def roles_definitions_dir() -> Path:
-    """Directory containing ``<role_id>/role.yaml`` (the ``agents/roles`` package path)."""
+    """Return the directory containing ``<role_id>/role.yaml``."""
     return _ROLES_ROOT
 
 
-# Stable role ids (folder names under ``agents/roles/<id>/``).
+# Stable role ids.
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
 ANALYST_ROLE_ID = "analyst"
@@ -31,8 +29,9 @@ DEMIURGE_ROLE_ID = "demiurge"
 RECEPTIONIST_ROLE_ID = "receptionist"
 DISPATCHER_ROLE_ID = "dispatcher"
 
-# Main Flet agents chat dropdown: order = UI order. Wire new agents in ``chat.py`` before extending.
-CHAT_MAIN_agent_ROLE_IDS: tuple[str, ...] = (
+
+# Main Flet agents chat dropdown order.
+CHAT_MAIN_AGENT_ROLE_IDS: tuple[str, ...] = (
     WORKFLOW_DESIGNER_ROLE_ID,
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -44,41 +43,129 @@ CHAT_MAIN_agent_ROLE_IDS: tuple[str, ...] = (
 
 
 def list_role_ids() -> RoleIds:
-    """Return sorted role ids: each immediate child of ``agents/roles`` that contains ``role.yaml``."""
+    """
+    Return sorted role ids.
+
+    A role is included when it is an immediate child directory containing
+    ``role.yaml``.
+    """
     names: list[str] = []
-    for p in sorted(_ROLES_ROOT.iterdir()):
-        if p.is_dir() and (p / "role.yaml").is_file():
-            names.append(p.name)
+
+    for path in sorted(_ROLES_ROOT.iterdir()):
+        if path.is_dir() and (path / "role.yaml").is_file():
+            names.append(path.name)
+
     return tuple(names)
 
 
-def _coerce_tools(raw: Any) -> ToolList:
+def _coerce_tools(raw: object) -> ToolList:
     if raw is None:
         return ()
-    if isinstance(raw, list):
-        return tuple(str(x).strip() for x in raw if str(x).strip())
-    return ()
+
+    if not isinstance(raw, (list, tuple)):
+        raise TypeError("role.yaml field 'tools' must be a list")
+
+    tools: list[str] = []
+
+    for value in raw:
+        tool_name = str(value).strip()
+
+        if tool_name:
+            tools.append(tool_name)
+
+    return tuple(tools)
+
 
 
 def _load_yaml(role_id: str) -> Data:
     path = _ROLES_ROOT / role_id / "role.yaml"
+
     if not path.is_file():
         raise FileNotFoundError(f"Role file not found: {path}")
 
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     if not isinstance(data, dict):
-        raise TypeError(f"role.yaml for {role_id!r} must be a mapping")
+        raise TypeError(
+            f"role.yaml for {role_id!r} must be a mapping"
+        )
 
     return data
 
 
-def _build_config(role_id: str, data: Data) -> RoleConfig:
-    rid = str(data.get("id") or role_id).strip()
+def _parse_follow_up_max_rounds(raw: object) -> int | None:
+    if raw is None or raw == "":
+        return None
 
-    if rid != role_id:
+    if isinstance(raw, bool):
+        raise TypeError(
+            "role.yaml field 'follow_up_max_rounds' must be an integer"
+        )
+
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        text = raw.strip()
+
+        if not text:
+            return None
+
+        try:
+            value = int(text)
+        except ValueError as exc:
+            raise TypeError(
+                "role.yaml field 'follow_up_max_rounds' must be an integer"
+            ) from exc
+    else:
+        raise TypeError(
+            "role.yaml field 'follow_up_max_rounds' must be an integer"
+        )
+
+    return max(1, min(50, value))
+
+
+
+def _parse_llm_fields(data: Data) -> dict[str, str]:
+    raw_llm = data.get("llm")
+
+    if raw_llm is None:
+        llm: Data = {}
+    elif isinstance(raw_llm, dict):
+        llm = raw_llm
+    else:
+        raise TypeError("role.yaml field 'llm' must be a mapping")
+
+    provider = llm.get("provider", "")
+    ollama_host = llm.get("ollama_host", "")
+    ollama_model = llm.get("ollama_model", "")
+
+    if not isinstance(provider, str):
+        raise TypeError("role.yaml field 'llm.provider' must be a string")
+
+    if not isinstance(ollama_host, str):
+        raise TypeError(
+            "role.yaml field 'llm.ollama_host' must be a string"
+        )
+
+    if not isinstance(ollama_model, str):
+        raise TypeError(
+            "role.yaml field 'llm.ollama_model' must be a string"
+        )
+
+    return {
+        "provider": provider.strip(),
+        "ollama_host": ollama_host.strip(),
+        "ollama_model": ollama_model.strip(),
+    }
+
+
+def _build_config(role_id: str, data: Data) -> RoleConfig:
+    yaml_role_id = str(data.get("id") or role_id).strip()
+
+    if yaml_role_id != role_id:
         raise ValueError(
-            f"role.yaml id {rid!r} does not match folder {role_id!r}"
+            f"role.yaml id {yaml_role_id!r} does not match "
+            f"folder {role_id!r}"
         )
 
     role_name = str(
@@ -90,155 +177,150 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
     name = str(data.get("name") or "").strip()
     project_name = str(data.get("project_name") or "").strip()
 
-    intro_raw = data.get("introduction_words")
-    introduction_words = (
-        str(intro_raw).strip() if intro_raw is not None else ""
+    introduction_words = str(
+        data.get("introduction_words") or ""
+    ).strip()
+
+    responsibility_description = str(
+        data.get("responsibility_description") or ""
+    ).strip()
+
+    follow_up_max_rounds = _parse_follow_up_max_rounds(
+        data.get("follow_up_max_rounds")
     )
 
-    resp_raw = data.get("responsibility_description")
-    responsibility_description = (
-        str(resp_raw).strip() if resp_raw is not None else ""
+    tools = _coerce_tools(data.get("tools"))
+    llm_fields = _parse_llm_fields(data)
+
+    # Parse the complete role.yaml mapping. This parses:
+    #
+    #   chat.enabled
+    #   chat.workflow
+    #   chat.overrides
+    #   chat.features
+    #   chat.chat_handler
+    #   chat.analyst_mode
+    #
+    # into the flattened RoleConfig fields:
+    #
+    #   chat_enabled
+    #   chat_workflow
+    #   chat_overrides
+    #   chat_features
+    #   chat_handler
+    #   analyst_mode
+    parsed = parse_role_config(
+        {
+            **data,
+            "id": yaml_role_id,
+            "role_name": role_name,
+            "name": name,
+            "project_name": project_name,
+            "introduction_words": introduction_words,
+            "responsibility_description": responsibility_description,
+            "follow_up_max_rounds": follow_up_max_rounds,
+            "tools": tools,
+            **llm_fields,
+        }
     )
 
-    fur = data.get("follow_up_max_rounds")
-
-    if fur is None or fur == "":
-        follow_up: int | None = None
-    elif isinstance(fur, bool):
-        raise TypeError(
-            "role.yaml field 'follow_up_max_rounds' must be an integer"
-        )
-    elif isinstance(fur, int):
-        follow_up = max(1, min(50, fur))
-    elif isinstance(fur, str):
-        try:
-            follow_up_value = int(fur.strip())
-        except ValueError as exc:
-            raise TypeError(
-                "role.yaml field 'follow_up_max_rounds' must be an integer"
-            ) from exc
-
-        follow_up = max(1, min(50, follow_up_value))
-    else:
-        raise TypeError(
-            "role.yaml field 'follow_up_max_rounds' must be an integer"
-        )
-
-    raw_llm = data.get("llm")
-
-    if raw_llm is None:
-        llm: Data = {}
-    elif isinstance(raw_llm, dict):
-        llm = {}
-
-        for key, value in raw_llm.items():
-            if not isinstance(key, str):
-                raise TypeError(
-                    "role.yaml field 'llm' must contain string keys"
-                )
-            llm[key] = value
-    else:
-        raise TypeError("role.yaml field 'llm' must be a mapping")
-
-    provider_raw = llm.get("provider", "")
-    ollama_host_raw = llm.get("ollama_host", "")
-    ollama_model_raw = llm.get("ollama_model", "")
-
-    if not isinstance(provider_raw, str):
-        raise TypeError("role.yaml field 'llm.provider' must be a string")
-
-    if not isinstance(ollama_host_raw, str):
-        raise TypeError(
-            "role.yaml field 'llm.ollama_host' must be a string"
-        )
-
-    if not isinstance(ollama_model_raw, str):
-        raise TypeError(
-            "role.yaml field 'llm.ollama_model' must be a string"
-        )
-
-    chat_config = parse_role_chat_config(data.get("chat"))
-
-    known = {
-        "id",
-        "role_name",
-        "display_name",
-        "name",
-        "project_name",
-        "introduction_words",
-        "responsibility_description",
-        "follow_up_max_rounds",
-        "tools",
-        "chat",
-        "use_legacy_followups",
-        "rag",
-        "llm",
-        "settings",
-        "report",
-    }
-
-    extra = {
-        key: value
-        for key, value in data.items()
-        if key not in known
-    }
-
+    # Construct the final RoleConfig explicitly so that all fields,
+    # including workflow and overrides, are retained.
     return RoleConfig(
-        id=rid,
+        id=yaml_role_id,
         role_name=role_name,
         name=name,
         project_name=project_name,
         introduction_words=introduction_words,
         responsibility_description=responsibility_description,
-        follow_up_max_rounds=follow_up,
-        tools=_coerce_tools(data.get("tools")),
-        chat=chat_config,
-        provider=provider_raw.strip(),
-        ollama_host=ollama_host_raw.strip(),
-        ollama_model=ollama_model_raw.strip(),
-        extra=extra,
+        follow_up_max_rounds=follow_up_max_rounds,
+        tools=tools,
+        provider=llm_fields["provider"],
+        ollama_host=llm_fields["ollama_host"],
+        ollama_model=llm_fields["ollama_model"],
+        chat_enabled=parsed.chat_enabled,
+        chat_workflow=parsed.chat_workflow,
+        chat_overrides=parsed.chat_overrides,
+        chat_features=parsed.chat_features,
+        chat_handler=parsed.chat_handler,
+        analyst_mode=parsed.analyst_mode,
+        extra=parsed.extra,
     )
 
 
 
 def get_role(role_id: str) -> RoleConfig:
     """
-    Return cached RoleConfig for ``role_id`` (e.g. ``workflow_designer``, ``rl_coach``).
+    Return the cached configuration for ``role_id``.
+
+    Example:
+
+    ```python
+    role = get_role("workflow_designer")
+    ```
     """
     key = (role_id or "").strip()
+
     if not key:
         raise ValueError("role_id is required")
-    if key in _CACHE:
-        return _CACHE[key]
-    cfg = _build_config(key, _load_yaml(key))
-    _CACHE[key] = cfg
-    return cfg
+
+    cached = _CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    config = _build_config(key, _load_yaml(key))
+    _CACHE[key] = config
+
+    return config
 
 
 def clear_role_cache() -> None:
-    """Tests only: reset cached roles after editing YAML."""
+    """Clear cached roles, primarily for tests."""
     _CACHE.clear()
 
 
 def is_role_chat_panel_enabled(role: RoleConfig) -> bool:
-    """True if this role should appear in the main agents chat dropdown."""
-    if role.chat is not None:
-        return role.chat.enabled
-    return role.id in CHAT_MAIN_agent_ROLE_IDS
+    """
+    Return whether a role should appear in the main agents chat dropdown.
+
+    Explicit ``chat.enabled`` takes precedence. Roles in the stable main-chat
+    list remain enabled by default when no ``chat:`` block is present.
+    """
+    if role.chat_workflow is not None:
+        return role.chat_enabled
+
+    # ``chat:`` may exist without a workflow. Since the flattened model does
+    # not retain whether the YAML block was present, use the role's enabled
+    # value for known roles and allow explicitly configured non-main roles
+    # through their ``chat_enabled`` setting.
+    if role.id in CHAT_MAIN_AGENT_ROLE_IDS:
+        return role.chat_enabled
+
+    return role.chat_enabled
 
 
 def list_chat_dropdown_role_ids() -> RoleIds:
     """
-    Role ids for the agents chat dropdown: ``CHAT_MAIN_agent_ROLE_IDS`` (when enabled), then
-    any other role directory with ``role.yaml`` declaring ``chat.enabled: true``.
+    Return role ids for the agents chat dropdown.
+
+    Stable roles are returned first in UI order, followed by any other role
+    declaring an enabled chat configuration.
     """
-    out: list[str] = []
-    for rid in CHAT_MAIN_agent_ROLE_IDS:
-        if is_role_chat_panel_enabled(get_role(rid)):
-            out.append(rid)
-    for rid in list_role_ids():
-        if rid in CHAT_MAIN_agent_ROLE_IDS:
+    output: list[str] = []
+
+    for role_id in CHAT_MAIN_AGENT_ROLE_IDS:
+        role = get_role(role_id)
+
+        if is_role_chat_panel_enabled(role):
+            output.append(role_id)
+
+    for role_id in list_role_ids():
+        if role_id in CHAT_MAIN_AGENT_ROLE_IDS:
             continue
-        if is_role_chat_panel_enabled(get_role(rid)):
-            out.append(rid)
-    return tuple(out)
+
+        role = get_role(role_id)
+
+        if is_role_chat_panel_enabled(role):
+            output.append(role_id)
+
+    return tuple(output)

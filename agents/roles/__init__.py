@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-from agents.roles.chat_config import (
-    RoleChatConfig,
-    parse_role_chat_config,
-    role_chat_feature_enabled,
-)
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
+    CHAT_MAIN_AGENT_ROLE_IDS,
     CODER_ROLE_ID,
     DEMIURGE_ROLE_ID,
     PLANNER_ROLE_ID,
     RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
-    CHAT_MAIN_agent_ROLE_IDS,
     clear_role_cache,
     get_role,
     is_role_chat_panel_enabled,
@@ -23,7 +18,7 @@ from agents.roles.registry import (
     list_role_ids,
     roles_definitions_dir,
 )
-from agents.roles.types import RoleConfig
+from agents.roles.types import RoleConfig, parse_role_config
 from agents.roles.workflow_path import (
     CHAT_NAME_CREATOR_ROLE_ID,
     get_role_chat_workflow_path,
@@ -31,6 +26,7 @@ from agents.roles.workflow_path import (
 
 __all__ = [
     "ANALYST_ROLE_ID",
+    "CHAT_MAIN_AGENT_ROLE_IDS",
     "CHAT_NAME_CREATOR_ROLE_ID",
     "CODER_ROLE_ID",
     "DEMIURGE_ROLE_ID",
@@ -38,8 +34,6 @@ __all__ = [
     "RECEPTIONIST_ROLE_ID",
     "RL_COACH_ROLE_ID",
     "WORKFLOW_DESIGNER_ROLE_ID",
-    "CHAT_MAIN_agent_ROLE_IDS",
-    "RoleChatConfig",
     "RoleConfig",
     "clear_role_cache",
     "get_role",
@@ -47,7 +41,6 @@ __all__ = [
     "is_role_chat_panel_enabled",
     "list_chat_dropdown_role_ids",
     "list_role_ids",
-    "parse_role_chat_config",
-    "role_chat_feature_enabled",
+    "parse_role_config",
     "roles_definitions_dir",
 ]
