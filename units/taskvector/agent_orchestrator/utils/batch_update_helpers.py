@@ -4,8 +4,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, TypedDict
 
+from agents.chat.agent_workflow.wf_response_schema import ProgressResult
 from agents.chat.context.follow_up_context import FollowUpContexts
-from core.graph import GraphEdit
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.process_graph import ProcessGraph
 
@@ -15,11 +15,6 @@ from .batch_update_publisher import BatchUpdatePublisher
 class ProgressResponse(TypedDict, total=False):
     llm_user_message: str | None
     llm_system_prompt: str | None
-
-
-class ProgressResult(TypedDict, total=False):
-    content_for_display: str | None
-    edits: list[GraphEdit]
 
 type ApplyMeta = Mapping[str, object]
 type RunOutput = Mapping[str, object]
