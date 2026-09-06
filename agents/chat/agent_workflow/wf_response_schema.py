@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from typing import Self
+from typing import Literal, Self, TypedDict
 
+from agents.chat.agent_workflow.helpers import empty_progress_result
 from agents.tools.types import ParserOutput
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult, GraphEdit
 from core.schemas.primitives import Data, WorkflowErrors
 from core.schemas.process_graph import ProcessGraph
 
@@ -22,10 +24,26 @@ from core.schemas.process_graph import ProcessGraph
 #   WorkflowOutputs = JsonObject
 #   WorkflowErrors = list[tuple[str, str]]
 
+# workflow modification result (e.g. TODO tasks, comments, units, connections, etc.)
+class ProgressResult(TypedDict, total=False):
+    content_for_display: str | None
+    edits: list[GraphEdit]
+    kind: Literal[
+        "parse_error",
+        "applied",
+        "apply_failed",
+    ]
+    apply_result: AgentApplyWorkflowEditsResult | None
+    graph: ProcessGraph | None
+
+
+# merged result from all the units of the workflow
 @dataclass
 class MergeResponse:
     reply: str = ""
-    result: Data = field(default_factory=dict)
+    result: ProgressResult = field(
+            default_factory=empty_progress_result
+        )
     status: Data = field(default_factory=dict)
     graph: ProcessGraph | None = None
     diff: str = ""
@@ -65,7 +83,7 @@ class MergeResponse:
 
         return response
 
-
+# merged errors collected from error ports of all the units of the workflow
 @dataclass
 class MergeErrors:
     """Contents of outputs['merge_errors']['data']."""
@@ -96,6 +114,7 @@ class MergeErrors:
         return response
 
 
+# direct response of each unit in the workflow
 @dataclass
 class DirectUnitsResponse:
     """Direct unit outputs before the final merge units run."""
@@ -134,6 +153,7 @@ class DirectUnitsResponse:
         return response
 
 
+# aggregated workflow response
 @dataclass
 class AgentWorkflowResponse:
     """Final response returned by run_agent_workflow."""
@@ -144,3 +164,44 @@ class AgentWorkflowResponse:
         default_factory=DirectUnitsResponse
     )
     direct_units_errors: WorkflowErrors = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> Self:
+        valid_fields = {
+            "merged_response",
+            "merged_errors",
+            "direct_units_response",
+            "direct_units_errors",
+        }
+
+        unknown_fields = set(data) - valid_fields
+        if unknown_fields:
+            raise ValueError(
+                f"Unknown fields: {', '.join(sorted(unknown_fields))}"
+            )
+
+        merged_response = data.get("merged_response", {})
+        merged_errors = data.get("merged_errors", {})
+        direct_units_response = data.get("direct_units_response", {})
+        direct_units_errors = data.get("direct_units_errors", [])
+
+        if not isinstance(merged_response, Mapping):
+            raise TypeError("merged_response must be a mapping")
+
+        if not isinstance(merged_errors, Mapping):
+            raise TypeError("merged_errors must be a mapping")
+
+        if not isinstance(direct_units_response, Mapping):
+            raise TypeError("direct_units_response must be a mapping")
+
+        if not isinstance(direct_units_errors, list):
+            raise TypeError("direct_units_errors must be a list")
+
+        return cls(
+            merged_response=MergeResponse.from_dict(merged_response),
+            merged_errors=MergeErrors.from_dict(merged_errors),
+            direct_units_response=DirectUnitsResponse.from_dict(
+                direct_units_response
+            ),
+            direct_units_errors=direct_units_errors,
+        )
