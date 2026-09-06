@@ -7,7 +7,8 @@ still comes from app settings.
 """
 from __future__ import annotations
 
-from core.schemas.primitives import Data, WorkflowInputs
+from agents.roles.types import RoleConfig
+from core.schemas.primitives import WorkflowInputs
 from gui.components.settings import (
     get_create_filename_prompt_path,
     get_create_filename_workflow_path,
@@ -17,19 +18,23 @@ from runtime.run import run_workflow
 
 
 def _required_config_string(
-    cfg: Data,
+    cfg: RoleConfig,
     key: str,
 ) -> str:
-    value = cfg.get(key)
+    try:
+        value = getattr(cfg, key)
+    except AttributeError as exc:
+        raise ValueError(f"Unknown configuration value: {key}") from exc
 
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Missing or invalid configuration value: {key}")
 
     return value.strip()
 
+
 def build_create_filename_unit_param_overrides(
     provider: str,
-    cfg: dict[str, object],
+    cfg: RoleConfig,
 ) -> WorkflowInputs:
     """Build parameter overrides for the create_filename workflow."""
     model_name = _required_config_string(cfg, "model")
@@ -38,6 +43,7 @@ def build_create_filename_unit_param_overrides(
     provider_name = provider.strip()
     if not provider_name:
         raise ValueError("Provider cannot be empty")
+
     return {
         "llm_agent": {
             "model_name": model_name,
@@ -52,18 +58,21 @@ def build_create_filename_unit_param_overrides(
         },
     }
 
+
 def run_create_filename_workflow(
     first_message: str,
     provider: str,
-    cfg: Data | None,
+    cfg: RoleConfig | None,
     execution_timeout_s: float = 60.0,
 ) -> str:
     """
     Run the create_filename workflow to suggest a short snake_case filename.
-    Returns raw model output; caller should slugify.
-    Returns an empty string on error.
+
+    Returns raw model output; the caller should slugify it.
+    Returns an empty string on error or when no role configuration is provided.
     """
-    config = cfg or {}
+    if cfg is None:
+        return ""
 
     initial_inputs: WorkflowInputs = {
         "inject_user_message": {
@@ -80,9 +89,11 @@ def run_create_filename_workflow(
         outputs = run_workflow(
             get_create_filename_workflow_path(),
             initial_inputs=initial_inputs,
-            unit_param_overrides=build_create_filename_unit_param_overrides(
-                provider,
-                config,
+            unit_param_overrides=(
+                build_create_filename_unit_param_overrides(
+                    provider=provider,
+                    cfg=cfg,
+                )
             ),
             format="dict",
             execution_timeout_s=execution_timeout_s,
