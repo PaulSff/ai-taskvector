@@ -63,8 +63,10 @@ from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
-from core.schemas.primitives import Data
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
+from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
+    ProgressResult,
+)
 
 from .tool_follow_ups_runner import run_role_ordered_follow_ups
 
@@ -75,7 +77,7 @@ from .tool_follow_ups_runner import run_role_ordered_follow_ups
 async def run_execution_follow_up_chain_async(
     ctx: ExecutionFollowUpContext,
     resp: AgentWorkflowResponse,
-    flags: PostEditFlags,
+     flags: PostEditFlags | None = None,
 ) -> AgentWorkflowResponse | None:
     """
     Async version: If parser_output requests tools, fetch context and re-run
@@ -83,6 +85,15 @@ async def run_execution_follow_up_chain_async(
 
     Returns None when the user cancelled the run mid-chain.
     """
+    effective_flags = (
+        flags
+        if flags is not None
+        else PostEditFlags(
+            had_import_workflow=False,
+            had_todo=False,
+            had_add_comment=False,
+        )
+    )
 
     def _hint() -> str:
         return ctx.wf_language_hint[0]
@@ -290,7 +301,7 @@ async def run_execution_follow_up_chain_async(
         # add post-apply messages for todo_tasks, comments
         post_apply_messages = get_post_apply_messages(
             i,
-            flags=flags,
+            flags=effective_flags,
             language_hint=_hint,
             graph=ctx.graph_ref[0],
         )
@@ -594,7 +605,7 @@ async def run_execution_follow_up_chain_async(
 async def run_post_execution_follow_up_chain_async(
     ctx: PostExecutionFollowUpContext,
     *,
-    result: Data,
+    result: ProgressResult,
     content_holder: list[str],
     parser_chain_runner: ParserChainRunner,
     flags: PostEditFlags,
