@@ -53,6 +53,7 @@ from agents.chat.agent_workflow import (
 )
 from agents.chat.agent_workflow.helpers import (
     get_optional_str,
+    is_apply_result,
     validate_graph_to_apply_inline,
 )
 from agents.chat.context import PostExecutionFollowUpContext
@@ -103,6 +104,9 @@ from core.schemas.primitives import (
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
+from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
+    ProgressResult,
+)
 
 from ..context import RoleChatTurnContext
 
@@ -144,6 +148,31 @@ class WorkflowDesignerChatHandler:
     def role_name(self) -> str:
         return get_role(self.role_id).role_name
 
+    @staticmethod
+    def parse_error_result(content: str) -> ProgressResult:
+        return ProgressResult(
+            kind="parse_error",
+            content_for_display=content,
+            apply_result=None,
+            edits=[],
+        )
+
+    @staticmethod
+    def get_apply_result(
+        status: Data,
+        result: ProgressResult,
+    ) -> AgentApplyWorkflowEditsResult | None:
+        value = (
+            status.get("last_apply_result")
+            or result.get("last_apply_result")
+        )
+
+        if not is_apply_result(value):
+            return None
+
+        return value
+
+
     async def run_turn(
         self,
         turn_ctx: RoleChatTurnContext,
@@ -152,7 +181,7 @@ class WorkflowDesignerChatHandler:
     ) -> None:
         response = AgentWorkflowResponse()
         content = ""
-        result: Data = {}
+        result: ProgressResult = {}
 
         role_cfg: RoleConfig = get_role(self.role_id)
 
@@ -520,12 +549,7 @@ class WorkflowDesignerChatHandler:
             response = AgentWorkflowResponse(
                 merged_response=MergeResponse(
                     reply="",
-                    result={
-                        "kind": "parse_error",
-                        "content_for_display": content,
-                        "apply_result": {},
-                        "edits": [],
-                    },
+                    result=self.parse_error_result(content),
                 )
             )
 
@@ -542,12 +566,7 @@ class WorkflowDesignerChatHandler:
             response = AgentWorkflowResponse(
                 merged_response=MergeResponse(
                     reply="",
-                    result={
-                        "kind": "parse_error",
-                        "content_for_display": content,
-                        "apply_result": {},
-                        "edits": [],
-                    },
+                    result=self.parse_error_result(content),
                 )
             )
 
@@ -567,10 +586,9 @@ class WorkflowDesignerChatHandler:
             merged = response.merged_response
             result = merged.result
 
-            apply_result_value = (
-                merged.status.get("last_apply_result")
-                or result.get("last_apply_result")
-                or {}
+            apply_result_value = self.get_apply_result(
+                merged.status,
+                result,
             )
 
             applied_ok = (
