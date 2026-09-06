@@ -70,19 +70,19 @@ async def run_self_correction_retry_async(
 
     # --- end Logging ---
 
-    # access workflow_path and param overrides through RoleChatConfig
-    chat_config = role_config.chat
-
-    if chat_config is None:
+    # Access chat configuration directly from the merged RoleConfig.
+    if not role_config.chat_enabled:
         print(
-            f"[self_correction_driver] no chat configuration "
+            f"[self_correction_driver] chat disabled "
             f"for role_id={role_config.id!r}"
         )
         return {}, None, None
-    # agent role workflow path
-    agent_workflow_path = chat_config.workflow
-    # workflow units param overrides
-    overrides = chat_config.overrides
+
+    # Agent role workflow path.
+    agent_workflow_path = role_config.chat_workflow
+
+    # Workflow unit parameter overrides.
+    overrides = role_config.chat_overrides
 
     if not agent_workflow_path:
         print(
@@ -94,10 +94,13 @@ async def run_self_correction_retry_async(
     _graph = graph_ref[0]
 
     _runtime = await _await_with_log(
-        "get_runtime_for_prompts", get_runtime_for_prompts(_graph)
+        "get_runtime_for_prompts",
+        get_runtime_for_prompts(_graph),
     )
+
     _previous_turn = await _await_with_log(
-        "format_previous_turn", format_previous_turn(history)
+        "format_previous_turn",
+        format_previous_turn(history),
     )
 
     retry_inputs = build_self_correction_retry_inputs(
