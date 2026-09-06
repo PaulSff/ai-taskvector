@@ -56,6 +56,9 @@ from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
+    COMMENT_ACTIONS,
+    IMPORT_WORKFLOW_ACTION,
+    TODO_ACTIONS,
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
     GraphEditAction,
@@ -77,22 +80,8 @@ _PLANNER_WORKFLOW_PATH = get_role_chat_workflow_path(PLANNER_ROLE_ID).resolve()
 _PLANNER_PROMPT_PATH = (
     _PLANNER_WORKFLOW_PATH.parents[3] / "config" / "prompts" / "planner.json"
 )
-
-# actions supported:
-IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
-ADD_COMMENT_ACTION: GraphEditAction = "add_comment"
-
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
 
-TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
-    {
-        "add_todo_list",
-        "remove_todo_list",
-        "add_task",
-        "remove_task",
-        "mark_completed",
-    }
-)
 
 class PlannerChatHandler:
     """Runs planner_workflow.json: tools + comments/todos only (no structural graph edits)."""
@@ -663,7 +652,7 @@ class PlannerChatHandler:
                 )
 
                 had_add_comment = any(
-                    edit.action == ADD_COMMENT_ACTION
+                    edit.action in COMMENT_ACTIONS
                     for edit in edits
                 )
                 content_holder = [content]

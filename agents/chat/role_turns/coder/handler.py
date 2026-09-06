@@ -56,9 +56,11 @@ from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
+    COMMENT_ACTIONS,
+    IMPORT_WORKFLOW_ACTION,
+    TODO_ACTIONS,
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
-    GraphEditAction,
     MultipleEditsSequential,
 )
 from core.schemas.primitives import (
@@ -77,22 +79,7 @@ _CODER_WORKFLOW_PATH = get_role_chat_workflow_path(CODER_ROLE_ID).resolve()
 _CODER_PROMPT_PATH = (
     _CODER_WORKFLOW_PATH.parents[3] / "config" / "prompts" / "coder.json"
 )
-
-# actions supported:
-IMPORT_WORKFLOW_ACTION: GraphEditAction = "import_workflow"
-ADD_COMMENT_ACTION: GraphEditAction = "add_comment"
-
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
-
-TODO_ACTIONS: frozenset[GraphEditAction] = frozenset(
-    {
-        "add_todo_list",
-        "remove_todo_list",
-        "add_task",
-        "remove_task",
-        "mark_completed",
-    }
-)
 
 class CoderChatHandler:
     """Runs coder_workflow.json: tools + comments/todos only (no structural graph edits)."""
@@ -663,7 +650,7 @@ class CoderChatHandler:
                 )
 
                 had_add_comment = any(
-                    edit.action == ADD_COMMENT_ACTION
+                    edit.action in COMMENT_ACTIONS
                     for edit in edits
                 )
                 content_holder = [content]
@@ -690,7 +677,6 @@ class CoderChatHandler:
                     format_previous_turn=format_previous_turn,
                     replace_agent_message_row=turn_ctx.replace_agent_message_row,
                     stream_buffer_ref=turn_ctx.stream_buffer_ref,
-                    apply_fn=apply_fn,
                     agent_workflow_path=_CODER_WORKFLOW_PATH,
                     analyst_mode=True,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
