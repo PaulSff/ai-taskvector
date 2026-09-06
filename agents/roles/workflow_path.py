@@ -5,11 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.roles.registry import (
-    ANALYST_ROLE_ID,
-    DEMIURGE_ROLE_ID,
-    RECEPTIONIST_ROLE_ID,
-    RL_COACH_ROLE_ID,
-    WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
 )
 
@@ -20,39 +15,51 @@ _REPO_ROOT = _ROLES_ROOT.parent.parent
 
 # When ``chat.workflow`` is omitted, use the same filenames as the shipped role.yaml files.
 _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
-    WORKFLOW_DESIGNER_ROLE_ID: "workflow_designer_workflow.json",
-    ANALYST_ROLE_ID: "analyst_workflow.json",
-    RECEPTIONIST_ROLE_ID: "receptionist_workflow.json",
-    RL_COACH_ROLE_ID: "rl_coach_workflow.json",
     CHAT_NAME_CREATOR_ROLE_ID: "create_filename.json",
-    DEMIURGE_ROLE_ID: "demiurge_workflow.json"
 }
 
 def get_role_chat_workflow_path(role_id: str) -> Path:
     """
-    Return absolute path to the workflow JSON for this role's chat.
+    Return the absolute path to the workflow JSON for this role's chat.
 
-    - ``chat.workflow`` in ``role.yaml`` is normally a filename under ``agents/roles/<role_id>/``.
-    - If it is relative but starts with ``agents/``, ``gui/``, or ``config/``, it is resolved from the repo root.
-    - If it is an absolute path, it is used as-is.
+    ``RoleConfig`` stores the optional ``chat:`` block as flattened fields:
+
+    - ``role.chat_enabled``
+    - ``role.chat_workflow``
+
+    A relative workflow filename is normally resolved under:
+    ``agents/roles/<role_id>/``.
     """
+
     key = (role_id or "").strip()
+
     if not key:
         raise ValueError("role_id is required")
+
     role = get_role(key)
+
     raw = ""
-    if role.chat and role.chat.workflow:
-        raw = str(role.chat.workflow).strip()
+
+    if role.chat_enabled and role.chat_workflow:
+        raw = str(role.chat_workflow).strip()
+
     if not raw:
         raw = _DEFAULT_MAIN_WORKFLOW_BY_ROLE.get(key, "")
+
     if not raw:
         raise ValueError(
-            f"Role {key!r} has no chat.workflow in role.yaml and no built-in default filename."
+            f"Role {key!r} has no chat.workflow in role.yaml "
+            "and no built-in default filename."
         )
-    p = Path(raw).expanduser()
-    if p.is_absolute():
-        return p.resolve()
-    norm = str(p).replace("\\", "/")
-    if norm.startswith(("agents/", "gui/", "config/")):
-        return (_REPO_ROOT / p).resolve()
-    return (_ROLES_ROOT / key / p).resolve()
+
+    path = Path(raw).expanduser()
+
+    if path.is_absolute():
+        return path.resolve()
+
+    normalized = path.as_posix()
+
+    if normalized.startswith(("agents/", "gui/", "config/")):
+        return (_REPO_ROOT / path).resolve()
+
+    return (_ROLES_ROOT / key / path).resolve()

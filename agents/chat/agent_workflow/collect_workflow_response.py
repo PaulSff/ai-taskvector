@@ -7,6 +7,7 @@ from agents.chat.agent_workflow.wf_response_schema import (
     DirectUnitsResponse,
     MergeErrors,
     MergeResponse,
+    get_progress_result,
 )
 from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
@@ -24,7 +25,6 @@ from .helpers import (
     get_optional_data,
     get_optional_parser_output,
     get_optional_str,
-    get_progress_result,
     get_str,
     get_units_response,
 )

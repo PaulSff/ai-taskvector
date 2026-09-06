@@ -5,11 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, TypeGuard, cast
+from typing import Literal, cast
 
 from pydantic import ValidationError
 
-from agents.chat.agent_workflow.wf_response_schema import ProgressResult
 from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
@@ -260,29 +259,4 @@ def get_optional_parser_output(
     return ParserOutput(
         actions=ParsedActions(edits=edits),
         error=error_value if isinstance(error_value, str) else None,
-    )
-
-def empty_progress_result() -> ProgressResult:
-    return {}
-
-def get_progress_result(data: Data, key: str) -> ProgressResult:
-    value = data.get(key)
-
-    if value is None:
-        return empty_progress_result()
-
-    if not isinstance(value, dict):
-        raise TypeError(f"{key} must be a mapping")
-
-    return cast(ProgressResult, value)
-
-def is_apply_result(
-    value: object,
-) -> TypeGuard[AgentApplyWorkflowEditsResult]:
-    if not isinstance(value, dict):
-        return False
-
-    return (
-        isinstance(value.get("attempted"), bool)
-        and isinstance(value.get("success"), bool)
     )

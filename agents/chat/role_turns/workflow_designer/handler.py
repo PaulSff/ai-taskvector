@@ -53,9 +53,9 @@ from agents.chat.agent_workflow import (
 )
 from agents.chat.agent_workflow.helpers import (
     get_optional_str,
-    is_apply_result,
     validate_graph_to_apply_inline,
 )
+from agents.chat.agent_workflow.wf_response_schema import is_apply_result
 from agents.chat.context import PostExecutionFollowUpContext
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,

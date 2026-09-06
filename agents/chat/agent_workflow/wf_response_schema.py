@@ -10,19 +10,45 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from typing import Literal, Self, TypedDict
+from typing import Literal, Self, TypedDict, TypeGuard, cast
 
-from agents.chat.agent_workflow.helpers import empty_progress_result
 from agents.tools.types import ParserOutput
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult, GraphEdit
 from core.schemas.primitives import Data, WorkflowErrors
 from core.schemas.process_graph import ProcessGraph
+
 
 # Units standard API:
 #   Data = dict[str, object]
 #   Output = tuple[Data, Data] | Data
 #   WorkflowOutputs = JsonObject
 #   WorkflowErrors = list[tuple[str, str]]
+#
+def empty_progress_result() -> ProgressResult:
+    return {}
+
+def get_progress_result(data: Data, key: str) -> ProgressResult:
+    value = data.get(key)
+
+    if value is None:
+        return empty_progress_result()
+
+    if not isinstance(value, dict):
+        raise TypeError(f"{key} must be a mapping")
+
+    return cast(ProgressResult, value)
+
+def is_apply_result(
+    value: object,
+) -> TypeGuard[AgentApplyWorkflowEditsResult]:
+    if not isinstance(value, dict):
+        return False
+
+    return (
+        isinstance(value.get("attempted"), bool)
+        and isinstance(value.get("success"), bool)
+    )
+
 
 # workflow modification result (e.g. TODO tasks, comments, units, connections, etc.)
 class ProgressResult(TypedDict, total=False):
