@@ -117,8 +117,12 @@ def from_snapshot(payload: Mapping[str, object]) -> _Session:
 
     # 5. Last Apply Result
     last_res = payload.get("last_apply_result")
+
     if isinstance(last_res, dict):
-        s.last_apply_result = cast(dict[str, object], last_res)
+        s.last_apply_result = cast(
+            AgentApplyWorkflowEditsResult,
+            last_res,
+        )
     else:
         s.last_apply_result = None
 
