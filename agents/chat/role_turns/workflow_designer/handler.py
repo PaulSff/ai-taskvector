@@ -35,7 +35,6 @@ if context.on_workflow_response is not None:
         response,
         previous_graph,
     )
-The retry path should likewise call run_workflow_turn(retry_inputs) rather than parsing and applying retry_response["graph"] itself:
 """
 
 from __future__ import annotations
