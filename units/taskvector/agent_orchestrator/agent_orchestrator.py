@@ -25,8 +25,10 @@ Params: "_needs_executor": true - MUST be set in params, so that the executor in
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import cast
 
+from core.schemas.primitives import Data, Output
+from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, register_unit
 
 from .turn_runner import run_orchestrator_turn
@@ -45,11 +47,11 @@ AGENT_ORCHESTRATOR_OUTPUT_PORTS = [
 
 
 def _agent_orchestrator_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Run one agent turn using run_orchestrator_turn scheduled on the
     GraphExecutor background event loop (executor._loop). Blocks until done.
     """
@@ -65,15 +67,20 @@ def _agent_orchestrator_step(
     if messenger_port and "messenger" not in data:
         data = {**data, "messenger": str(messenger_port)}
 
-    stream_cb = params.get("_stream_callback")
+    stream_cb = cast(
+        GraphStreamCallback | None,
+        params.get("_stream_callback"),
+    )
 
     try:
         # Resolve background loop: prefer executor instance, then loop object directly.
         background_loop = None
         exec_obj = params.get("_executor")
+
         if exec_obj is not None:
-            # support either GraphExecutor or object exposing _loop
+            # Support either GraphExecutor or an object exposing _loop.
             background_loop = getattr(exec_obj, "_loop", None)
+
         if background_loop is None:
             background_loop = params.get("_executor_loop") or params.get(
                 "_background_loop"
@@ -81,14 +88,24 @@ def _agent_orchestrator_step(
 
         if not isinstance(background_loop, asyncio.AbstractEventLoop):
             raise TypeError(
-                "Background event loop not provided. Pass params['_executor'] (GraphExecutor) or params['_executor_loop']."
+                "Background event loop not provided. Pass "
+                "params['_executor'] (GraphExecutor) or params['_executor_loop']."
             )
 
-        run_id = params.get("run_id")
-        pub_endpoint = params.get("update_pub_endpoint")
+        run_id_value = params.get("run_id")
+        run_id: str | None = (
+            run_id_value if isinstance(run_id_value, str) else None
+        )
+
+        pub_endpoint_value = params.get("update_pub_endpoint")
+        pub_endpoint: str | None = (
+            pub_endpoint_value
+            if isinstance(pub_endpoint_value, str)
+            else None
+        )
 
         batch_update_publisher = None
-        if pub_endpoint:
+        if pub_endpoint is not None:
             from .utils.batch_update_publisher import BatchUpdatePublisher
 
             batch_update_publisher = BatchUpdatePublisher(
@@ -96,21 +113,29 @@ def _agent_orchestrator_step(
                 run_id=run_id,
             )
 
+        context: Data = {str(key): value for key, value in data.items()}
+
         coro = run_orchestrator_turn(
-            data,
+            context,
             stream_callback=stream_cb,
-            batch_update_publisher=batch_update_publisher,  # turn_runner must handle
+            batch_update_publisher=batch_update_publisher,
             run_id=run_id,
         )
+
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
 
-        timeout_s = params.get("timeout_s")  # from units params
-        result = (
-            fut.result(timeout=timeout_s) if timeout_s is not None else fut.result()
+        timeout_value = params.get("timeout_s")
+        timeout_s: float | None = (
+            float(timeout_value)
+            if isinstance(timeout_value, (int, float))
+            else None
         )
 
+        result = fut.result(timeout=timeout_s)
+
+
     except TimeoutError as exc:
-        error_payload: dict[str, Any] = {
+        error_payload: Data = {
             "type": "error",
             "error": f"{type(exc).__name__}: {exc}",
         }
