@@ -158,10 +158,10 @@ async def run_execution_follow_up_chain_async(
         po = response.merged_response.parser_output
 
         if po is None:
-            raise ValueError(
-                "Expected parser_output before running "
-                "follow-up handlers"
+            await _checkpoint(
+                f"break_no_parser_output:{i}"
             )
+            break
 
         purple = "\033[94m"
         reset = "\033[0m"
