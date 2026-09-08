@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -18,6 +20,7 @@ from core.schemas.graph_edit_api import (
 from core.schemas.primitives import Data, is_object_list, is_string_keyed_dict
 from core.schemas.process_graph import ProcessGraph
 
+logger = logging.getLogger(__name__)
 
 def missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
@@ -182,8 +185,24 @@ def get_optional_data(data: Mapping[str, object], key: str) -> Data | None:
     return value if is_string_keyed_dict(value) else None
 
 
-def get_graph(data: Data, key: str) -> ProcessGraph | None:
-    value = data.get(key)
+def get_graph(data: Data, key: str = "graph") -> ProcessGraph | None:
+    value: object
+
+    # Direct MergeResponse data:
+    # {"graph": ...}
+    if key in data:
+        value = data.get(key)
+
+    # Aggregate unit output:
+    # {"data": {"graph": ...}, "error": "..."}
+    else:
+        aggregate_data = data.get("data")
+
+        if not isinstance(aggregate_data, dict):
+            return None
+
+        value = aggregate_data.get(key)
+
     return value if isinstance(value, ProcessGraph) else None
 
 
@@ -201,35 +220,87 @@ def get_units_response(outputs: Mapping[str, object]) -> list[Data]:
         if is_string_keyed_dict(item)
     ]
 
+def _unwrap_unit_data(value: object) -> object:
+    """
+    Unwrap aggregate/unit output of the form:
+
+        {"data": <payload>, "error": <str>}
+
+    Do not unwrap a parser-output dictionary that already contains
+    parser-output fields.
+    """
+    while (
+        is_string_keyed_dict(value)
+        and "data" in value
+        and not any(field in value for field in ("actions", "error"))
+    ):
+        value = value["data"]
+
+    return value
+
+
 def get_optional_parser_output(
     data: Mapping[str, object],
-    key: str,
+    key: str = "parser_output",
 ) -> ParserOutput | None:
-    value = data.get(key)
+    logger.debug(
+        "get_optional_parser_output received key=%r, data=%r",
+        key,
+        data,
+    )
+
+    # Locate the parser output either directly or inside aggregate data.
+    if key in data:
+        value: object = data.get(key)
+    else:
+        aggregate_data = data.get("data")
+
+        if not is_string_keyed_dict(aggregate_data):
+            return None
+
+        value = aggregate_data.get(key)
+
+    # Unwrap aggregate/unit output.
+    value = _unwrap_unit_data(value)
 
     if value is None:
         return None
 
+    # Already normalized.
     if isinstance(value, ParserOutput):
         return value
 
+    # Support JSON-serialized parser output.
+    if isinstance(value, str):
+        raw_value = value.strip()
+
+        if not raw_value:
+            return None
+
+        try:
+            value = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            logger.exception(
+                "Invalid serialized parser output: key=%r value=%r",
+                key,
+                raw_value[:500],
+            )
+            raise TypeError(
+                f"{key!r} must contain valid JSON parser output; "
+                f"got non-JSON string: {raw_value[:200]!r}"
+            ) from exc
+
     if not is_string_keyed_dict(value):
         raise TypeError(
-            f"{key!r} must be a ParserOutput or string-keyed dictionary"
+            f"{key!r} must be a ParserOutput or string-keyed dictionary; "
+            f"got {type(value).__name__}"
         )
 
     actions_value = value.get("actions", {})
 
     if not is_string_keyed_dict(actions_value):
         raise TypeError(
-            "'parser_output.actions' must be a string-keyed dictionary"
-        )
-
-    actions_value = value.get("actions", {})
-
-    if not is_string_keyed_dict(actions_value):
-        raise TypeError(
-            "'parser_output.actions' must be a string-keyed dictionary"
+            f"{key!r}.actions must be a string-keyed dictionary"
         )
 
     raw_edits_value = actions_value.get("edits")
@@ -239,7 +310,9 @@ def get_optional_parser_output(
     elif is_object_list(raw_edits_value):
         raw_edits = raw_edits_value
     else:
-        raise TypeError("'parser_output.actions.edits' must be a list")
+        raise TypeError(
+            f"{key!r}.actions.edits must be a list"
+        )
 
     edits: list[GraphEdit] = []
 
@@ -247,12 +320,17 @@ def get_optional_parser_output(
         if isinstance(raw_edit, GraphEdit):
             edits.append(raw_edit)
         elif is_string_keyed_dict(raw_edit):
-            edits.append(GraphEdit.model_validate(raw_edit))
+            try:
+                edits.append(GraphEdit.model_validate(raw_edit))
+            except ValidationError as exc:
+                raise TypeError(
+                    f"Invalid {key!r}.actions.edits item: {raw_edit!r}"
+                ) from exc
         else:
             raise TypeError(
-                "Each edit must be a GraphEdit or string-keyed dictionary"
+                f"Each {key!r}.actions.edits item must be a "
+                "GraphEdit or string-keyed dictionary"
             )
-
 
     error_value = value.get("error")
 
