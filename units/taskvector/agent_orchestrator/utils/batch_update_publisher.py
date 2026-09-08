@@ -2,12 +2,8 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
 
-from agents.chat.context.follow_up_context import FollowUpContexts
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult, GraphEdit
-from core.schemas.primitives import Data, JsonObject
-from core.schemas.process_graph import ProcessGraph
+from core.schemas.primitives import Data, JsonObject, JsonValue
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
 
@@ -63,21 +59,23 @@ class BatchUpdatePublisher:
         llm_system_prompt: str,
         id: str | None = None,
         ts: float | None = None,
-        # placeholders required by the inner message schema you already use
-        graph: ProcessGraph,
-        parsed_edits: list[GraphEdit] | None = None,
-        apply_meta: Mapping[str, object] | None,
-        follow_up_contexts: FollowUpContexts | None = None,
-        last_apply_result: AgentApplyWorkflowEditsResult | None = None,
-        run_output: Data | None = None,
-        error: Data| None = None,
+        graph: JsonValue = None,
+        parsed_edits: JsonValue = None,
+        apply_meta: JsonValue = None,
+        follow_up_contexts: JsonValue = None,
+        last_apply_result: JsonValue = None,
+        run_output: JsonValue = None,
+        error: JsonValue = None,
     ) -> None:
         out = {
             "run_id": self._run_id,
             "status": status,
-            "token": {"type": "token", "token": display_content},
+            "token": {
+                "type": "token",
+                "token": display_content,
+            },
             "message": {
-                "type": "in_progress",  # do NOT emit the `"message": {"type": "final", ...}`
+                "type": "in_progress",
                 "message": {
                     "id": id,
                     "ts": ts if ts is not None else time.time(),
@@ -90,19 +88,30 @@ class BatchUpdatePublisher:
                         "reply": display_content,
                         "result_kind": None,
                     },
-                    "parsed_edits": parsed_edits or [],
-                    "apply": apply_meta or {},
+                    "parsed_edits": parsed_edits if parsed_edits is not None else [],
+                    "apply": apply_meta if apply_meta is not None else {},
                     "graph": graph,
-                    "run_output": run_output or {},
-                    "follow_up_contexts": follow_up_contexts or [],
-                    "last_apply_result": last_apply_result or {},
+                    "run_output": run_output if run_output is not None else {},
+                    "follow_up_contexts": (
+                        follow_up_contexts
+                        if follow_up_contexts is not None
+                        else []
+                    ),
+                    "last_apply_result": (
+                        last_apply_result
+                        if last_apply_result is not None
+                        else {}
+                    ),
                     "session_language": session_language,
                     "messenger": messenger,
                     "llm_user_message": llm_user_message,
                     "llm_system_prompt": llm_system_prompt,
                 },
             },
-            "role": {"role_id": role_id, "name": agent_display},
+            "role": {
+                "role_id": role_id,
+                "name": agent_display,
+            },
             "error": error,
         }
 
