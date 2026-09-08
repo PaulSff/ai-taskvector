@@ -616,7 +616,7 @@ async def handle_turn(
             if isinstance(new_lang, str):
                 s.session_language = new_lang
 
-            if isinstance(last_apply_result_raw, dict):
+            if isinstance(last_apply_result_raw, dict) and last_apply_result_raw:
                 s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
                     last_apply_result_raw
                 )
@@ -855,7 +855,8 @@ async def handle_turn(
                     s.session_language = new_lang
 
                 last_apply_result = inner_msg.get("last_apply_result")
-                if isinstance(last_apply_result, dict):
+
+                if isinstance(last_apply_result, dict) and last_apply_result:
                     s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
                         last_apply_result
                     )
