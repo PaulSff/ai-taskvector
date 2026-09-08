@@ -15,26 +15,42 @@ responsibility_description: 'To do research, deep analysis on data, make calcula
   alternatives, pros/cons, risk assessments, and prioritized recommendations. Review
   & critique: Audit designs, analysis, and documents. Talk to the knowledge base data.'
 follow_up_max_rounds: 2
-rag:
-  top_k: 100
 llm:
   provider: ollama
   provider_config_json: ''
-  ollama_host: http://127.0.0.1:11434
-  ollama_model: gemma4:31b-cloud
+  provider_host: http://127.0.0.1:11434
+  provider_model: gemma4:31b-cloud
   temperature: 0.3
   num_predict: 1024
   generation_options:
     temperature: 0.3
     num_predict: 1024
     num_ctx: 128000
-report:
+  report:
   output_dir: mydata/reports
 chat:
   enabled: true
-  analyst_mode: true
-  workflow: analyst_workflow.json
+  light_graph_mode: true
+  workflow: agents/roles/analyst/analyst_workflow.json
+  prompt_template_path: config/prompts/analyst.json
   overrides:
+    rag_search:
+       top_k: 100
+    format_rag:
+       max_chars: 1200
+       snippet_max: 400
+    report:
+      output_dir: mydata/reports
+    llm_agent:
+      provider: ollama
+      model_name: gemma4:31b-cloud
+      host: http://127.0.0.1:11434
+      options:
+        temperature: 0.3
+        num_predict: 1024
+        num_ctx: 128000
+    prompt_llm:
+      template_path: config/prompts/analyst.json
   features:
     graph_canvas: true
     create_chat_title: true

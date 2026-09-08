@@ -20,17 +20,17 @@ _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
 
 def get_role_chat_workflow_path(role_id: str) -> Path:
     """
-    Return the absolute path to the workflow JSON for this role's chat.
+    Return the absolute path to the workflow JSON for a role's chat.
 
     ``RoleConfig`` stores the optional ``chat:`` block as flattened fields:
 
     - ``role.chat_enabled``
     - ``role.chat_workflow``
 
-    A relative workflow filename is normally resolved under:
-    ``agents/roles/<role_id>/``.
-    """
+    Relative workflow paths are resolved under:
 
+    ``agents/roles/<role_id>/``
+    """
     key = (role_id or "").strip()
 
     if not key:
@@ -38,28 +38,28 @@ def get_role_chat_workflow_path(role_id: str) -> Path:
 
     role = get_role(key)
 
-    raw = ""
+    raw_workflow = ""
 
-    if role.chat_enabled and role.chat_workflow:
-        raw = str(role.chat_workflow).strip()
+    if role.chat_enabled and role.chat_workflow is not None:
+        raw_workflow = str(role.chat_workflow).strip()
 
-    if not raw:
-        raw = _DEFAULT_MAIN_WORKFLOW_BY_ROLE.get(key, "")
+    if not raw_workflow:
+        raw_workflow = _DEFAULT_MAIN_WORKFLOW_BY_ROLE.get(key, "").strip()
 
-    if not raw:
+    if not raw_workflow:
         raise ValueError(
             f"Role {key!r} has no chat.workflow in role.yaml "
             "and no built-in default filename."
         )
 
-    path = Path(raw).expanduser()
+    workflow_path = Path(raw_workflow).expanduser()
 
-    if path.is_absolute():
-        return path.resolve()
+    if workflow_path.is_absolute():
+        return workflow_path.resolve()
 
-    normalized = path.as_posix()
+    normalized_path = workflow_path.as_posix()
 
-    if normalized.startswith(("agents/", "gui/", "config/")):
-        return (_REPO_ROOT / path).resolve()
+    if normalized_path.startswith(("agents/", "gui/", "config/")):
+        return (_REPO_ROOT / workflow_path).resolve()
 
-    return (_ROLES_ROOT / key / path).resolve()
+    return (_ROLES_ROOT / key / workflow_path).resolve()

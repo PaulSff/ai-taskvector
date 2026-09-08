@@ -82,11 +82,14 @@ def _parse_chat_fields(raw: Any) -> dict[str, Any]:
       enabled: true
       workflow: workflow.json
       overrides:
-        some_input: some_value
+        rag_search:
+          top_k: 10
+        prompt_llm:
+          template_path: config/prompts/role.json
       features:
         attachments: true
       chat_handler: package.module:Handler
-      analyst_mode: false
+      light_graph_mode: false
     ```
     """
     if raw is None:
@@ -137,7 +140,7 @@ def _parse_chat_fields(raw: Any) -> dict[str, Any]:
         "chat_overrides": raw_overrides,
         "chat_features": _coerce_features(raw.get("features")),
         "chat_handler": chat_handler,
-        "analyst_mode": _coerce_bool(raw.get("analyst_mode")),
+        "light_graph_mode": _coerce_bool(raw.get("light_graph_mode")),
     }
 
 
@@ -169,10 +172,9 @@ class RoleConfig:
       features:
         attachments: true
       chat_handler: agents.roles.analyst:AnalystChatHandler
-      analyst_mode: true
+      light_graph_mode: true
     ```
     """
-
     id: str
     role_name: str
     name: str
@@ -183,17 +185,12 @@ class RoleConfig:
     follow_up_max_rounds: int | None = None
     tools: ToolList = ()
 
-    provider: str = ""
-    ollama_host: str = ""
-    ollama_model: str = ""
-
-    # Flattened chat configuration.
     chat_enabled: bool = True
     chat_workflow: str | Path | None = None
     chat_overrides: WorkflowInputs | None = None
     chat_features: dict[str, bool] = field(default_factory=dict)
     chat_handler: str | None = None
-    analyst_mode: bool = False
+    light_graph_mode: bool = False
 
     extra: dict[str, object] = field(default_factory=dict)
 
@@ -203,11 +200,6 @@ class RoleConfig:
         *,
         default: bool = True,
     ) -> bool:
-        """
-        Read ``chat.features[key]``.
-
-        If the feature is missing, ``default`` is returned.
-        """
         return self.chat_features.get(key, default)
 
 
@@ -223,12 +215,15 @@ def parse_role_config(raw: Any) -> RoleConfig:
     chat_fields = _parse_chat_fields(raw.get("chat"))
 
     raw_tools = raw.get("tools", ())
+
     if raw_tools is None:
         tools: ToolList = ()
     elif isinstance(raw_tools, (list, tuple)):
         tools = tuple(raw_tools)
     else:
-        raise TypeError("role.yaml field 'tools' must be a list or tuple")
+        raise TypeError(
+            "role.yaml field 'tools' must be a list or tuple"
+        )
 
     raw_follow_up_max_rounds = raw.get("follow_up_max_rounds")
 
@@ -239,7 +234,8 @@ def parse_role_config(raw: Any) -> RoleConfig:
             follow_up_max_rounds = int(raw_follow_up_max_rounds)
         except (TypeError, ValueError) as exc:
             raise TypeError(
-                "role.yaml field 'follow_up_max_rounds' must be an integer or null"
+                "role.yaml field 'follow_up_max_rounds' "
+                "must be an integer or null"
             ) from exc
 
     raw_extra = raw.get("extra")
@@ -249,7 +245,9 @@ def parse_role_config(raw: Any) -> RoleConfig:
     elif isinstance(raw_extra, dict):
         extra = dict(raw_extra)
     else:
-        raise TypeError("role.yaml field 'extra' must be a mapping or null")
+        raise TypeError(
+            "role.yaml field 'extra' must be a mapping or null"
+        )
 
     return RoleConfig(
         id=str(raw.get("id", "")),
@@ -262,9 +260,6 @@ def parse_role_config(raw: Any) -> RoleConfig:
         ),
         follow_up_max_rounds=follow_up_max_rounds,
         tools=tools,
-        provider=str(raw.get("provider", "")),
-        ollama_host=str(raw.get("ollama_host", "")),
-        ollama_model=str(raw.get("ollama_model", "")),
         extra=extra,
         **chat_fields,
     )

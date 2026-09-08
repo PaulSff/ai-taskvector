@@ -445,7 +445,7 @@ def main(args):
     ensure_exists(handler_py, "handler.py in new role_turns")
     ensure_exists(init_py, "__init__.py in new role_turns")
 
-    # Preserve any analyst_mode occurrences — do NOT replace analyst_mode with <new_role>_mode
+    # Preserve any light_graph_mode occurrences — do NOT replace light_graph_mode with <new_role>_mode
     # Replace other tokens safely
     old_upper = SRC_ROLE.upper()
     new_upper = new_id.upper()
@@ -455,7 +455,7 @@ def main(args):
         f"{SRC_ROLE}_workflow.json": f"{new_id}_workflow.json",
         "config/prompts/analyst.json": f"config/prompts/{new_id}.json",
         "AnalystChatHandler": f"{new_id.capitalize()}ChatHandler",
-        # Do NOT replace 'analyst_mode' so preserve it as-is
+        # Do NOT replace 'light_graph_mode' so preserve it as-is
     }
     replace_in_file(handler_py, replacements)
     replace_in_file(
@@ -467,7 +467,7 @@ def main(args):
         },
     )
 
-    # Update uppercase ANALYST token in handler.py but avoid touching 'analyst_mode'
+    # Update uppercase ANALYST token in handler.py but avoid touching 'light_graph_mode'
     regex_replace_in_file(handler_py, r"\bANALYST\b", new_upper)
     # standalone 'analyst' word replacement: only replace occurrences that look like identifiers
     regex_replace_in_file(handler_py, r"\banalyst\b(?!_mode\b)", new_id)

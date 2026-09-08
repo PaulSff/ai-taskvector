@@ -40,7 +40,6 @@ if context.on_workflow_response is not None:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from agents.chat.agent_workflow import (
     AgentWorkflowResponse,
@@ -81,7 +80,6 @@ from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
 )
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
-from agents.roles.types import RoleConfig
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
@@ -114,14 +112,6 @@ from ..context import RoleChatTurnContext
 _WORKFLOW_DESIGNER_WORKFLOW_PATH = (
     get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID).resolve()
 )
-
-_WORKFLOW_DESIGNER_PROMPT_PATH = (
-    _WORKFLOW_DESIGNER_WORKFLOW_PATH.parents[3]
-    / "config"
-    / "prompts"
-    / "workflow_designer.json"
-)
-
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
 
 
@@ -171,16 +161,9 @@ class WorkflowDesignerChatHandler:
         content = ""
         result: ProgressResult = {}
 
-        role_cfg: RoleConfig = get_role(self.role_id)
-
         overrides: WorkflowInputs = (
             build_agent_workflow_unit_param_overrides(
-                provider=role_cfg.provider,
-                report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
-                model_name=role_cfg.ollama_model,
-                host=role_cfg.ollama_host,
-                llm_options_role_id=self.role_id,
-                rag_top_k_role_id=self.role_id,
+                role_id=WORKFLOW_DESIGNER_ROLE_ID,
             )
         )
 

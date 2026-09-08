@@ -22,23 +22,13 @@ def build_post_apply_context(
     wf_language_hint: list[str],
     recent_changes: str | None,
 ) -> PostExecutionFollowUpContext:
-    chat_config = role_config.chat
+    overrides = role_config.chat_overrides or {}
 
-    overrides = (
-        chat_config.overrides
-        if chat_config is not None and chat_config.overrides is not None
-        else {}
-    )
-
-    analyst_mode = (
-        chat_config.analyst_mode
-        if chat_config is not None
-        else False
-    )
+    light_graph_mode = role_config.light_graph_mode
 
     agent_workflow_path = (
-        Path(chat_config.workflow)
-        if chat_config is not None and chat_config.workflow
+        Path(role_config.chat_workflow)
+        if role_config.chat_workflow
         else None
     )
 
@@ -48,9 +38,6 @@ def build_post_apply_context(
         else 0
     )
 
-    def apply_graph(graph: ProcessGraph) -> None:
-        graph_ref[0] = graph
-
     proxy = ToolCtxProxy(
         graph_ref=graph_ref,
         last_apply_result_ref=last_apply_result_ref,
@@ -58,7 +45,7 @@ def build_post_apply_context(
         wf_language_hint=wf_language_hint,
         overrides=overrides,
         follow_up_tool_ids=role_config.tools,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
         agent_role_id=role_id,
         agent_workflow_path=agent_workflow_path,
         state=session,
@@ -101,5 +88,5 @@ def build_post_apply_context(
         replace_agent_message_row=lambda _: None,
         stream_buffer_ref=[""],
         agent_workflow_path=agent_workflow_path,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
     )

@@ -3,6 +3,8 @@ Shared canonicalization for the normalizer pipeline.
 Import modules produce dicts; to_process_graph uses these helpers to build ProcessGraph.
 """
 import json
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
 from typing import cast
 
 from core.schemas.primitives import (
@@ -107,11 +109,10 @@ def to_json_value(value: object) -> JsonValue:
     if isinstance(value, (str, int, float, bool)):
         return value
 
-    if isinstance(value, dict):
-        typed_value = cast(dict[object, object], value)
+    if isinstance(value, Mapping):
         json_object: JsonObject = {}
 
-        for key, nested_value in typed_value.items():
+        for key, nested_value in value.items():
             if not isinstance(key, str):
                 raise TypeError(
                     f"JSON object keys must be strings, got {type(key).__name__}"
@@ -121,17 +122,37 @@ def to_json_value(value: object) -> JsonValue:
 
         return json_object
 
-    if isinstance(value, list):
-        typed_value = cast(list[object], value)
-
+    if isinstance(value, (list, tuple, set, frozenset)):
         return [
             to_json_value(item)
-            for item in typed_value
+            for item in value
         ]
+
+    if is_model_dumpable(value):
+        # Prefer mode="json" if the model supports it. This handles nested
+        # enums, datetimes, UUIDs, etc.
+        try:
+            dumped = value.model_dump(
+                by_alias=True,
+                mode="json",
+            )
+        except TypeError:
+            dumped = value.model_dump(by_alias=True)
+
+        return to_json_value(dumped)
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return to_json_value(asdict(value))
+
+    # Support domain objects that expose an explicit transport representation.
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_json_value(to_dict())
 
     raise TypeError(
         f"Value of type {type(value).__name__} is not JSON serializable"
     )
+
 
 def outputs_to_json_object(
     outputs: dict[str, dict[str, object]],

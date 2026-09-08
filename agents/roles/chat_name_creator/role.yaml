@@ -8,7 +8,7 @@ llm:
   provider: ollama
   provider_config_json: ''
   ollama_host: http://127.0.0.1:11434
-  ollama_model: phi4-mini:latest
+  ollama_model: gemma4:31b-cloud
   temperature: 0.3
   num_predict: 1024
   generation_options:
@@ -18,6 +18,17 @@ llm:
 chat:
   enabled: false
   workflow: create_filename.json
+  overrides:
+    llm_agent:
+      provider: ollama
+      model_name: gemma4:31b-cloud
+      host: http://127.0.0.1:11434
+      options:
+        temperature: 0.3
+        num_predict: 1024
+        num_ctx: 128000
+    prompt_llm:
+      template_path: config/prompts/chat_name_creator.json
 tools: []
 mq:
   job_pub_endpoint: tcp://127.0.0.1:1111

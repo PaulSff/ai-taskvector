@@ -125,8 +125,9 @@ def _schedule_name_from_first_message_async(
     async def _run() -> None:
         base = ""
         try:
-            provider = get_llm_provider(agent="default")
-            cfg = get_llm_provider_config(agent="default") or {}
+            # get provider and provider's config for the the role_id chat_name_creator
+            provider = get_llm_provider(agent="chat_name_creator")
+            cfg = get_llm_provider_config(agent="chat_name_creator") or {}
 
             resp = await asyncio.to_thread(
                 run_create_filename_workflow,

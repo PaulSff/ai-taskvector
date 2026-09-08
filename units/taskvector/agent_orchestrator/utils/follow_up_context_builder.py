@@ -40,7 +40,7 @@ def build_parser_follow_up_context(
         else None
     )
 
-    analyst_mode = role_config.analyst_mode
+    light_graph_mode = role_config.light_graph_mode
 
     max_rounds = (
         role_config.follow_up_max_rounds
@@ -57,7 +57,7 @@ def build_parser_follow_up_context(
         wf_language_hint=wf_language_hint,
         overrides=overrides,
         follow_up_tool_ids=role_config.tools,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
         agent_role_id=role_id,
         agent_workflow_path=agent_workflow_path,
         state=session,
@@ -100,6 +100,6 @@ def build_parser_follow_up_context(
         follow_up_tool_ids=role_config.tools,
         agent_role_id=role_id,
         agent_workflow_path=agent_workflow_path,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
         ordered_follow_up_tools=ordered_follow_up_tools,
     )

@@ -44,7 +44,7 @@ def build_rl_coach_agent_aligned_initial_inputs(
     contribution_is_allowed: bool = False,
     language_hint: str | None = None,
     session_language: str = "",
-    analyst_mode: bool = True,
+    light_graph_mode: bool = True,
 ) -> WorkflowInputs:
     """
     Merge Workflow-Designer-style injects (graph, follow-up context, session language, …)
@@ -62,7 +62,7 @@ def build_rl_coach_agent_aligned_initial_inputs(
         previous_turn=previous_turn,
         language_hint=language_hint,
         session_language=session_language,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
     )
     base.update(
         build_rl_coach_training_inject_updates(

@@ -46,7 +46,12 @@ FormatTraining = Literal["yaml", "dict"]
 
 @runtime_checkable
 class ModelDumpable(Protocol):
-    def model_dump(self, *, by_alias: bool = ...) -> JsonObject:
+    def model_dump(
+        self,
+        *,
+        by_alias: bool = ...,
+        mode: Literal["python", "json"] = ...,
+    ) -> JsonObject:
         ...
 
 def is_format_process(value: object) -> TypeGuard[FormatProcess]:

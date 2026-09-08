@@ -83,7 +83,7 @@ class ExecutionFollowUpContext:
 
     # Analyst chat mode: slimmer injects and hidden graph structure
     # in summary overrides.
-    analyst_mode: bool = False
+    light_graph_mode: bool = False
 
     # When set, only these (tool_id, parser_key) pairs run in follow-up order.
     # Otherwise, the Workflow Designer catalog order is used.
@@ -163,7 +163,7 @@ class PostExecutionFollowUpContext:
     stream_buffer_ref: list[str]
     # apply_fn: Callable[[ProcessGraph], None]
     agent_workflow_path: Path | None = None
-    analyst_mode: bool = False
+    light_graph_mode: bool = False
     record_llm_prompt_view: Callable[[MergeResponse], None] | None = field(
         default=None,
         kw_only=True,

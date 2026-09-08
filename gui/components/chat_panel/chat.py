@@ -697,11 +697,16 @@ def build_agents_chat_panel(
 
     def _update_model_label() -> None:
         profile = _agent_profile_key(agent_dd.value)
-        value = get_role(profile).ollama_model or "—"
+        role_config = get_role(profile)
+
+        overrides = role_config.chat_overrides or {}
+        value = str(overrides.get("model_name") or "—")
+
         model_label.value = value
         model_label_top.value = value
         safe_update(model_label, model_label_top)
         # safe_page_update(page)
+
 
     _update_model_label()
     wrapper_row_ref: list[ft.Row | None] = [None]

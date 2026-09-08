@@ -23,7 +23,26 @@ report:
   output_dir: mydata/reports
 chat:
   enabled: true
-  workflow: coder_workflow.json
+  light_graph_mode: true
+  workflow: agents/roles/coder/coder_workflow.json
+  overrides:
+    rag_search:
+       top_k: 100
+    format_rag:
+       max_chars: 1200
+       snippet_max: 400
+    report:
+      output_dir: mydata/reports
+    llm_agent:
+      provider: ollama
+      model_name: gemma4:31b-cloud
+      host: http://127.0.0.1:11434
+      options:
+        temperature: 0.3
+        num_predict: 1024
+        num_ctx: 128000
+    prompt_llm:
+      template_path: config/prompts/coder.json
   features:
     graph_canvas: true
     create_chat_title: true

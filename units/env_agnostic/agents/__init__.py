@@ -10,4 +10,4 @@ def register_all_agents() -> None:
     register_llm_agent()
 
 
-__all__ = ["register_all_agents", "register_rl_agent", "register_llm_agent"]
+__all__ = ["register_all_agents", "register_llm_agent", "register_rl_agent"]

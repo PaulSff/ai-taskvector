@@ -40,7 +40,6 @@ if context.on_workflow_response is not None:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from agents.chat.agent_workflow import (
     AgentWorkflowResponse,
@@ -81,7 +80,6 @@ from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
 )
 from agents.roles import PLANNER_ROLE_ID, get_role
-from agents.roles.types import RoleConfig
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
@@ -112,14 +110,10 @@ from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
 from ..context import RoleChatTurnContext
 
 _PLANNER_WORKFLOW_PATH = get_role_chat_workflow_path(PLANNER_ROLE_ID).resolve()
-_PLANNER_PROMPT_PATH = (
-    _PLANNER_WORKFLOW_PATH.parents[3] / "config" / "prompts" / "planner.json"
-)
-
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
 
 
-class WorkflowDesignerChatHandler:
+class PlannerChatHandler:
     """Runs one Workflow Designer turn."""
 
     @property
@@ -165,16 +159,9 @@ class WorkflowDesignerChatHandler:
         content = ""
         result: ProgressResult = {}
 
-        role_cfg: RoleConfig = get_role(self.role_id)
-
         overrides: WorkflowInputs = (
             build_agent_workflow_unit_param_overrides(
-                provider=role_cfg.provider,
-                report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
-                model_name=role_cfg.ollama_model,
-                host=role_cfg.ollama_host,
-                llm_options_role_id=self.role_id,
-                rag_top_k_role_id=self.role_id,
+                role_id=PLANNER_ROLE_ID,
             )
         )
 
@@ -444,7 +431,7 @@ class WorkflowDesignerChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 action_context=turn_actions,
                 on_workflow_response=on_workflow_response,
-                analyst_mode=True, # enables light-weight graph summary
+                light_graph_mode=True, # enables light-weight graph summary
             )
 
             return await run_execution_follow_up_chain_async(
@@ -516,7 +503,7 @@ class WorkflowDesignerChatHandler:
                 ),
                 language_hint=wf_lang_cell[0],
                 session_language=turn_ctx.state.session_language,
-                analyst_mode=True, # enables light-weight graph summary
+                light_graph_mode=True, # enables light-weight graph summary
             )
 
             response = await run_workflow_turn(initial_inputs)
@@ -833,7 +820,7 @@ class WorkflowDesignerChatHandler:
             record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             action_context=turn_actions,
             on_workflow_response=on_workflow_response,
-            analyst_mode=True, # enables light-weight graph summary
+            light_graph_mode=True, # enables light-weight graph summary
         )
 
         await run_post_execution_follow_up_chain_async(

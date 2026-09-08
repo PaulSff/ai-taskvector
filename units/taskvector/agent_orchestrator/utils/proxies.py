@@ -56,7 +56,7 @@ class ToolCtxProxy:
         wf_language_hint: list[str],
         overrides: WorkflowInputs,
         follow_up_tool_ids: ToolList | None,
-        analyst_mode: bool,
+        light_graph_mode: bool,
         agent_role_id: str,
         agent_workflow_path: Path | None,
         state: SessionProxy,
@@ -70,7 +70,7 @@ class ToolCtxProxy:
     ) -> None:
         print(
             "[ToolCtxProxy] init "
-            + f"analyst_mode={analyst_mode} "
+            + f"light_graph_mode={light_graph_mode} "
             + f"agent_role_id={agent_role_id!r} "
             + f"agent_label={agent_label!r} "
             + f"turn_id={turn_id!r} "
@@ -90,7 +90,7 @@ class ToolCtxProxy:
         self.wf_language_hint: list[str] = wf_language_hint
         self.overrides: WorkflowInputs = overrides
         self.follow_up_tool_ids: ToolList | None = follow_up_tool_ids
-        self.analyst_mode: bool = analyst_mode
+        self.light_graph_mode: bool = light_graph_mode
         self.agent_role_id: str = agent_role_id
         self.agent_workflow_path: Path | None = agent_workflow_path
         self.state: SessionProxy = state

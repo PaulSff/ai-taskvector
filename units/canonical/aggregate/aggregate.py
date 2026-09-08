@@ -35,10 +35,22 @@ def _merge_step(
     if isinstance(data_in, dict):
         required = _required_keys(params)
         missing = [k for k in required if _is_empty(data_in.get(k))]
-        err = f"Aggregate: required input(s) missing or empty: {', '.join(missing)}" if missing else ""
+        err = (
+            f"Aggregate: required input(s) missing or empty: {', '.join(missing)}"
+            if missing
+            else ""
+        )
         return ({"data": data_in, "error": err}, state)
-    n = int(params.get("num_inputs", DEFAULT_N))
+
+    raw_n = params.get("num_inputs", DEFAULT_N)
+
+    if isinstance(raw_n, (str, int, float, bytes, bytearray)):
+        n = int(raw_n)
+    else:
+        n = DEFAULT_N
+
     n = min(max(n, 1), DEFAULT_N)
+
     keys = params.get("keys")
     if not isinstance(keys, (list, tuple)) or len(keys) < n:
         keys = [f"in_{i}" for i in range(n)]

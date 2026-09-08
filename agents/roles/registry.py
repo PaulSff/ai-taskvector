@@ -125,40 +125,6 @@ def _parse_follow_up_max_rounds(raw: object) -> int | None:
 
 
 
-def _parse_llm_fields(data: Data) -> dict[str, str]:
-    raw_llm = data.get("llm")
-
-    if raw_llm is None:
-        llm: Data = {}
-    elif isinstance(raw_llm, dict):
-        llm = raw_llm
-    else:
-        raise TypeError("role.yaml field 'llm' must be a mapping")
-
-    provider = llm.get("provider", "")
-    ollama_host = llm.get("ollama_host", "")
-    ollama_model = llm.get("ollama_model", "")
-
-    if not isinstance(provider, str):
-        raise TypeError("role.yaml field 'llm.provider' must be a string")
-
-    if not isinstance(ollama_host, str):
-        raise TypeError(
-            "role.yaml field 'llm.ollama_host' must be a string"
-        )
-
-    if not isinstance(ollama_model, str):
-        raise TypeError(
-            "role.yaml field 'llm.ollama_model' must be a string"
-        )
-
-    return {
-        "provider": provider.strip(),
-        "ollama_host": ollama_host.strip(),
-        "ollama_model": ollama_model.strip(),
-    }
-
-
 def _build_config(role_id: str, data: Data) -> RoleConfig:
     yaml_role_id = str(data.get("id") or role_id).strip()
 
@@ -190,25 +156,7 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
     )
 
     tools = _coerce_tools(data.get("tools"))
-    llm_fields = _parse_llm_fields(data)
 
-    # Parse the complete role.yaml mapping. This parses:
-    #
-    #   chat.enabled
-    #   chat.workflow
-    #   chat.overrides
-    #   chat.features
-    #   chat.chat_handler
-    #   chat.analyst_mode
-    #
-    # into the flattened RoleConfig fields:
-    #
-    #   chat_enabled
-    #   chat_workflow
-    #   chat_overrides
-    #   chat_features
-    #   chat_handler
-    #   analyst_mode
     parsed = parse_role_config(
         {
             **data,
@@ -220,32 +168,10 @@ def _build_config(role_id: str, data: Data) -> RoleConfig:
             "responsibility_description": responsibility_description,
             "follow_up_max_rounds": follow_up_max_rounds,
             "tools": tools,
-            **llm_fields,
         }
     )
 
-    # Construct the final RoleConfig explicitly so that all fields,
-    # including workflow and overrides, are retained.
-    return RoleConfig(
-        id=yaml_role_id,
-        role_name=role_name,
-        name=name,
-        project_name=project_name,
-        introduction_words=introduction_words,
-        responsibility_description=responsibility_description,
-        follow_up_max_rounds=follow_up_max_rounds,
-        tools=tools,
-        provider=llm_fields["provider"],
-        ollama_host=llm_fields["ollama_host"],
-        ollama_model=llm_fields["ollama_model"],
-        chat_enabled=parsed.chat_enabled,
-        chat_workflow=parsed.chat_workflow,
-        chat_overrides=parsed.chat_overrides,
-        chat_features=parsed.chat_features,
-        chat_handler=parsed.chat_handler,
-        analyst_mode=parsed.analyst_mode,
-        extra=parsed.extra,
-    )
+    return parsed
 
 
 
@@ -289,7 +215,7 @@ def is_role_chat_panel_enabled(role: RoleConfig) -> bool:
     if role.chat_workflow is not None:
         return role.chat_enabled
 
-    # ``chat:`` may exist without a workflow. Since the flattened model does
+    # ``chat:`` may exist without a workflow. Since the flattened provider_model does
     # not retain whether the YAML block was present, use the role's enabled
     # value for known roles and allow explicitly configured non-main roles
     # through their ``chat_enabled`` setting.

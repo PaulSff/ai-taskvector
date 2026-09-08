@@ -18,7 +18,7 @@ async def build_initial_inputs(
     follow_up_context: str = "",
     coding_is_allowed: bool = True,
     contribution_is_allowed: bool = False,
-    analyst_mode: bool = False,
+    light_graph_mode: bool = False,
 ) -> WorkflowInputs:
     """Build initial_inputs for run_agent_workflow (workflow JSON injects)."""
     from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
@@ -42,5 +42,5 @@ async def build_initial_inputs(
         previous_turn=previous_turn,
         language_hint=wf_language_hint,
         session_language=session_language,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
     )

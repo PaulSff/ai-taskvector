@@ -281,7 +281,7 @@ async def run_orchestrator_turn(
         else:
             overrides = {}
 
-        if role_config.analyst_mode:
+        if role_config.light_graph_mode:
             overrides["graph_summary"] = {
                 "include_code_block_source": False,
                 "include_structure": False,
@@ -303,7 +303,7 @@ async def run_orchestrator_turn(
     turn_id = new_id()
     follow_up_contexts: list[str] = []
 
-    analyst_mode = role_config.analyst_mode
+    light_graph_mode = role_config.light_graph_mode
 
     # ── Build initial workflow inputs ──
     initial_inputs = await build_initial_inputs(
@@ -316,7 +316,7 @@ async def run_orchestrator_turn(
         wf_language_hint[0],
         coding_is_allowed=coding_is_allowed,
         contribution_is_allowed=contribution_is_allowed,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
     )
 
     # ── Run main workflow ──
@@ -698,7 +698,7 @@ async def run_orchestrator_turn(
 
             elif (
                 result.get("kind") == "apply_failed"
-                and not role_config.analyst_mode
+                and not role_config.light_graph_mode
             ):
                 await _checkpoint("branch:apply_failed")
 

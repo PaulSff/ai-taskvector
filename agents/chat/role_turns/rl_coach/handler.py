@@ -151,7 +151,7 @@ class RlCoachChatHandler:
                 follow_up_source_response=None,
                 agent_role_id=RL_COACH_ROLE_ID,
                 agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
-                analyst_mode=True,
+                light_graph_mode=True,
                 ordered_follow_up_tools=ordered_tools_for_role_id(RL_COACH_ROLE_ID),
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 extend_agent_initial_inputs_async=_extend_rl_inputs,
@@ -177,7 +177,7 @@ class RlCoachChatHandler:
             contribution_is_allowed=turn_ctx.contribution_is_allowed,
             language_hint=wf_lang_cell[0],
             session_language=turn_ctx.state.session_language,
-            analyst_mode=True,
+            light_graph_mode=True,
         )
 
         turn_ctx.prepare_stream_row()

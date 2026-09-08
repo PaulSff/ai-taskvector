@@ -115,7 +115,7 @@ def build_agent_workflow_initial_inputs(
     language_hint: str | None = None,
     session_language: str = "",
     *,
-    analyst_mode: bool = False,
+    light_graph_mode: bool = False,
 ) -> WorkflowInputs:
     user_message = (user_message or "").strip() or "(No message provided.)"
 
@@ -205,7 +205,7 @@ def build_agent_workflow_initial_inputs(
         ),
     )
 
-    if analyst_mode:
+    if light_graph_mode:
         for field_name in (
             "inject_recent_changes_block",
             "inject_last_edit_block",

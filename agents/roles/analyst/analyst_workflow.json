@@ -566,9 +566,9 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "model_name": "role.analyst.llm.ollama_model",
+        "model_name": "role.analyst.llm.provider_model",
         "provider": "role.analyst.llm.provider",
-        "host": "role.analyst.llm.ollama_host",
+        "host": "role.analyst.llm.provider_host",
         "options": "role.analyst.llm.generation_options"
       },
       "input_ports": [

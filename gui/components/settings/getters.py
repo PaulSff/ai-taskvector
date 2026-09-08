@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
+
+from agents.roles.registry import get_role
+from core.schemas.primitives import Data
 
 from .constants import (
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
@@ -114,7 +116,7 @@ from .constants import (
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
-from .role_yaml import _role_llm_float, _role_llm_int, _role_llm_str
+from .role_yaml import _role_llm_float, _role_llm_int
 
 
 def _default_ollama_host() -> str:
@@ -502,86 +504,79 @@ def list_llm_providers() -> list[str]:
     return sorted(set(out))
 
 
-def get_llm_provider(*, agent: str) -> str:
+def get_llm_provider(
+    *,
+    agent: str,
+) -> str:
     """
-    Return selected LLM provider adapter name (e.g. 'ollama') for a given agent profile.
-    agent: role id under ``agents/roles/<id>/`` (e.g. workflow_designer, rl_coach, analyst).
+    Return the selected LLM provider adapter name for an agent profile.
+
+    The provider is discovered from the workflow-unit overrides. If no
+    provider is configured, ``DEFAULT_LLM_PROVIDER`` is returned.
     """
-    a = (agent or "").strip().lower() or "workflow_designer"
-    return (
-        _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER)
-        or DEFAULT_LLM_PROVIDER
-    )
+    config = get_llm_provider_config(agent=agent)
+
+    provider = config.get("provider")
+
+    if isinstance(provider, str) and provider.strip():
+        return provider.strip().lower()
+
+    return DEFAULT_LLM_PROVIDER
 
 
-def get_llm_provider_config(*, agent: str) -> dict[str, object]:
+def get_llm_provider_config(
+    *,
+    agent: str,
+) -> Data:
     """
-    Return provider config dict passed into `llm_integrations.client.chat`.
-    If config JSON is empty and provider=='ollama', derive from agent-specific ollama_host/ollama_model.
+    Return LLM configuration discovered from the role's workflow-unit
+    parameter overrides.
+
+    The function discovers:
+
+    - ``model_name``
+    - ``host``
+    - ``api_key``
+
+    If no API key is found in the workflow-unit overrides, the general
+    ``ollama_api_key`` setting is used as a fallback.
     """
+    role = get_role(agent.strip())
     data = load_settings()
-    a = (agent or "").strip().lower() or "workflow_designer"
-    wd_host = _role_llm_str("workflow_designer", "ollama_host", default="")
-    wd_model = _role_llm_str("workflow_designer", "ollama_model", default="")
-    prov = (
-        _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER)
-        or DEFAULT_LLM_PROVIDER
-    )
-    raw = _role_llm_str(a, "provider_config_json", default="")
-    if a == "workflow_designer":
-        legacy_h = data.get(KEY_OLLAMA_HOST)
-        legacy_m = data.get(KEY_OLLAMA_MODEL)
-        ollama_host = (
-            wd_host
-            or (str(legacy_h).strip() if legacy_h is not None else "")
-            or _default_ollama_host()
-        )
-        ollama_model = (
-            wd_model
-            or (str(legacy_m).strip() if legacy_m is not None else "")
-            or _default_ollama_model()
-        )
-    else:
-        ollama_host = (
-            _role_llm_str(a, "ollama_host", default="")
-            or wd_host
-            or _default_ollama_host()
-        )
-        ollama_model = (
-            _role_llm_str(a, "ollama_model", default="")
-            or wd_model
-            or _default_ollama_model()
-        )
 
-    if raw:
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                out = dict(parsed)
-                # Merge api_key for Ollama Cloud: env > settings > JSON
-                if prov == "ollama":
-                    api_key = (
-                        (os.environ.get("OLLAMA_API_KEY") or "").strip()
-                        or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
-                        or (out.get("api_key") or "").strip()
-                    )
-                    if api_key:
-                        out["api_key"] = api_key
-                return out
-        except json.JSONDecodeError:
-            pass
-    if prov == "ollama":
-        out = {
-            "host": ollama_host or _default_ollama_host(),
-            "model": ollama_model or _default_ollama_model(),
-        }
-        api_key = (os.environ.get("OLLAMA_API_KEY") or "").strip() or (
-            data.get(KEY_OLLAMA_API_KEY) or ""
-        ).strip()
-        if api_key:
-            out["api_key"] = api_key
-        return out
-    return {}
+    overrides = role.chat_overrides or {}
+
+    result: Data = {}
+
+    for unit_params in overrides.values():
+        if not isinstance(unit_params, dict):
+            continue
+
+        if "model" not in result:
+            model_name = unit_params.get("model_name")
+
+            if model_name not in (None, ""):
+                result["model"] = model_name
+
+        if "host" not in result:
+            host = unit_params.get("host")
+
+            if host not in (None, ""):
+                result["host"] = host
+
+        if "api_key" not in result:
+            api_key = unit_params.get("api_key")
+
+            if api_key not in (None, ""):
+                result["api_key"] = api_key
+
+    if "api_key" not in result:
+        api_key = data.get(KEY_OLLAMA_API_KEY)
+
+        if api_key not in (None, ""):
+            result["api_key"] = api_key
+
+    return result
 
 
 def get_chat_history_dir() -> Path:

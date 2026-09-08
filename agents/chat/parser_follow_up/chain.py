@@ -420,7 +420,7 @@ async def run_execution_follow_up_chain_async(
                 session_language=(
                     ctx.state.session_language
                 ),
-                analyst_mode=ctx.analyst_mode,
+                light_graph_mode=ctx.light_graph_mode,
             )
         )
 
@@ -466,7 +466,7 @@ async def run_execution_follow_up_chain_async(
                 if key != "implementation_links_for_types"
             }
 
-        if ctx.analyst_mode:
+        if ctx.light_graph_mode:
             graph_summary = dict(
                 ctx.overrides.get("graph_summary") or {}
             )
@@ -677,14 +677,14 @@ async def run_post_execution_follow_up_chain_async(
                 if isinstance(_gd_post, dict):
                     post_graph = ProcessGraph.model_validate(_gd_post)
 
-                    if ctx.analyst_mode:
+                    if ctx.light_graph_mode:
                         gs = dict(ctx.overrides.get("graph_summary") or {})
                         gs.setdefault("include_structure", False)
                         gs.setdefault("include_code_block_source", False)
                         ctx.overrides["graph_summary"] = gs
 
                         await _checkpoint(
-                            f"analyst_mode_graph_summary_set:{post_round}"
+                            f"light_graph_mode_graph_summary_set:{post_round}"
                         )
                     else:
                         ctx.overrides["graph_summary"] = get_summary_params(
@@ -723,7 +723,7 @@ async def run_post_execution_follow_up_chain_async(
                     previous_turn=_previous_turn,
                     language_hint=_hint(),
                     session_language=ctx.state.session_language,
-                    analyst_mode=ctx.analyst_mode,
+                    light_graph_mode=ctx.light_graph_mode,
                 )
 
                 await _checkpoint(f"built_post_inputs:{post_round}")

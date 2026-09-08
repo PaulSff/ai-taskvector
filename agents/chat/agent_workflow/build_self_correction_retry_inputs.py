@@ -16,7 +16,7 @@ def build_self_correction_retry_inputs(
     language_hint: str | None = None,
     session_language: str = "",
     *,
-    analyst_mode: bool = False,
+    light_graph_mode: bool = False,
 ) -> WorkflowInputs:
     # lazy imports to break cycle
     from agents.prompts import WORKFLOW_DESIGNER_RETRY_USER
@@ -55,5 +55,5 @@ def build_self_correction_retry_inputs(
         previous_turn=(previous_turn or "").strip(),
         language_hint=lang,
         session_language=session_language,
-        analyst_mode=analyst_mode,
+        light_graph_mode=light_graph_mode,
     )
