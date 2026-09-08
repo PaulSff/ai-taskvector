@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -111,7 +112,7 @@ class ToolCtxProxy:
         self.follow_up_source_response: Data | None = None
 
         # Unique token; is_current_run always returns True in headless mode
-        self.token: int
+        self.token: int = time.monotonic_ns()
         self.stream_buffer_ref: list[str] = [""]
 
         print(
