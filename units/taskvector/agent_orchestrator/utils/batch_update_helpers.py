@@ -6,6 +6,7 @@ from typing import Protocol, TypedDict
 
 from agents.chat.agent_workflow.wf_response_schema import ProgressResult
 from agents.chat.context.follow_up_context import FollowUpContexts
+from core.normalizer.normalizer import graph_to_json_object
 from core.normalizer.shared import to_json_value
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.process_graph import ProcessGraph
@@ -137,7 +138,7 @@ def make_publish_in_progress(
             llm_system_prompt=llm_system_prompt or "",
             id=None,
             ts=None,
-            graph=to_json_value(get_graph_ref()),
+            graph=graph_to_json_object(get_graph_ref()),
             parsed_edits=to_json_value(result.get("edits", [])),
             apply_meta=to_json_value(apply_meta or {}),
             follow_up_contexts=to_json_value(get_follow_up_contexts()),

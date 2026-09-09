@@ -26,6 +26,7 @@ from agents.chat.parser_follow_up.chain import (
     run_post_execution_follow_up_chain_async,
 )
 from agents.chat.session.state import AgentChatHistory
+from core.normalizer.normalizer import graph_to_json_object
 from core.normalizer.shared import as_workflow_inputs, to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
@@ -797,6 +798,7 @@ async def run_orchestrator_turn(
 
     progress_response: ProgressResponse = {}
     run_output: Data = {}
+    graph_json = graph_to_json_object(graph_ref[0])
 
     if isinstance(response, dict):
         progress_response = {
@@ -852,7 +854,7 @@ async def run_orchestrator_turn(
         },
         "parsed_edits": result.get("edits", []),
         "apply": apply_meta,
-        "graph": graph_ref[0],
+        "graph": graph_json,
         "run_output": run_output,
         "follow_up_contexts": follow_up_contexts,
         "last_apply_result": last_apply_result_ref[0],
