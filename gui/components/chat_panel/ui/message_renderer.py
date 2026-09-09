@@ -696,20 +696,20 @@ def _iter_action_dicts(parsed: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _parsed_is_no_edit_only(parsed: Any) -> bool:
+def _parsed_is_no_action_only(parsed: Any) -> bool:
     if isinstance(parsed, dict):
-        if parsed.get("action") == "no_edit":
+        if parsed.get("action") == "no_action":
             return True
 
         edits = parsed.get("edits")
 
         if isinstance(edits, list) and edits:
             return all(
-                isinstance(e, dict) and e.get("action") == "no_edit" for e in edits
+                isinstance(e, dict) and e.get("action") == "no_action" for e in edits
             )
 
     if isinstance(parsed, list):
-        return all(isinstance(e, dict) and e.get("action") == "no_edit" for e in parsed)
+        return all(isinstance(e, dict) and e.get("action") == "no_action" for e in parsed)
 
     return False
 
@@ -1183,7 +1183,7 @@ def _extract_edit_action(
     if isinstance(parsed, dict):
         action = parsed.get("action")
 
-        if action not in (None, "no_edit"):
+        if action not in (None, "no_action"):
             return action
 
         edits = parsed.get("edits")
@@ -1193,7 +1193,7 @@ def _extract_edit_action(
                 if isinstance(e, dict):
                     a = e.get("action")
 
-                    if a not in (None, "no_edit"):
+                    if a not in (None, "no_action"):
                         return a
 
     if isinstance(parsed, list):
@@ -1201,7 +1201,7 @@ def _extract_edit_action(
             if isinstance(e, dict):
                 a = e.get("action")
 
-                if a not in (None, "no_edit"):
+                if a not in (None, "no_action"):
                     return a
 
     return None
@@ -1263,7 +1263,7 @@ def _render_agent_content(
         if isinstance(parsed, dict):
             if parsed.get("action") not in (
                 None,
-                "no_edit",
+                "no_action",
             ):
                 edit_count = 1
 
@@ -1271,12 +1271,12 @@ def _render_agent_content(
             edit_count = sum(
                 1
                 for e in parsed
-                if isinstance(e, dict) and e.get("action") not in (None, "no_edit")
+                if isinstance(e, dict) and e.get("action") not in (None, "no_action")
             )
 
-        failed = apply_failed and action_type not in (None, "no_edit")
+        failed = apply_failed and action_type not in (None, "no_action")
 
-        if _parsed_is_no_edit_only(parsed):
+        if _parsed_is_no_action_only(parsed):
             controls.append(
                 ft.Text(
                     "No changes were made to the flow.",
