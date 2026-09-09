@@ -9,11 +9,12 @@ from pathlib import Path
 from agents.chat.agent_workflow.collect_workflow_response import collect_workflow_errors
 from core.normalizer.shared import workflow_inputs_to_json_object
 from core.schemas.primitives import (
-    Data,
     FormatProcess,
     JsonObject,
     WorkflowErrors,
     WorkflowInputs,
+    WorkflowOutputs,
+    is_json_object,
 )
 from gui.components.settings import (
     get_tools_workflows_job_pub_endpoint,
@@ -62,20 +63,23 @@ async def run_workflow_with_errors(
     unit_param_overrides: WorkflowInputs | None = None,
     format: FormatProcess | None = "dict",
     execution_timeout_s: float | None = None,
-) -> tuple[Data, WorkflowErrors]:
+) -> tuple[WorkflowOutputs, WorkflowErrors]:
     """
     Pure async version: publishes the job over the workflow server and
-    waits for subscribed response.
+    waits for the subscribed response.
 
-    Returns (outputs, errors) where errors are collected from outputs.
-    execution_timeout_s: if set, abort after this many seconds (raises WorkflowTimeoutError).
+    Returns (outputs, errors), where errors are collected from outputs.
+
+    execution_timeout_s:
+        If set, abort after this many seconds by raising
+        WorkflowTimeoutError.
     """
 
     initial_inputs = initial_inputs or {}
     wp = Path(path).resolve()
 
-    # Slot allocation wraps the whole publish+wait lifecycle
     slot = await _slot_allocator.acquire()
+
     sub: ZmqSubscriber | None = None
     job_pub: ZmqPublisher | None = None
 
@@ -89,7 +93,11 @@ async def run_workflow_with_errors(
         sub = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
                 sub_endpoint=RESPONSE_SUB_ENDPOINTS[slot],
-                topics=(topics.token, topics.result, topics.error),
+                topics=(
+                    topics.token,
+                    topics.result,
+                    topics.error,
+                ),
                 accept_topics=None,
                 rcvtimeo_ms=200,
             )
@@ -97,73 +105,114 @@ async def run_workflow_with_errors(
 
         has_workflow_error = False
         workflow_error = ""
-        final_outputs: JsonObject | None = None
+        final_outputs: WorkflowOutputs | None = None
 
-        async def _on_error(_topic: str, payload: JsonObject) -> None:
+        async def _on_error(
+            _topic: str,
+            payload: JsonObject,
+        ) -> None:
             nonlocal has_workflow_error, workflow_error
+
             if payload.get("run_id") != run_id:
                 return
+
             err = payload.get("error")
-            workflow_error = err if isinstance(err, str) else str(err)
+            workflow_error = (
+                err if isinstance(err, str) else str(err)
+            )
             has_workflow_error = True
 
-        async def _on_result(_topic: str, payload: JsonObject) -> None:
+        async def _on_result(
+            _topic: str,
+            payload: JsonObject,
+        ) -> None:
             nonlocal final_outputs
+
             if payload.get("run_id") != run_id:
                 return
-            outs = payload.get("outputs")
-            final_outputs = outs if isinstance(outs, dict) else {}
 
-        async def _on_token(_topic: str, payload: JsonObject) -> None:
-            # Token stream not needed here; handler kept to consume it if server publishes.
+            outputs = payload.get("outputs")
+
+            if is_json_object(outputs):
+                final_outputs = outputs
+            else:
+                final_outputs = {}
+
+        async def _on_token(
+            _topic: str,
+            payload: JsonObject,
+        ) -> None:
+            # Token streaming is not needed here.
             return
 
         sub.on(topics.token, _on_token)
         sub.on(topics.result, _on_result)
         sub.on(topics.error, _on_error)
 
-        job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINTS[slot], topics=ZmqTopics())
+        job_pub = ZmqPublisher(
+            pub_endpoint=JOB_PUB_ENDPOINTS[slot],
+            topics=ZmqTopics(),
+        )
 
-        await asyncio.wait_for(sub.start(), timeout=DEFAULT_EXECUTION_TIMEOUT_S)
+        await asyncio.wait_for(
+            sub.start(),
+            timeout=DEFAULT_EXECUTION_TIMEOUT_S,
+        )
 
         job_pub.publish_job(
             run_id=run_id,
             workflow_path=str(wp),
-            initial_inputs = workflow_inputs_to_json_object(initial_inputs),
-            unit_param_overrides=workflow_inputs_to_json_object(
-                unit_param_overrides
+            initial_inputs=workflow_inputs_to_json_object(
+                initial_inputs
+            ),
+            unit_param_overrides=(
+                workflow_inputs_to_json_object(
+                    unit_param_overrides
+                )
+                if unit_param_overrides is not None
+                else {}
             ),
             format=format,
             response_endpoint=RESPONSE_ENDPOINTS[slot],
         )
 
         start = time.monotonic()
+
         try:
-            while final_outputs is None and not has_workflow_error:
+            while (
+                final_outputs is None
+                and not has_workflow_error
+            ):
                 if (
                     execution_timeout_s is not None
-                    and (time.monotonic() - start) > execution_timeout_s
+                    and time.monotonic() - start
+                    > execution_timeout_s
                 ):
-                    raise WorkflowTimeoutError(execution_timeout_s)
+                    raise WorkflowTimeoutError(
+                        execution_timeout_s
+                    )
+
                 await asyncio.sleep(0.01)
+
         finally:
             await sub.stop()
 
         if has_workflow_error:
             raise RuntimeError(workflow_error)
 
-        outputs: Data = (
+        outputs: WorkflowOutputs = (
             final_outputs if final_outputs is not None else {}
         )
 
         return outputs, collect_workflow_errors(outputs)
 
     finally:
-        # Ensure the slot is always returned even on timeout or publish/start errors
         if sub is not None:
             try:
                 await sub.stop()
             except (TypeError, AttributeError):
-                logger.exception("Failed to stop subscriber")
+                logger.exception(
+                    "Failed to stop subscriber"
+                )
 
         await _slot_allocator.release()
