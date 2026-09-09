@@ -3,7 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.tools.registry import register_action_block
+from agents.tools.read_code_block import run_read_code_block_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -32,9 +33,17 @@ def handle_read_code(
     )
 
 
-def register_read_code_action_blocks() -> None:
-    register_action_block(
+def register_read_code_tool() -> None:
+    register_tool(
         "read_code_block",
-        ReadCodeActionBlock,
-        handler=handle_read_code,
+        run_read_code_block_follow_up,
+        action_blocks={
+            "read_code_block": ReadCodeActionBlock,
+        },
+        action_handlers={
+            "read_code_block": handle_read_code,
+        },
     )
+
+
+register_read_code_tool()

@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.delete import run_delete_file_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -62,11 +63,16 @@ def handle_delete(
     )
 
 
-def register_delete_action_blocks() -> None:
-    register_action_block(
+def register_delete_tool() -> None:
+    register_tool(
         "delete",
-        DeleteActionBlock,
-        handler=handle_delete,
+        run_delete_file_follow_up,
+        action_blocks={
+            "delete": DeleteActionBlock,
+        },
+        action_handlers={
+            "delete": handle_delete,
+        },
     )
 
 
@@ -77,3 +83,6 @@ def get_delete_outputs(
         DeleteParserOutput.model_validate(raw_action)
         for raw_action in actions.get_tool_actions("delete")
     ]
+
+
+register_delete_tool()

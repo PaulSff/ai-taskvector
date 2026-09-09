@@ -4,7 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.formulas_calc import run_formulas_calc_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -96,9 +97,17 @@ def handle_formulas_calc(
     )
 
 
-def register_formulas_calc_action_blocks() -> None:
-    register_action_block(
+def register_formulas_calc_tool() -> None:
+    register_tool(
         "formulas_calc",
-        FormulasCalcActionBlock,
-        handler=handle_formulas_calc,
+        run_formulas_calc_follow_up,
+        action_blocks={
+            "formulas_calc": FormulasCalcActionBlock,
+        },
+        action_handlers={
+            "formulas_calc": handle_formulas_calc,
+        },
     )
+
+
+register_formulas_calc_tool()

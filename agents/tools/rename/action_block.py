@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.registry import register_action_block, register_tool
+from agents.tools.rename import run_rename_follow_up
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -44,9 +45,17 @@ def handle_rename(
     )
 
 
-def register_rename_action_blocks() -> None:
-    register_action_block(
+def register_rename_tool() -> None:
+    register_tool(
         "rename",
-        RenameActionBlock,
-        handler=handle_rename,
+        run_rename_follow_up,
+        action_blocks={
+            "rename": RenameActionBlock,
+        },
+        action_handlers={
+            "rename": handle_rename,
+        },
     )
+
+
+register_rename_tool()

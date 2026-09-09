@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from agents.tools.registry import register_action_block
+from agents.tools.github import run_github_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 GithubAction = Literal[
@@ -54,9 +55,17 @@ def handle_github(
     )
 
 
-def register_github_action_blocks() -> None:
-    register_action_block(
+def register_github_tool() -> None:
+    register_tool(
         "github",
-        GithubActionBlock,
-        handler=handle_github,
+        run_github_follow_up,
+        action_blocks={
+            "github": GithubActionBlock,
+        },
+        action_handlers={
+            "github": handle_github,
+        },
     )
+
+
+register_github_tool()

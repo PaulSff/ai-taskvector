@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.registry import register_action_block, register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 WorkflowOrigin = Literal[
@@ -57,9 +57,20 @@ def handle_import_workflow(
     )
 
 
-def register_import_workflow_action_blocks() -> None:
-    register_action_block(
+"""
+def register_import_workflow_tool() -> None:
+    register_tool(
         "import_workflow",
-        ImportWorkflowActionBlock,
-        handler=handle_import_workflow,
+        run_import_workflow_follow_up,
+        action_blocks={
+            "import_workflow": ImportWorkflowActionBlock,
+        },
+        action_handlers={
+            "import_workflow": handle_import_workflow,
+        },
     )
+
+
+register_import_workflow_tool()
+
+"""

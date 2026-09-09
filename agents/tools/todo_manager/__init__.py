@@ -11,8 +11,8 @@ from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserO
 
 
 async def run_todo_manager_follow_up(
-    _ctx: ExecutionFollowUpContext,
-    _po: ParserOutput,
+    ctx: ExecutionFollowUpContext,
+    po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:

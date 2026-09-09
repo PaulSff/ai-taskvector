@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.edit_file import run_edit_file_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -137,12 +138,18 @@ def handle_edit_file(
     )
 
 
-def register_edit_file_action_blocks() -> None:
-    register_action_block(
+def register_edit_file_tool() -> None:
+    register_tool(
         "edit_file",
-        EditFileActionBlock,
-        handler=handle_edit_file,
+        run_edit_file_follow_up,
+        action_blocks={
+            "edit_file": EditFileActionBlock,
+        },
+        action_handlers={
+            "edit_file": handle_edit_file,
+        },
     )
+
 
 
 def get_edit_file_outputs(
@@ -152,3 +159,5 @@ def get_edit_file_outputs(
         EditFileParserOutput.model_validate(raw_action)
         for raw_action in actions.get_tool_actions("edit_file")
     ]
+
+register_edit_file_tool()

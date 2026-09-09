@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from agents.tools.registry import register_action_block
+from agents.tools.read_current_workflow import run_read_current_workflow_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -30,9 +31,17 @@ def handle_read_current_workflow(
     )
 
 
-def register_read_current_workflow_action_blocks() -> None:
-    register_action_block(
+def register_read_current_workflow_tool() -> None:
+    register_tool(
         "read_current_workflow",
-        ReadCurrentWorkflowActionBlock,
-        handler=handle_read_current_workflow,
+        run_read_current_workflow_follow_up,
+        action_blocks={
+            "read_current_workflow": ReadCurrentWorkflowActionBlock,
+        },
+        action_handlers={
+            "read_current_workflow": handle_read_current_workflow,
+        },
     )
+
+
+register_read_current_workflow_tool()

@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.get_chats import run_get_chats_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -42,9 +43,17 @@ def handle_get_unread(
     )
 
 
-def register_get_unread_action_blocks() -> None:
-    register_action_block(
+def register_get_unread_tool() -> None:
+    register_tool(
         "get_unread",
-        GetUnreadActionBlock,
-        handler=handle_get_unread,
+        run_get_chats_follow_up,
+        action_blocks={
+            "get_unread": GetUnreadActionBlock,
+        },
+        action_handlers={
+            "get_unread": handle_get_unread,
+        },
     )
+
+
+register_get_unread_tool()

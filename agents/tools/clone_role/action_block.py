@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.tools.registry import register_action_block
+from agents.tools.clone_role import run_clone_role_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -51,9 +52,16 @@ def handle_clone_role(
     )
 
 
-def register_clone_role_action_blocks() -> None:
-    register_action_block(
+def register_clone_role_tool() -> None:
+    register_tool(
         "clone_role",
-        CloneRoleActionBlock,
-        handler=handle_clone_role,
+        run_clone_role_follow_up,
+        action_blocks={
+            "clone_role": CloneRoleActionBlock,
+        },
+        action_handlers={
+            "clone_role": handle_clone_role,
+        },
     )
+
+register_clone_role_tool()

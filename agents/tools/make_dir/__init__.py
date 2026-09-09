@@ -14,8 +14,7 @@ from agents.tools.make_dir.follow_ups import (
     MAKE_DIR_FOLLOW_UP_PREFIX,
     MAKE_DIR_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution, LanguageHintGetter
-from units.coding.edit_file.test_edit_file_unit import ParserOutput
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 EXECUTION_TIMEOUT_S: float = 30
 

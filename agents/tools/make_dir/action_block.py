@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.make_dir import run_make_dir_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -42,9 +43,17 @@ def handle_make_dir(
     )
 
 
-def register_make_dir_action_blocks() -> None:
-    register_action_block(
+def register_make_dir_tool() -> None:
+    register_tool(
         "make_dir",
-        MakeDirActionBlock,
-        handler=handle_make_dir,
+        run_make_dir_follow_up,
+        action_blocks={
+            "make_dir": MakeDirActionBlock,
+        },
+        action_handlers={
+            "make_dir": handle_make_dir,
+        },
     )
+
+
+register_make_dir_tool()

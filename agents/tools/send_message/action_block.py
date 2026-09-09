@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.registry import register_tool
+from agents.tools.send_message import run_send_message_follow_up
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -44,9 +45,17 @@ def handle_send_message(
     )
 
 
-def register_send_message_action_blocks() -> None:
-    register_action_block(
+def register_send_message_tool() -> None:
+    register_tool(
         "send_message",
-        SendMessageActionBlock,
-        handler=handle_send_message,
+        run_send_message_follow_up,
+        action_blocks={
+            "send_message": SendMessageActionBlock,
+        },
+        action_handlers={
+            "send_message": handle_send_message,
+        },
     )
+
+
+register_send_message_tool()

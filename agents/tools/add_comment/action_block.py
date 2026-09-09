@@ -2,7 +2,8 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.add_comment import run_add_comment_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 from core.schemas.graph_edit_api import GraphEdit, GraphEditAction
 
@@ -82,10 +83,19 @@ def handle_comment_action(
     actions.edits.append(block.to_graph_edit())
 
 
-def register_comment_action_blocks() -> None:
-    for action_block_type in _COMMENT_ACTION_BLOCK_TYPES:
-        register_action_block(
-            action_block_type.expected_action,
-            action_block_type,
-            handler=handle_comment_action,
-        )
+def register_comment_tool() -> None:
+    register_tool(
+        "comment",
+        run_add_comment_follow_up,
+        action_blocks={
+            action_block_type.expected_action: action_block_type
+            for action_block_type in _COMMENT_ACTION_BLOCK_TYPES
+        },
+        action_handlers={
+            action_block_type.expected_action: handle_comment_action
+            for action_block_type in _COMMENT_ACTION_BLOCK_TYPES
+        },
+    )
+
+
+register_comment_tool()

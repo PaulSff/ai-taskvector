@@ -5,7 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.registry import register_tool
+from agents.tools.report import run_report_follow_up
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -106,9 +107,17 @@ def handle_report(
     )
 
 
-def register_report_action_blocks() -> None:
-    register_action_block(
+def register_report_tool() -> None:
+    register_tool(
         "report",
-        ReportActionBlock,
-        handler=handle_report,
+        run_report_follow_up,
+        action_blocks={
+            "report": ReportActionBlock,
+        },
+        action_handlers={
+            "report": handle_report,
+        },
     )
+
+
+register_report_tool()

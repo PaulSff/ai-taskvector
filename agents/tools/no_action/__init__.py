@@ -7,9 +7,9 @@ from agents.tools.no_action.prompt import NO_ACTION_FOLLOW_UP_PREFIX
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 
-async def run_todo_manager_follow_up(
-    _ctx: ExecutionFollowUpContext,
-    _po: ParserOutput,
+async def run_no_action_follow_up(
+    ctx: ExecutionFollowUpContext,
+    po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:

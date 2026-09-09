@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.tools.registry import register_action_block
+from agents.tools.calendar import run_calendar_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -89,9 +90,17 @@ def handle_calendar(
     )
 
 
-def register_calendar_action_blocks() -> None:
-    register_action_block(
+def register_calendar_tool() -> None:
+    register_tool(
         "calendar",
-        _CALENDAR_ACTION_BLOCK_TYPES,
-        handler=handle_calendar,
+        run_calendar_follow_up,
+        action_blocks={
+            "calendar": _CALENDAR_ACTION_BLOCK_TYPES,
+        },
+        action_handlers={
+            "calendar": handle_calendar,
+        },
     )
+
+
+register_calendar_tool()

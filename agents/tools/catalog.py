@@ -94,6 +94,11 @@ def tool_id_for_parser_keys(parser_key: str) -> str | None:
     return None
 
 
+def all_tool_ids() -> tuple[str, ...]:
+    """Return all discovered tool IDs in deterministic order."""
+    return tuple(sorted(_TOOL_ID_TO_YAML_PATH))
+
+
 # ---- Role-specific ordered tuples ----
 
 @functools.cache

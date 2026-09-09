@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.no_action import run_no_action_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -42,9 +43,17 @@ def handle_no_action(
     )
 
 
-def register_no_action_action_blocks() -> None:
-    register_action_block(
+def register_no_action_tool() -> None:
+    register_tool(
         "no_action",
-        NoActionBlock,
-        handler=handle_no_action,
+        run_no_action_follow_up,
+        action_blocks={
+            "no_action": NoActionBlock,
+        },
+        action_handlers={
+            "no_action": handle_no_action,
+        },
     )
+
+
+register_no_action_tool()

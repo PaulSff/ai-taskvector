@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.new_file import run_new_file_follow_up
+from agents.tools.registry import register_action_block, register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -72,9 +73,17 @@ def handle_new_file(
     )
 
 
-def register_new_file_action_blocks() -> None:
-    register_action_block(
+def register_new_file_tool() -> None:
+    register_tool(
         "new_file",
-        NewFileActionBlock,
-        handler=handle_new_file,
+        run_new_file_follow_up,
+        action_blocks={
+            "new_file": NewFileActionBlock,
+        },
+        action_handlers={
+            "new_file": handle_new_file,
+        },
     )
+
+
+register_new_file_tool()

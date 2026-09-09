@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.delegate_request import run_delegate_request_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -63,12 +64,16 @@ def handle_delegate_request(
         block.as_json_object(),
     )
 
-
-def register_delegate_request_action_blocks() -> None:
-    register_action_block(
+def register_delegate_request_tool() -> None:
+    register_tool(
         "delegate_request",
-        DelegateRequestActionBlock,
-        handler=handle_delegate_request,
+        run_delegate_request_follow_up,
+        action_blocks={
+            "delegate_request": DelegateRequestActionBlock,
+        },
+        action_handlers={
+            "delegate_request": handle_delegate_request,
+        },
     )
 
 
@@ -79,3 +84,6 @@ def get_delegate_request_outputs(
         DelegateRequestParserOutput.model_validate(raw_action)
         for raw_action in actions.get_tool_actions("delegate_request")
     ]
+
+
+register_delegate_request_tool()

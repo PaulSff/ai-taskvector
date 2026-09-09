@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.read_file import run_read_file_follow_up
+from agents.tools.registry import register_action_block, register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -42,9 +43,17 @@ def handle_read_file(
     )
 
 
-def register_read_file_action_blocks() -> None:
-    register_action_block(
+def register_read_file_tool() -> None:
+    register_tool(
         "read_file",
-        ReadFileActionBlock,
-        handler=handle_read_file,
+        run_read_file_follow_up,
+        action_blocks={
+            "read_file": ReadFileActionBlock,
+        },
+        action_handlers={
+            "read_file": handle_read_file,
+        },
     )
+
+
+register_read_file_tool()

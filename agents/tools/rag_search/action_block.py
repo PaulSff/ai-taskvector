@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.rag_search import run_rag_search_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -56,9 +57,17 @@ def handle_search(
     )
 
 
-def register_search_action_blocks() -> None:
-    register_action_block(
+def register_search_tool() -> None:
+    register_tool(
         "search",
-        SearchActionBlock,
-        handler=handle_search,
+        run_rag_search_follow_up,
+        action_blocks={
+            "search": SearchActionBlock,
+        },
+        action_handlers={
+            "search": handle_search,
+        },
     )
+
+
+register_search_tool()

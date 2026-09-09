@@ -17,7 +17,7 @@ from agents.tools.types import (
 
 async def run_report_follow_up(
     ctx: ExecutionFollowUpContext,
-    _po: ParserOutput,
+    po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:

@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.grep import run_grep_follow_up
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
@@ -43,9 +44,17 @@ def handle_grep(
     )
 
 
-def register_grep_action_blocks() -> None:
-    register_action_block(
+def register_grep_tool() -> None:
+    register_tool(
         "grep",
-        GrepActionBlock,
-        handler=handle_grep,
+        run_grep_follow_up,
+        action_blocks={
+            "grep": GrepActionBlock,
+        },
+        action_handlers={
+            "grep": handle_grep,
+        },
     )
+
+
+register_grep_tool()

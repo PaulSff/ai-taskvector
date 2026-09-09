@@ -234,6 +234,11 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "RENAME_FILE_FOLLOW_UP_SUFFIX",
     ),
     (
+        "no_action_follow_up_prefix",
+        "agents.tools.no_action.follow_ups",
+        "NO_ACTION_FOLLOW_UP_PREFIX",
+    ),
+    (
         "tool_empty_result_line",
         "agents.tools.follow_up_common",
         "TOOL_EMPTY_RESULT_LINE",

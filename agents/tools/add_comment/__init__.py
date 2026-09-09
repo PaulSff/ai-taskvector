@@ -10,8 +10,8 @@ from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserO
 
 
 async def run_add_comment_follow_up(
-    _ctx: ExecutionFollowUpContext,
-    _po: ParserOutput,
+    ctx: ExecutionFollowUpContext,
+    po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:

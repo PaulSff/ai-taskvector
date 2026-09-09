@@ -4,7 +4,8 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from agents.tools.registry import register_action_block
+from agents.tools.registry import register_tool
+from agents.tools.todo_manager import run_todo_manager_follow_up
 from agents.tools.types import ActionBlock, ParsedActions
 from core.schemas.graph_edit_api import GraphEdit, GraphEditAction
 
@@ -212,10 +213,23 @@ def handle_todo_action(
     actions.edits.append(block.to_graph_edit())
 
 
-def register_todo_action_blocks() -> None:
-    for action_block_type in _TODO_ACTION_BLOCK_TYPES:
-        register_action_block(
-            action_block_type.expected_action,
-            action_block_type,
-            handler=handle_todo_action,
-        )
+def register_todo_tool() -> None:
+    action_blocks = {
+        action_block_type.expected_action: action_block_type
+        for action_block_type in _TODO_ACTION_BLOCK_TYPES
+    }
+
+    action_handlers = {
+        action_block_type.expected_action: handle_todo_action
+        for action_block_type in _TODO_ACTION_BLOCK_TYPES
+    }
+
+    register_tool(
+        "todo",
+        run_todo_manager_follow_up,
+        action_blocks=action_blocks,
+        action_handlers=action_handlers,
+    )
+
+
+register_todo_tool()
