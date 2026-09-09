@@ -13,11 +13,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from agents.tools.types import ParsedActions
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 DELEGATE_REQUEST_INPUT_PORTS = [
     ("action", "Any"),
-    ("parser_output", "Any"),
+    ("parser_output", "ParsedActions"),
 ]
 DELEGATE_REQUEST_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
@@ -98,21 +100,31 @@ def delegate_handoff_data_from_payload(payload: dict[str, Any]) -> dict[str, Any
 
 
 def _delegate_request_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     payload: dict[str, Any] | None = None
+
     parser_output = inputs.get("parser_output") if inputs else None
-    if isinstance(parser_output, dict):
-        dr = parser_output.get("delegate_request")
-        if isinstance(dr, dict):
-            payload = dr
+
+    if isinstance(parser_output, ParsedActions):
+        delegate_requests = parser_output.get_tool_actions(
+            "delegate_request"
+        )
+
+        for candidate in delegate_requests:
+            if isinstance(candidate, dict):
+                payload = candidate
+                break
+
     if payload is None:
         act = inputs.get("action") if inputs else None
+
         if isinstance(act, dict) and act.get("action") == "delegate_request":
             payload = act
+
     if not payload:
         return (
             {
@@ -129,6 +141,7 @@ def _delegate_request_step(
 
     data = delegate_handoff_data_from_payload(payload)
     return ({"data": data, "error": ""}, state)
+
 
 
 def register_delegate_request() -> None:

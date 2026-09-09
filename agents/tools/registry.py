@@ -15,6 +15,7 @@ Tool modules register themselves with register_tool():
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
@@ -49,6 +50,7 @@ class FollowUpRunner(Protocol):
     ) -> Awaitable[FollowUpContribution]:
         ...
 
+_TOOLS_ROOT_PACKAGE = "agents.tools"
 
 # Stable tool ID -> follow-up runner.
 TOOL_RUNNERS: dict[str, FollowUpRunner] = {}
@@ -136,20 +138,10 @@ def register_tool(
     impl: FollowUpRunner,
     *,
     action_blocks: Mapping[str, ActionBlockTypes] | None = None,
+    action_handlers: Mapping[str, ActionBlockHandler] | None = None,
 ) -> None:
     """
-    Register a tool runner and all parser action blocks owned by that tool.
-
-    A tool may expose multiple parser actions:
-
-        register_tool(
-            "todo_manager",
-            run_todo_manager_follow_up,
-            action_blocks={
-                "add_task": AddTaskActionBlock,
-                "add_todo_list": AddTodoListActionBlock,
-            },
-        )
+    Register a tool runner, its parser action blocks, and their handlers.
     """
     tool_id = tool_id.strip()
 
@@ -158,10 +150,39 @@ def register_tool(
 
     TOOL_RUNNERS[tool_id] = impl
 
-    for action, action_block_types in (action_blocks or {}).items():
-        register_action_block(action, action_block_types)
+    blocks = action_blocks or {}
+    handlers = action_handlers or {}
+
+    unknown_handlers = set(handlers) - set(blocks)
+    if unknown_handlers:
+        raise ValueError(
+            "Handlers were provided without corresponding action blocks: "
+            f"{sorted(unknown_handlers)!r}"
+        )
+
+    for action, action_block_types in blocks.items():
+        register_action_block(
+            action,
+            action_block_types,
+            handler=handlers.get(action),
+        )
 
     _clear_parser_cache()
+
+
+def ensure_all_tools_registration() -> int:
+    from agents.tools.catalog import all_tool_ids
+
+    tool_ids = all_tool_ids()
+
+    for tool_id in tool_ids:
+        module_name = (
+            f"{_TOOLS_ROOT_PACKAGE}.{tool_id}.action_blocks"
+        )
+        importlib.import_module(module_name)
+
+    print(f"Registered {len(tool_ids)} tools")
+    return len(tool_ids)
 
 
 def parse_action_block(raw_action: dict) -> BaseModel:

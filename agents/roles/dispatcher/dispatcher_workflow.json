@@ -116,8 +116,8 @@
       ],
       "output_ports": [
         {
-          "name": "edits",
-          "type": "Any"
+          "name": "actions",
+          "type": "ParsedActions"
         },
         {
           "name": "error",
@@ -138,7 +138,7 @@
         },
         {
           "name": "parser_output",
-          "type": "Any"
+          "type": "ParsedActions"
         }
       ],
       "output_ports": [

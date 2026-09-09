@@ -21,6 +21,7 @@ Filtering	Parsed Obj	Remove noise	Ensures only "Actions" are executed
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 from agents.tools.registry import (
@@ -33,8 +34,12 @@ from core.schemas.primitives import (
     JsonValue,
     is_json_object,
 )
+from services.logging import setup_colored_logging
 
 from .parser import parse_json_blocks
+
+logger = setup_colored_logging(logging.DEBUG)
+# logger = logging.getLogger(__name__)
 
 
 def parse_action_blocks(content: str) -> ParserOutput:
@@ -79,34 +84,57 @@ def _iter_action_value(
 def _parsed_blocks_to_action_blocks(
     parsed_blocks: list[JsonValue],
 ) -> ParserOutput:
-    """
-    Convert parsed JSON blocks into normalized ParsedActions.
-
-    Tool-specific normalization is performed by each registered action-block
-    handler. This parser only dispatches validated blocks.
-    """
     actions = ParsedActions()
 
     for raw in _iter_action_objects(parsed_blocks):
-        try:
-            block = parse_action_block(raw)
-        except (TypeError, ValueError):
-            continue
-
         action = raw.get("action")
 
+        logger.debug("Discovered action block: action=%r raw=%r", action, raw)
+
+        try:
+            block = parse_action_block(raw)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Rejected action block: action=%r error=%s raw=%r",
+                action,
+                exc,
+                raw,
+            )
+            continue
+
         if not isinstance(action, str):
+            logger.warning("Skipping action with non-string name: raw=%r", raw)
             continue
 
         registration = get_action_registration(action)
 
-        if registration is None or registration.handle is None:
+        if registration is None:
+            logger.warning(
+                "No registration found for action=%r raw=%r",
+                action,
+                raw,
+            )
             continue
+
+        if registration.handle is None:
+            logger.warning(
+                "Action has no handler: action=%r raw=%r",
+                action,
+                raw,
+            )
+            continue
+
+        logger.info("Dispatching a tool call: action=%r raw=%r", action, raw)
 
         registration.handle(actions, block)
 
-    return ParserOutput(actions=actions)
+        logger.debug(
+            "Action handled successfully: action=%r parsed=%r",
+            action,
+            block,
+        )
 
+    return ParserOutput(actions=actions)
 
 
 def parse_workflow_edits(content: str) -> ParserOutput:
