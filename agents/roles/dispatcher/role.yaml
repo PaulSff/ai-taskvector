@@ -44,6 +44,8 @@ chat:
   features:
     graph_canvas: true
     create_chat_title: true
+tools:
+  - delegate_request
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2222
   response_sub_endpoint: tcp://127.0.0.1:2223
