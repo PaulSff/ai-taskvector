@@ -12,8 +12,6 @@ output format is a runtime substitution filled by the Prompt unit from the ``mer
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 DISPATCHER_SECTION_ROLE_AND_INTRO_BODY = """You are the dispatcher."""
