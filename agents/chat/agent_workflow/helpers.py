@@ -249,7 +249,6 @@ def get_optional_parser_output(
         data,
     )
 
-    # Locate the parser output either directly or inside aggregate data.
     if key in data:
         value: object = data.get(key)
     else:
@@ -260,17 +259,14 @@ def get_optional_parser_output(
 
         value = aggregate_data.get(key)
 
-    # Unwrap aggregate/unit output.
     value = _unwrap_unit_data(value)
 
     if value is None:
         return None
 
-    # Already normalized.
     if isinstance(value, ParserOutput):
         return value
 
-    # Support JSON-serialized parser output.
     if isinstance(value, str):
         raw_value = value.strip()
 
@@ -298,43 +294,77 @@ def get_optional_parser_output(
 
     actions_value = value.get("actions", {})
 
-    if not is_string_keyed_dict(actions_value):
-        raise TypeError(
-            f"{key!r}.actions must be a string-keyed dictionary"
-        )
-
-    raw_edits_value = actions_value.get("edits")
-
-    if raw_edits_value is None:
-        raw_edits: list[object] = []
-    elif is_object_list(raw_edits_value):
-        raw_edits = raw_edits_value
+    if isinstance(actions_value, ParsedActions):
+        parsed_actions = actions_value
     else:
-        raise TypeError(
-            f"{key!r}.actions.edits must be a list"
-        )
-
-    edits: list[GraphEdit] = []
-
-    for raw_edit in raw_edits:
-        if isinstance(raw_edit, GraphEdit):
-            edits.append(raw_edit)
-        elif is_string_keyed_dict(raw_edit):
-            try:
-                edits.append(GraphEdit.model_validate(raw_edit))
-            except ValidationError as exc:
-                raise TypeError(
-                    f"Invalid {key!r}.actions.edits item: {raw_edit!r}"
-                ) from exc
-        else:
+        if not is_string_keyed_dict(actions_value):
             raise TypeError(
-                f"Each {key!r}.actions.edits item must be a "
-                "GraphEdit or string-keyed dictionary"
+                f"{key!r}.actions must be a string-keyed dictionary"
             )
+
+        # Parse edits.
+        raw_edits_value = actions_value.get("edits", [])
+
+        if not is_object_list(raw_edits_value):
+            raise TypeError(
+                f"{key!r}.actions.edits must be a list"
+            )
+
+        edits: list[GraphEdit] = []
+
+        for raw_edit in raw_edits_value:
+            if isinstance(raw_edit, GraphEdit):
+                edits.append(raw_edit)
+            elif is_string_keyed_dict(raw_edit):
+                try:
+                    edits.append(GraphEdit.model_validate(raw_edit))
+                except ValidationError as exc:
+                    raise TypeError(
+                        f"Invalid {key!r}.actions.edits item: {raw_edit!r}"
+                    ) from exc
+            else:
+                raise TypeError(
+                    f"Each {key!r}.actions.edits item must be a "
+                    "GraphEdit or string-keyed dictionary"
+                )
+
+        # Parse tool actions.
+        raw_tool_actions = actions_value.get("tool_actions", {})
+
+        if raw_tool_actions is None:
+            raw_tool_actions = {}
+
+        if not is_string_keyed_dict(raw_tool_actions):
+            raise TypeError(
+                f"{key!r}.actions.tool_actions must be a "
+                "string-keyed dictionary"
+            )
+
+        tool_actions: dict[str, list[Data]] = {}
+
+        for action_name, raw_values in raw_tool_actions.items():
+            if raw_values is None:
+                tool_actions[action_name] = []
+            elif is_object_list(raw_values):
+                typed_values: list[Data] = [
+                    cast(Data, raw_value)
+                    for raw_value in raw_values
+                ]
+                tool_actions[action_name] = typed_values
+            else:
+                raise TypeError(
+                    f"{key!r}.actions.tool_actions[{action_name!r}] "
+                    "must be a list"
+                )
+
+        parsed_actions = ParsedActions(
+            edits=edits,
+            tool_actions=tool_actions,
+        )
 
     error_value = value.get("error")
 
     return ParserOutput(
-        actions=ParsedActions(edits=edits),
+        actions=parsed_actions,
         error=error_value if isinstance(error_value, str) else None,
     )
