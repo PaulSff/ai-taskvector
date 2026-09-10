@@ -12,7 +12,7 @@ from agents.chat.agent_workflow.wf_response_schema import (
 from agents.chat.role_turns.protocol import WorkflowStreamingRunner
 from agents.chat.session import ChatSessionState
 from agents.tools.catalog import OrderedToolsForRole
-from agents.tools.types import ParsedActions, ParserOutput, ToolList
+from agents.tools.types import ParserOutput, ToolList
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
@@ -168,8 +168,8 @@ class PostExecutionFollowUpContext:
         default=None,
         kw_only=True,
     )
-    action_context: ParsedActions = field(
-            default_factory=ParsedActions,
+    action_context: ParserOutput = field(
+            default_factory=ParserOutput,
             kw_only=True,
         )
     on_workflow_response: WorkflowResponseCallback | None = field(
