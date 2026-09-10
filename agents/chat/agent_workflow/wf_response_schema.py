@@ -4,7 +4,6 @@ outputs
 ├── merge_errors.data    ──► MergeErrors
 ├── direct unit response  ──►  DirectUnitsResponse (intermediate workflow data)
 └── direct unit errors  ──► WorkflowErrors (intermediate workflow errors from each unit)
-
 """
 from __future__ import annotations
 
