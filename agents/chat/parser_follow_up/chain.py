@@ -769,7 +769,7 @@ async def run_post_execution_follow_up_chain_async(
                     break
 
                 # Break when LLM emits a structured "no_action" action.
-                parser_output = response.merged_response.parser_output
+                parser_output = post_response.merged_response.parser_output
 
                 parsed_actions = (
                     parser_output.actions
@@ -778,7 +778,9 @@ async def run_post_execution_follow_up_chain_async(
                 )
 
                 if parsed_actions.has_tool_action("no_action"):
-                    await _checkpoint(f"break_no_action_parser_action:{post_round}")
+                    await _checkpoint(
+                        f"break_no_action_parser_action:{post_round}"
+                    )
                     break
 
                 record_llm_prompt_view_if_present(
