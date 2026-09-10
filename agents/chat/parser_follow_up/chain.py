@@ -15,6 +15,7 @@ from dataclasses import replace
 from agents.chat.agent_workflow import (
     run_agent_workflow,
 )
+from agents.chat.agent_workflow.helpers import get_optional_parser_output
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
 )
@@ -60,9 +61,10 @@ from agents.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE,
 )
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
-from agents.tools.types import ParsedActions
+from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import is_string_keyed_dict
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
     ProgressResult,
@@ -769,13 +771,32 @@ async def run_post_execution_follow_up_chain_async(
                     break
 
                 # Break when LLM emits a structured "no_action" action.
-                parser_output = post_response.merged_response.parser_output
+                raw_parser_output = post_response.merged_response.parser_output
 
-                parsed_actions = (
-                    parser_output.actions
-                    if parser_output is not None
-                    else ParsedActions()
-                )
+                if raw_parser_output is None:
+                    parsed_actions = ParsedActions()
+
+                elif isinstance(raw_parser_output, ParserOutput):
+                    parsed_actions = raw_parser_output.actions
+
+                elif is_string_keyed_dict(raw_parser_output):
+                    normalized_parser_output = get_optional_parser_output(
+                        {"parser_output": raw_parser_output},
+                        key="parser_output",
+                    )
+
+                    parsed_actions = (
+                        normalized_parser_output.actions
+                        if normalized_parser_output is not None
+                        else ParsedActions()
+                    )
+
+                else:
+                    raise TypeError(
+                        "merged_response.parser_output must be a ParserOutput or "
+                        f"string-keyed dictionary; got "
+                        f"{type(raw_parser_output).__name__}"
+                    )
 
                 if parsed_actions.has_tool_action("no_action"):
                     await _checkpoint(
