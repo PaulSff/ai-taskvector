@@ -3,7 +3,7 @@ previous_graph = turn_ctx.graph_ref[0]
 
 workflow response
     ├─ runtime applies workflow edits inline
-    ├─ graph_ref now contains after_graph
+    ├─ graph now contains after_graph
     ├─ collect parser edits
     ├─ collect parser tool_actions
     ├─ validate after_graph
@@ -277,8 +277,6 @@ class CoderChatHandler:
 
         async def reconcile_workflow_response(
             workflow_response: AgentWorkflowResponse,
-            *,
-            previous_graph: ProcessGraph,
         ) -> None:
             """
             Reconcile one complete workflow transition.
@@ -292,7 +290,13 @@ class CoderChatHandler:
             """
             collect_actions(workflow_response)
 
-            after_graph = turn_ctx.graph_ref[0]
+            merged = workflow_response.merged_response
+            after_graph = merged.graph
+
+            if after_graph is None:
+                raise ValueError(
+                    "Workflow response did not contain an after graph"
+                )
 
             validated_after_graph, graph_error = (
                 await validate_graph_to_apply_inline(after_graph)
@@ -304,10 +308,7 @@ class CoderChatHandler:
                     f"{graph_error or 'unknown validation error'}"
                 )
 
-            parser_output = (
-                workflow_response.merged_response.parser_output
-            )
-
+            parser_output = merged.parser_output
             parsed_actions = (
                 parser_output.actions
                 if parser_output is not None
@@ -327,20 +328,9 @@ class CoderChatHandler:
                     supplemented_graph
                 )
 
-            if not isinstance(supplemented_graph, ProcessGraph):
-                raise TypeError(
-                    "augment_graph_with_client_tasks returned an invalid graph"
-                )
+            validated_dump = validated_after_graph.model_dump(by_alias=True)
+            supplemented_dump = supplemented_graph.model_dump(by_alias=True)
 
-            validated_dump = validated_after_graph.model_dump(
-                by_alias=True
-            )
-            supplemented_dump = supplemented_graph.model_dump(
-                by_alias=True
-            )
-
-            # Workflow edits have already been applied by the runtime.
-            # Only apply changes introduced by client-side supplements.
             if supplemented_dump != validated_dump:
                 apply_fn = (
                     turn_ctx.apply_from_agent
@@ -348,11 +338,12 @@ class CoderChatHandler:
                     else turn_ctx.set_graph
                 )
                 apply_fn(supplemented_graph)
-                turn_ctx.graph_ref[0] = supplemented_graph
+                final_graph = supplemented_graph
             else:
-                turn_ctx.graph_ref[0] = validated_after_graph
+                final_graph = validated_after_graph
 
-            current_graph = turn_ctx.graph_ref[0]
+            # Promote the workflow result into the shared turn context.
+            turn_ctx.graph_ref[0] = final_graph
 
             previous_apply = turn_ctx.last_apply_result_ref[0]
 
@@ -361,7 +352,7 @@ class CoderChatHandler:
                     previous_apply,
                     ApplyWorkflowEditsResult(
                         success=True,
-                        graph=current_graph,
+                        graph=final_graph,
                         error=None,
                     ),
                     supplement_summary="; ".join(supplements),
@@ -370,17 +361,14 @@ class CoderChatHandler:
 
         async def on_workflow_response(
             workflow_response: AgentWorkflowResponse,
-            previous_graph: ProcessGraph,
         ) -> None:
             await reconcile_workflow_response(
                 workflow_response,
-                previous_graph=previous_graph,
             )
 
         async def run_workflow_turn(
             inputs: WorkflowInputs,
         ) -> AgentWorkflowResponse:
-            previous_graph = turn_ctx.graph_ref[0]
 
             workflow_response = await turn_ctx.run_workflow_streaming(
                 run_agent_workflow,
@@ -393,7 +381,6 @@ class CoderChatHandler:
 
             await on_workflow_response(
                 workflow_response,
-                previous_graph,
             )
 
             return workflow_response
@@ -401,6 +388,10 @@ class CoderChatHandler:
         async def parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
+
+            if parser_output is None:
+                    return None
+
             parser_ctx = ExecutionFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
@@ -430,7 +421,7 @@ class CoderChatHandler:
                 follow_up_source_response=None,
                 agent_role_id=CODER_ROLE_ID,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
-                action_context=turn_actions,
+                action_context=parser_output,
                 on_workflow_response=on_workflow_response,
                 light_graph_mode=True, # enables light-weight graph summary
             )
