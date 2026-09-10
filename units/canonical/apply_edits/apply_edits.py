@@ -36,10 +36,12 @@ Successful application:
 """
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 from pydantic import ValidationError
 
+from agents.tools.types import ParsedActions
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
 from core.normalizer import graph_to_json_object, to_process_graph
@@ -53,13 +55,15 @@ from core.schemas.primitives import (
     is_json_array,
     is_json_object,
 )
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
 APPLY_EDITS_INPUT_PORTS = [
     ("graph", "ProcessGraph"),
-    ("edits", "ParsedActions"),
+    ("actions", "ParsedActions"),
     ("graph_origin", "str"),
 ]
+
 
 APPLY_EDITS_OUTPUT_PORTS = [
     ("result", "JsonObject"),
@@ -68,12 +72,17 @@ APPLY_EDITS_OUTPUT_PORTS = [
     ("error", "str"),
 ]
 
+logger = setup_colored_logging(logging.DEBUG)
 
 def _extract_edits(
     value: object,
 ) -> tuple[list[JsonObject], str | None]:
-    if is_json_array(value):
+    if isinstance(value, ParsedActions):
+        edits_value: object = value.edits
+
+    elif is_json_array(value):
         edits_value = value
+
     elif is_json_object(value):
         nested_edits = value.get("edits")
 
@@ -81,21 +90,30 @@ def _extract_edits(
             return [], "Expected 'edits' to be an array"
 
         edits_value = nested_edits
+
     else:
         return [], (
-            "Expected edits to be an array or an object "
-            "containing 'edits'"
+            "Expected actions to be a ParsedActions object, "
+            "an array, or an object containing 'edits'"
         )
 
     edits: list[JsonObject] = []
     invalid_items: list[str] = []
 
     for index, item in enumerate(edits_value):
-        if is_json_object(item):
+        if isinstance(item, GraphEdit):
+            edits.append(
+                item.model_dump(
+                    mode="python",
+                    by_alias=True,
+                    exclude_none=True,
+                )
+            )
+        elif is_json_object(item):
             edits.append(item)
         else:
             invalid_items.append(
-                f"edits[{index}] must be an object"
+                f"edits[{index}] must be a GraphEdit or object"
             )
 
     if invalid_items:
@@ -117,7 +135,7 @@ def _edits_summary(
         if not isinstance(action, str):
             action = "?"
 
-        if action == "no_edit":
+        if action == "no_action":
             continue
 
         if action == "add_unit":
@@ -344,11 +362,31 @@ def _apply_edits_step(
         "edits": [],
     }
 
+    raw_actions = inputs.get("actions")
+    graph_origin = inputs.get("graph_origin")
+
+    logger.debug(
+        "ApplyEdits started: actions_type=%s, graph_origin=%s",
+        type(raw_actions).__name__,
+        graph_origin if isinstance(graph_origin, str) else None,
+    )
+
+
     try:
         graph = graph_to_json_object(inputs.get("graph"))
         result["graph"] = graph
+
+        logger.debug(
+            "ApplyEdits loaded graph successfully"
+        )
+
     except (TypeError, ValueError) as exc:
         error_string = f"Invalid graph: {exc}"
+
+        logger.error(
+            "ApplyEdits could not load input graph: %s",
+            error_string,
+        )
 
         apply_result["error"] = error_string
         result["error_reason"] = error_string
@@ -367,12 +405,21 @@ def _apply_edits_step(
             state,
         )
 
-    edits, extraction_error = _extract_edits(
-        inputs.get("edits")
+    edits, extraction_error = _extract_edits(raw_actions)
+
+    logger.debug(
+        "ApplyEdits extracted edits: count=%d",
+        len(edits),
     )
+
     result["edits"] = to_json_value(edits)
 
     if extraction_error:
+        logger.warning(
+            "ApplyEdits rejected malformed edit input: %s",
+            extraction_error,
+        )
+
         apply_result["error"] = extraction_error
         result["error_reason"] = extraction_error
         result["last_apply_result"] = {
@@ -391,6 +438,10 @@ def _apply_edits_step(
         )
 
     if not edits:
+        logger.info(
+            "ApplyEdits completed with no edits"
+        )
+
         return (
             {
                 "result": result,
@@ -400,9 +451,8 @@ def _apply_edits_step(
             },
             state,
         )
-    # We only need the graph origin in the import_workflow action
-    graph_origin = inputs.get("graph_origin")
 
+    # Add graph origin to import_workflow edits when needed.
     if isinstance(graph_origin, str) and graph_origin.strip():
         origin = graph_origin.strip()
         patched_edits: list[JsonObject] = []
@@ -429,13 +479,27 @@ def _apply_edits_step(
         edits = patched_edits
         result["edits"] = to_json_value(edits)
 
+        logger.debug(
+            "ApplyEdits applied graph origin to import edits: "
+            "origin=%s",
+            origin,
+        )
+
     try:
         validated_edits = [
             GraphEdit.model_validate(edit)
             for edit in edits
         ]
+
     except ValidationError as exc:
         error_string = str(exc)
+
+        logger.warning(
+            "ApplyEdits rejected invalid graph edits: "
+            "count=%d, error=%s",
+            len(edits),
+            error_string,
+        )
 
         apply_result["error"] = error_string
         result["error_reason"] = error_string
@@ -459,8 +523,14 @@ def _apply_edits_step(
             graph,
             format="dict",
         )
+
     except (TypeError, ValueError) as exc:
         error_string = f"Invalid graph: {exc}"
+
+        logger.error(
+            "ApplyEdits could not normalize graph: %s",
+            error_string,
+        )
 
         apply_result["error"] = error_string
         result["error_reason"] = error_string
@@ -487,6 +557,19 @@ def _apply_edits_step(
     if allowed_values:
         allowed = frozenset(allowed_values)
 
+        logger.debug(
+            "ApplyEdits restricted allowed actions: %s",
+            ", ".join(sorted(allowed)),
+        )
+
+    summary = _edits_summary(edits)
+
+    logger.info(
+        "Applying graph edits: count=%d%s",
+        len(validated_edits),
+        f", summary={summary}" if summary else "",
+    )
+
     apply_result["attempted"] = True
 
     wf_result = apply_workflow_edits(
@@ -509,16 +592,27 @@ def _apply_edits_step(
 
         result["graph"] = to_json_value(result_graph)
 
-        summary = _edits_summary(edits)
-
         if summary:
             apply_result["edits_summary"] = summary
+
+        logger.info(
+            "Graph edits applied successfully: count=%d%s",
+            len(validated_edits),
+            f", summary={summary}" if summary else "",
+        )
+
     else:
         apply_result["success"] = False
         apply_result["error"] = (
             wf_result.error or "Apply failed"
         )
         result["kind"] = "apply_failed"
+
+        logger.error(
+            "Graph edit application failed: count=%d, error=%s",
+            len(validated_edits),
+            apply_result["error"],
+        )
 
     result["last_apply_result"] = {
         **apply_result,
@@ -539,6 +633,12 @@ def _apply_edits_step(
         else None
     )
 
+    logger.debug(
+        "ApplyEdits finished: attempted=%s, success=%s",
+        apply_result["attempted"],
+        apply_result["success"],
+    )
+
     return (
         {
             "result": result,
@@ -548,6 +648,7 @@ def _apply_edits_step(
         },
         state,
     )
+
 
 
 def register_apply_edits() -> None:

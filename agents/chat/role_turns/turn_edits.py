@@ -1,8 +1,8 @@
-"""Graph ``edits`` normalization shared by all ``RoleChatHandler`` implementations (before apply / history)."""
-
-from __future__ import annotations
+import logging
 
 from core.schemas.graph_edit_api import GraphEdit
+
+logger = logging.getLogger(__name__)
 
 
 async def set_commenter_for_new_comments(
@@ -16,8 +16,22 @@ async def set_commenter_for_new_comments(
     """
     rid = agent_role_id.strip()
     if not rid:
+        logger.info(
+            "Skipping commenter assignment: agent_role_id is empty"
+        )
         return
 
-    for edit in edits:
-        if edit.action == "add_comment":
-            edit.commenter = rid
+    for index, edit in enumerate(edits):
+        if edit.action != "add_comment":
+            continue
+
+        edit.commenter = rid
+
+        logger.info(
+            "Set commenter for new comment: "
+            "edit_index=%d comment_id=%s commenter=%s info=%r",
+            index,
+            edit.id,
+            rid,
+            edit.info,
+        )
