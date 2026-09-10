@@ -1,7 +1,7 @@
 """
 GraphDiff unit: prev_graph + current_graph → compact diff string.
 
-Inputs: prev_graph (Any), current_graph (Any).
+Inputs: prev_graph (ProcessGraph), current_graph (ProcessGraph).
 Output: diff (str) — changelog of added/removed units and connections.
 Used in the agent workflow so the runner does not need to compute diff; the workflow provides recent_changes_block from this unit.
 """
