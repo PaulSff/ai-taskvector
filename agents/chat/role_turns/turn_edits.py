@@ -1,8 +1,9 @@
 import logging
 
 from core.schemas.graph_edit_api import GraphEdit
+from services.logging import setup_colored_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.DEBUG)
 
 
 async def set_commenter_for_new_comments(
@@ -16,7 +17,7 @@ async def set_commenter_for_new_comments(
     """
     rid = agent_role_id.strip()
     if not rid:
-        logger.info(
+        logger.warning(
             "Skipping commenter assignment: agent_role_id is empty"
         )
         return
