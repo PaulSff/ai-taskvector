@@ -21,7 +21,7 @@ from units.registry import UnitSpec, register_unit
 
 from .action_blocks import parse_action_blocks
 
-PROCESS_AGENT_INPUT_PORTS = [("action", "Any")]
+PROCESS_AGENT_INPUT_PORTS = [("message", "Any")]
 PROCESS_AGENT_OUTPUT_PORTS = [
     ("actions", "ParsedActions"),
     ("error", "str"),
@@ -36,7 +36,7 @@ def _process_agent_step(
 ) -> Output:
     """Parse LLM response into nested actions and an optional error."""
 
-    raw = inputs.get("action")
+    raw = inputs.get("message")
 
     if raw is None:
         result = ParserOutput()
