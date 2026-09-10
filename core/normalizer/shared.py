@@ -5,6 +5,7 @@ Import modules produce dicts; to_process_graph uses these helpers to build Proce
 import json
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
+from datetime import date, datetime, time, timedelta
 from typing import cast
 
 from core.schemas.primitives import (
@@ -109,13 +110,22 @@ def to_json_value(value: object) -> JsonValue:
     if isinstance(value, (str, int, float, bool)):
         return value
 
+    # JSON has no native date/time types. Use ISO-8601 strings.
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+
+    # Optional: represent durations as seconds.
+    if isinstance(value, timedelta):
+        return value.total_seconds()
+
     if isinstance(value, Mapping):
         json_object: JsonObject = {}
 
         for key, nested_value in value.items():
             if not isinstance(key, str):
                 raise TypeError(
-                    f"JSON object keys must be strings, got {type(key).__name__}"
+                    f"JSON object keys must be strings, "
+                    f"got {type(key).__name__}"
                 )
 
             json_object[key] = to_json_value(nested_value)
@@ -123,14 +133,9 @@ def to_json_value(value: object) -> JsonValue:
         return json_object
 
     if isinstance(value, (list, tuple, set, frozenset)):
-        return [
-            to_json_value(item)
-            for item in value
-        ]
+        return [to_json_value(item) for item in value]
 
     if is_model_dumpable(value):
-        # Prefer mode="json" if the model supports it. This handles nested
-        # enums, datetimes, UUIDs, etc.
         try:
             dumped = value.model_dump(
                 by_alias=True,
@@ -144,7 +149,6 @@ def to_json_value(value: object) -> JsonValue:
     if is_dataclass(value) and not isinstance(value, type):
         return to_json_value(asdict(value))
 
-    # Support domain objects that expose an explicit transport representation.
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return to_json_value(to_dict())
