@@ -155,30 +155,31 @@ async def run_execution_follow_up_chain_async(
     for i in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{i}")
 
-        po = response.merged_response.parser_output
+        po = ctx.action_context
 
         if po is None:
             await _checkpoint(
-                f"break_no_parser_output:{i}"
+                f"break_no_action_context:{i}"
+            )
+            break
+
+        if not po.actions.edits and not po.actions.tool_actions:
+            await _checkpoint(
+                f"break_no_parser_actions:{i}"
             )
             break
 
         purple = "\033[94m"
         reset = "\033[0m"
 
-        msg = (
-            "[parser_follow_up_chain] LLM tool call: "
-            "po type="
-            + type(po).__name__
-            + " keys="
-            + (
-                str(list(po.keys()))
-                if isinstance(po, dict)
-                else "None"
-            )
+        print(
+            f"{purple}[parser_follow_up_chain] "
+            f"LLM actions: "
+            f"edits={len(po.actions.edits)}, "
+            f"tool_actions={len(po.actions.tool_actions)}"
+            f"{reset}",
+            flush=True,
         )
-
-        print(f"{purple}{msg}{reset}", flush=True)
 
         grey = "\033[38;5;245m"
 
@@ -207,6 +208,7 @@ async def run_execution_follow_up_chain_async(
         await _checkpoint(
             f"after_ordered_followups:{i}"
         )
+
 
         context_chunks = acc.context_chunks
         any_empty_tool = acc.any_empty_tool
@@ -508,8 +510,6 @@ async def run_execution_follow_up_chain_async(
         )
 
         # run workflow streaming and invoke the callback
-        previous_graph = ctx.graph_ref[0]
-
         if ctx.agent_workflow_path is None:
             response = await ctx.run_workflow_streaming(
                 run_agent_workflow,
@@ -531,7 +531,6 @@ async def run_execution_follow_up_chain_async(
         if ctx.on_workflow_response is not None:
             await ctx.on_workflow_response(
                 response,
-                previous_graph,
             )
 
         await _checkpoint(
@@ -741,8 +740,6 @@ async def run_post_execution_follow_up_chain_async(
                     f"before_run_workflow_streaming:{post_round}"
                 )
 
-                previous_graph = ctx.graph_ref[0]
-
                 response = await ctx.run_workflow_streaming(
                     run_agent_workflow,
                     post_inputs,
@@ -755,7 +752,6 @@ async def run_post_execution_follow_up_chain_async(
                 if ctx.on_workflow_response is not None:
                     await ctx.on_workflow_response(
                         response,
-                        previous_graph,
                     )
 
                 await _checkpoint(f"after_run_workflow_streaming:{post_round}")
