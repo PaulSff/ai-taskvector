@@ -86,7 +86,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
 )
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
-from agents.tools.types import ParsedActions
+from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     COMMENT_ACTIONS,
@@ -810,7 +810,11 @@ class DemiurgeChatHandler:
             stream_buffer_ref=turn_ctx.stream_buffer_ref,
             agent_workflow_path=_DEMIURGE_WORKFLOW_PATH,
             record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
-            action_context=turn_actions,
+            action_context=(
+                    parser_output
+                    if parser_output is not None
+                    else ParserOutput()
+                ),
             on_workflow_response=on_workflow_response,
             light_graph_mode=True, # enables light-weight graph summary
         )
