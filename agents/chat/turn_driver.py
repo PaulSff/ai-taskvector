@@ -51,6 +51,7 @@ from agents.chat.utils.workflow_run_utils import (
 )
 from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
+from core.normalizer.normalizer import get_process_graph_from_any
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, JsonObject
 from gui.components.settings import (
@@ -273,7 +274,6 @@ def append_session_message(session_id: str, msg: Data) -> None:
 
 
 
-
 def persist_session(session_id: str, *, agent_selected: str | None = None) -> bool:
     """Write a full history snapshot for the session to disk. Returns True on success."""
     with _sessions_lock:
@@ -347,7 +347,7 @@ async def handle_turn(
         *,
         turn_id: str,
         assistant_message_id: str,
-        agent_meta: dict[str, object],
+        agent_meta: Data,
     ) -> None:
         """
         Best-effort: append a placeholder so follow-up turns have something to render
@@ -391,7 +391,7 @@ async def handle_turn(
         *,
         assistant_message_id: str,
         turn_id: str,
-        agent_meta: dict[str, object],
+        agent_meta: Data,
         content_so_far: str,
     ) -> None:
         """
@@ -432,7 +432,7 @@ async def handle_turn(
 
     def _extract_in_progress_from_batch_payload(
         payload: JsonObject,
-    ) -> tuple[dict[str, object] | None, str]:
+    ) -> tuple[Data | None, str]:
         """
         payload is what publish_job_and_wait receives on topics.update_batch.
         Expected structure (from BatchUpdatePublisher.publish_progress):
@@ -473,12 +473,12 @@ async def handle_turn(
         return inner_typed, content_str
 
     def _extract_final_message_and_content(
-        outputs: dict[str, object],
-    ) -> tuple[dict[str, object] | None, str]:
+        outputs: Data,
+    ) -> tuple[Data | None, str]:
 
         def _maybe_final_from_msg_wrap(
             msg_wrap: object,
-        ) -> tuple[dict[str, object] | None, str]:
+        ) -> tuple[Data | None, str]:
             # Handles: {"type":"final", "message": {...}}
             if not isinstance(msg_wrap, dict):
                 return None, ""
@@ -554,20 +554,45 @@ async def handle_turn(
 
     last_graph_sig: str | None = None
 
-    async def _maybe_apply_graph(inner_msg: dict[str, object]) -> None:
+    async def _maybe_apply_graph(inner_msg: Data) -> None:
         """Apply graph updates to canvas via on_apply or the global graph bridge."""
+
+        graph_raw = inner_msg.get("graph")
+
+        if graph_raw is None:
+            return
+
+        try:
+            graph = get_process_graph_from_any(graph_raw)
+        except (TypeError, ValueError) as ex:
+            logger.warning(
+                "Could not normalize workflow graph: %s",
+                ex,
+            )
+            return
+
+        normalized_msg: Data = {
+            **inner_msg,
+            "graph": graph,
+        }
+
         apply_cb = on_apply
+
         if apply_cb is None:
             from agents.chat.graph_bridge import apply_graph_from_turn
 
-            async def _bridge_apply(msg: dict[str, object]) -> None:
-               _ = await apply_graph_from_turn(msg)
+            async def _bridge_apply(msg: Data) -> None:
+                await apply_graph_from_turn(msg)
 
             apply_cb = _bridge_apply
-        await _apply_mid_run_if_present(inner_msg, apply_cb=apply_cb)
+
+        await _apply_mid_run_if_present(
+            normalized_msg,
+            apply_cb=apply_cb,
+        )
 
     async def _apply_mid_run_if_present(
-        inner_msg: dict[str, object],
+        inner_msg: Data,
         *,
         apply_cb: Callable[[dict[str, object]], Awaitable[None]],
     ) -> None:
