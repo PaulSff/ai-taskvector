@@ -7,6 +7,7 @@ Called from AgentOrchestrator._agent_orchestrator_step (sync unit step function)
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import traceback
 from collections.abc import Mapping
@@ -34,11 +35,13 @@ from core.schemas.graph_edit_api import (
     IMPORT_WORKFLOW_ACTION,
     TODO_ACTIONS,
     AgentApplyWorkflowEditsResult,
+    GraphEdit,
 )
 from core.schemas.primitives import Data, WorkflowInputs
 from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
+from services.logging import setup_colored_logging
 from units.taskvector.agent_orchestrator.utils.follow_up_context_builder import (
     build_parser_follow_up_context,
 )
@@ -70,6 +73,7 @@ from .utils.batch_update_publisher import BatchUpdatePublisher
 from .utils.graph_hasher import graph_md5
 from .utils.merge_final_graph import merge_latest_graph_for_final_output
 
+logger = setup_colored_logging(logging.DEBUG)
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
 
@@ -554,10 +558,19 @@ async def run_orchestrator_turn(
 
             result = cast(ProgressResult, merged_response.result)
 
-            edits = result.get("edits") or []
+            raw_edits = result.get("edits") or []
+
+            edits = [
+                edit if isinstance(edit, GraphEdit)
+                else GraphEdit.model_validate(edit)
+                for edit in raw_edits
+            ]
 
             await _checkpoint("before:set_commenter_for_new_comments")
-            await set_commenter_for_new_comments(edits, agent_role_id=role_id)
+            await set_commenter_for_new_comments(
+                edits,
+                agent_role_id=role_id,
+            )
 
             result["edits"] = edits
 
@@ -606,19 +619,35 @@ async def run_orchestrator_turn(
 
             await _checkpoint("before:handle_kind_branch")
 
-            if result.get("kind") == "applied" and result.get("graph") is not None:
+            if result.get("kind") == "applied":
                 await _checkpoint("branch:applied")
 
-                graph_to_apply = result.get("graph")
+                raw_graph = result.get("graph")
 
-                if result.get("kind") == "applied" and graph_to_apply is not None:
-                    await _checkpoint("branch:applied")
+                if raw_graph is None:
+                    logger.warning(
+                        "[orchestrator] Applied result has no graph; skipping graph application"
+                    )
+                else:
+                    graph_to_apply = (
+                        raw_graph
+                        if isinstance(raw_graph, ProcessGraph)
+                        else ProcessGraph.model_validate(raw_graph)
+                    )
+
+                    raw_edits = result.get("edits") or []
+                    edits = [
+                        edit
+                        if isinstance(edit, GraphEdit)
+                        else GraphEdit.model_validate(edit)
+                        for edit in raw_edits
+                    ]
 
                     applied_graph, _supplements, _v_err = await _await_with_log(
                         "apply_and_augment_graph",
                         apply_and_augment_graph(
                             graph_to_apply,
-                            result.get("edits") or [],
+                            edits,
                             {"coding_is_allowed": coding_is_allowed},
                             graph_ref,
                             last_apply_result_ref,
@@ -627,6 +656,7 @@ async def run_orchestrator_turn(
 
                     if applied_graph is not None:
                         result["graph"] = applied_graph
+                        result["edits"] = edits
 
                         _publish_in_progress(
                             stage="turn:graph_applied",
