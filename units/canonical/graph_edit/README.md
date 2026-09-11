@@ -19,7 +19,6 @@ Each unit lives in its own folder with a README and implementation (see [canonic
 | **add_code_block** | Add code block. Params: `code_block`. |
 | **add_comment** | Add comment (metadata). Params: `info`, `commenter?`. |
 | **add_environment** | Add environment tag. Params: `env_id`. |
-| **no_edit** | Pass-through; graph unchanged. Params: `reason?`. |
 | **add_todo_list** | Add todo list. Params: `title?`. |
 | **remove_todo_list** | Remove todo list. |
 | **add_task** | Add task. Params: `text`. |

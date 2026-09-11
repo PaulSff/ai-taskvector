@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from agents.chat.context.follow_up_context import ExecutionFollowUpContext
-from agents.tools.no_action.prompt import NO_ACTION_FOLLOW_UP_PREFIX
+from agents.tools.no_action.follow_ups import NO_ACTION_FOLLOW_UP_PREFIX
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 
 

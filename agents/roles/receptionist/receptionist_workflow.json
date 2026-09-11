@@ -746,8 +746,7 @@
           "remove_todo_list",
           "add_task",
           "remove_task",
-          "mark_completed",
-          "no_edit"
+          "mark_completed"
         ]
       },
       "name": null,

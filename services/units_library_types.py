@@ -8,8 +8,14 @@ registry blurbs). Used to avoid depending on core.schemas or core.graph.
 
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    WorkflowInputs,
+    WorkflowOutputs,
+    is_json_object,
+    require_json_object_from_object,
+)
 from gui.components.settings import UNITS_LIBRARY_WORKFLOW_PATH
 
 
@@ -56,14 +62,12 @@ def _parse_units_library_text(
 
 
 def get_units_library_type_lists(
-    graph_summary_dict: dict[str, Any],
+    graph_summary_dict: Data,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Run the units_library workflow with graph_summary and return
-    ``(unit_entries, pipeline_entries)`` where each entry is ``(type_name, description)``.
-
-    Uses only the UnitsLibrary canonical unit; no dependency on core types. Matches the
-    filtered list the workflow designer prompt sees (same formatted string, parsed).
+    ``(unit_entries, pipeline_entries)`` where each entry is
+    ``(type_name, description)``.
     """
     if not UNITS_LIBRARY_WORKFLOW_PATH.is_file():
         return ([], [])
@@ -71,24 +75,40 @@ def get_units_library_type_lists(
     from runtime.run import run_workflow
 
     try:
-        outputs = run_workflow(
-            UNITS_LIBRARY_WORKFLOW_PATH,
-            initial_inputs={"inject_graph_summary": {"data": graph_summary_dict}},
+        graph_summary: JsonObject = require_json_object_from_object(
+            graph_summary_dict,
+            field="graph_summary_dict",
         )
-    except (OSError, FileNotFoundError):
-        return ([], [])
-    except (ValueError, TypeError):
+
+        initial_inputs: WorkflowInputs = {
+            "inject_graph_summary": {
+                "data": graph_summary,
+            },
+        }
+
+        outputs: WorkflowOutputs = run_workflow(
+            UNITS_LIBRARY_WORKFLOW_PATH,
+            initial_inputs=initial_inputs,
+        )
+    except (OSError, FileNotFoundError, ValueError, TypeError):
         return ([], [])
 
-    data = outputs.get("units_library", {}).get("data")
+    units_library_output = outputs.get("units_library")
+
+    if not is_json_object(units_library_output):
+        return ([], [])
+
+    data = units_library_output.get("data")
+
     if not isinstance(data, str) or not data.strip():
         return ([], [])
 
     return _parse_units_library_text(data)
 
 
+
 def get_add_node_type_lists(
-    graph_summary_dict: dict[str, Any],
+    graph_summary_dict: Data,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Unit/pipeline types for the Add Node dialog: all environments, runtime-filtered.

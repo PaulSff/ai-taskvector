@@ -135,9 +135,6 @@ def _edits_summary(
         if not isinstance(action, str):
             action = "?"
 
-        if action == "no_action":
-            continue
-
         if action == "add_unit":
             unit = edit.get("unit")
 

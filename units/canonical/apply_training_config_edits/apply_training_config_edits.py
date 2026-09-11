@@ -25,7 +25,7 @@ def _edits_summary(edits: list[dict[str, Any]]) -> str:
     for e in edits:
         if not isinstance(e, dict):
             continue
-        if e.get("action") == "no_edit":
+        if e.get("action") == "no_action":
             continue
         action = e.get("action")
         if action:

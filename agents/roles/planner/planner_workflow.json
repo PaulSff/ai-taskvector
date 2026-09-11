@@ -750,8 +750,7 @@
           "set_implementer",
           "set_todo_list_title",
           "set_curator",
-          "mark_completed",
-          "no_edit"
+          "mark_completed"
         ]
       },
       "name": null,

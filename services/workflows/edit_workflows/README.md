@@ -39,7 +39,7 @@ from core.normalizer import to_process_graph
 EDIT_WORKFLOWS_DIR = Path(__file__).parent  # gui/components/workflow_tab/workflows/edit_workflows
 
 def apply_edit_via_workflow(graph_dict: dict, edit: dict) -> dict:
-    action = (edit.get("action") or "no_edit").strip()
+    action = (edit.get("action") or "no_action").strip()
     if action == "import_workflow":
         # use batch_edits or full agent workflow
         raise ValueError("import_workflow not supported as single-edit workflow")

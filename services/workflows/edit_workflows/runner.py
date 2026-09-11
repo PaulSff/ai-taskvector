@@ -6,15 +6,23 @@ Returns ProcessGraph for use by the GUI. Uses ``gui.components.workflow_tab.work
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
 
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    WorkflowInputs,
+    WorkflowOutputs,
+    is_json_object,
+    is_model_dumpable,
+    require_json_object_from_object,
+)
 from core.schemas.process_graph import ProcessGraph
+from gui.components.settings import _EDIT_WORKFLOWS_DIR
+from runtime.run import run_workflow
 from services.workflows.core_workflows import (
     run_apply_edits_inline,
     run_normalize_graph_inline,
 )
-from runtime.run import run_workflow
-from gui.components.settings import _EDIT_WORKFLOWS_DIR
 
 # workflow_stem -> tool id under agents/tools/<tool_id>/tool.yaml (workflow filename in tool.yaml).
 _TOOL_EDIT_WORKFLOW_TOOLS: dict[str, str] = {
@@ -46,7 +54,6 @@ _ACTION_WORKFLOW: dict[str, tuple[str, str]] = {
     "add_code_block": ("add_code_block", "add_code_block"),
     "add_comment": ("add_comment", "add_comment"),
     "add_environment": ("add_environment", "add_environment"),
-    "no_edit": ("no_edit", "no_edit"),
     "add_todo_list": ("todo_list", "todo_list"),
     "add_task": ("todo_list", "todo_list"),
     "remove_task": ("todo_list", "todo_list"),
@@ -55,22 +62,38 @@ _ACTION_WORKFLOW: dict[str, tuple[str, str]] = {
 }
 
 
-def _graph_to_dict(graph: ProcessGraph | dict[str, Any] | None) -> dict[str, Any]:
+def _graph_to_dict(
+    graph: ProcessGraph | Data | None,
+) -> Data:
     if graph is None:
-        return {"units": [], "connections": []}
+        return {
+            "units": [],
+            "connections": [],
+        }
 
     if isinstance(graph, dict):
         return graph
 
-    if hasattr(graph, "model_dump"):
-        return cast(Any, graph).model_dump(by_alias=True)
+    if is_model_dumpable(graph):
+        dumped = graph.model_dump(by_alias=True)
 
-    return {"units": [], "connections": []}
+        result: Data = {}
+        for key, value in dumped.items():
+            result[key] = value
+
+        return result
+
+    return {
+        "units": [],
+        "connections": [],
+    }
 
 
-def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
+
+
+def _edit_to_params(action: str, edit: Data) -> Data:
     """Build unit_param_overrides for the edit unit from the edit dict."""
-    action = (action or "no_edit").strip()
+    action = (action).strip()
     if action == "add_unit":
         return {"unit": edit.get("unit")}
     if action == "add_pipeline":
@@ -104,7 +127,7 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
         return {"info": edit.get("info"), "commenter": edit.get("commenter")}
     if action == "add_environment":
         return {"env_id": edit.get("env_id")}
-    if action == "no_edit":
+    if action == "no_action":
         return {"reason": edit.get("reason")}
     if action in (
         "add_todo_list",
@@ -127,50 +150,104 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
 
 
 async def apply_edit_via_workflow(
-    graph: ProcessGraph | dict[str, Any],
-    edit: dict[str, Any],
+    graph: ProcessGraph,
+    edit: Data,
 ) -> ProcessGraph:
     """
-    Apply a single graph edit by running the matching edit workflow (or batch_edits for import_workflow).
+    Apply a single graph edit by running the matching edit workflow
+    or batch_edits for import_workflow.
+
     Returns the updated graph as ProcessGraph. Raises on failure.
     """
     graph_dict = _graph_to_dict(graph)
-    action = (edit.get("action") or "no_edit").strip()
+
+    graph_json: JsonObject = require_json_object_from_object(
+        graph_dict,
+        field="graph",
+    )
+
+    action_value = edit.get("action")
+
+    if not isinstance(action_value, str):
+        raise TypeError("Edit action must be a string")
+
+    action = action_value.strip()
+
+    if not action:
+        raise ValueError("Edit action cannot be empty")
 
     if action == "import_workflow":
-        out_graph, err = await run_apply_edits_inline(graph_dict, [edit])
+        out_graph, err = await run_apply_edits_inline(
+            graph_dict,
+            [edit],
+        )
+
         if err:
             raise ValueError(err)
 
         updated = out_graph if out_graph is not None else graph_dict
+
         g, norm_err = await run_normalize_graph_inline(updated)
+
         if norm_err:
             raise ValueError(norm_err)
+
         return ProcessGraph.model_validate(g)
 
-    workflow_stem, unit_id = _ACTION_WORKFLOW.get(action, ("no_edit", "no_edit"))
+    workflow_stem, unit_id = _ACTION_WORKFLOW.get(
+        action,
+        ("no_action", "no_action"),
+    )
+
     path = _edit_workflow_path(workflow_stem)
+
     if not path.is_file():
         path = _EDIT_WORKFLOWS_DIR / "edit_no_edit.json"
-        unit_id = "no_edit"
+        unit_id = "no_action"
 
-    overrides = {unit_id: _edit_to_params(action, edit)}
-    outputs = run_workflow(
+    edit_params = _edit_to_params(action, edit)
+
+    edit_params_json: JsonObject = require_json_object_from_object(
+        edit_params,
+        field="edit parameters",
+    )
+
+    overrides: WorkflowInputs = {
+        unit_id: edit_params_json,
+    }
+
+    initial_inputs: WorkflowInputs = {
+        "inject_graph": {
+            "data": graph_json,
+        },
+    }
+
+    outputs: WorkflowOutputs = run_workflow(
         path,
-        initial_inputs={"inject_graph": {"data": graph_dict}},
+        initial_inputs=initial_inputs,
         unit_param_overrides=overrides,
         format="dict",
     )
 
-    updated = outputs.get(unit_id, {}).get("graph")
-    if updated is None:
+    unit_output = outputs.get(unit_id)
+
+    if not is_json_object(unit_output):
         updated = graph_dict
+    else:
+        updated_value = unit_output.get("graph")
+
+        if is_json_object(updated_value):
+            updated = updated_value
+        else:
+            updated = graph_dict
 
     g, norm_err = await run_normalize_graph_inline(updated)
+
     if norm_err:
         raise ValueError(norm_err)
 
     return ProcessGraph.model_validate(g)
+
 
 
 __all__ = ["apply_edit_via_workflow"]

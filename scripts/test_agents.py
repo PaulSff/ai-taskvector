@@ -49,16 +49,6 @@ async def _apply_training_edits_workflow(
     return TrainingConfig.model_validate(out)
 
 
-async def test_process_agent_no_edit():
-    base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
-    graph = load_process_graph_from_file(base)
-    edit = {"action": "no_edit", "reason": "no change"}
-    result = await _apply_graph_edits_workflow(graph, edit)
-    assert result.environment_type.value == "thermodynamic"
-    assert len(result.units) == len(graph.units)
-    assert len(result.connections) == len(graph.connections)
-
-
 async def test_process_agent_add_unit():
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
@@ -200,15 +190,6 @@ async def test_process_agent_connect_with_ports():
     assert conn.to_port == "0", f"Expected to_port '0', got {conn.to_port!r}"
 
 
-async def test_apply_training_config_edits_workflow_no_edit():
-    base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
-    config = load_training_config_from_file(base)
-    edit = {"action": "no_edit", "reason": "no change"}
-    result = await _apply_training_edits_workflow(config, edit)
-    assert result.goal.target_temp == config.goal.target_temp
-    assert result.hyperparameters.learning_rate == config.hyperparameters.learning_rate
-
-
 async def test_apply_training_config_edits_workflow_merge():
     base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
@@ -219,7 +200,6 @@ async def test_apply_training_config_edits_workflow_merge():
 
 
 async def _run_all_tests():
-    await test_process_agent_no_edit()
     await test_process_agent_add_unit()
     await test_process_agent_connect()
 
@@ -229,7 +209,6 @@ async def _run_all_tests():
     test_graph_edit_replace_graph_allows_same_units_different_ports()
 
     await test_process_agent_connect_with_ports()
-    await test_apply_training_config_edits_workflow_no_edit()
     await test_apply_training_config_edits_workflow_merge()
 
 

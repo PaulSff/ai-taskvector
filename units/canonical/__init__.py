@@ -93,7 +93,6 @@ def register_canonical_units() -> None:
         "add_code_block",
         "add_comment",
         "add_environment",
-        "no_edit",
         "todo_list",
         "lookup_graph_units",
     )

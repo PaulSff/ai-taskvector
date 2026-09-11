@@ -66,11 +66,11 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
 def apply_config_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str, Any]:
     """
     Merge edit (partial training config) into current config.
-    If edit contains {"action": "no_edit", "reason": "..."}, returns current unchanged.
+    If edit contains {"action": "no_action", "reason": "..."}, returns current unchanged.
     Reward DSL actions (reward_formula_add, etc.) are expanded before merge.
     Result is suitable for normalizer.to_training_config(merged, format="dict").
     """
-    if edit.get("action") == "no_edit":
+    if edit.get("action") == "no_action":
         return dict(current)
     expanded = expand_reward_actions(edit, current)
     return deep_merge(current, expanded)

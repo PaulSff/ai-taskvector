@@ -109,7 +109,7 @@ The model should emit a **partial** training config (only keys that change) or s
 }
 ```
 
-Use **`{ "action": "no_edit", "reason": "..." }`** when no config change is requested. Full goal/reward/algorithm vocabulary lives in **`RL_COACH_SYSTEM`** / `config/prompts/rl_coach.json` and in **`docs/REWARD_RULES.md`**.
+Use **`{ "action": "no_action", "reason": "..." }`** when no config change is requested. Full goal/reward/algorithm vocabulary lives in **`RL_COACH_SYSTEM`** / `config/prompts/rl_coach.json` and in **`docs/REWARD_RULES.md`**.
 
 ---
 

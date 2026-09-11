@@ -85,9 +85,6 @@ def apply_graph_edit(
 
     Returns a new ProcessGraph and raises ValueError for invalid edits.
     """
-    if edit.action == "no_edit":
-        return current.model_copy(deep=True)
-
     if edit.action == "import_workflow":
         raise ValueError(
             "import_workflow must be resolved via apply_workflow_edits (batch_edits)"

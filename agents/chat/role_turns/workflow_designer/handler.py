@@ -390,6 +390,8 @@ class WorkflowDesignerChatHandler:
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
 
+            parser_output = resp.merged_response.parser_output
+
             if parser_output is None:
                     return None
 

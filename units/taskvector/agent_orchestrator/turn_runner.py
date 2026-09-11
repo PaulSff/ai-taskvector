@@ -222,7 +222,7 @@ async def run_orchestrator_turn(
         else None
     )
 
-    initial_graph_md5 = graph_md5(graph) if isinstance(graph, dict) else None
+    initial_graph_md5 = graph_md5(graph)
     raw_recent_changes = context.get("recent_changes")
 
     recent_changes: str | None = (
@@ -677,11 +677,9 @@ async def run_orchestrator_turn(
                     )
                     await _checkpoint("after:build_post_apply_context")
 
-                    _edits = result.get("edits") or []
-
                     _todo_edits = [
                         edit
-                        for edit in _edits
+                        for edit in edits
                         if isinstance(edit, dict) and edit.get("action") in TODO_ACTIONS
                     ]
 
@@ -694,13 +692,13 @@ async def run_orchestrator_turn(
                         had_import_workflow=any(
                             isinstance(edit, dict)
                             and edit.get("action") == IMPORT_WORKFLOW_ACTION
-                            for edit in _edits
+                            for edit in edits
                         ),
                         had_todo=had_todo_followup,
                         had_add_comment=any(
                             isinstance(edit, dict)
                             and edit.get("action") in COMMENT_ACTIONS
-                            for edit in _edits
+                            for edit in edits
                         ),
                     )
 

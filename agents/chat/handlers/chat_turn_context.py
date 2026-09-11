@@ -106,7 +106,7 @@ def summarize_parsed_edits_for_context(
             "remove_task",
             "mark_completed",
             "add_comment",
-            "no_edit",
+            "no_action",
         } or action:
             parts.append(action)
 

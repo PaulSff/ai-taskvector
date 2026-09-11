@@ -13,7 +13,7 @@ responsibility_description: 'To create/modify/make structural edits on workflows
   base or external sources. Integrate data sources and LLM/RL models: wire integrations
   into the workflow (APIs, data connectors, model endpoints), set up and adjust params,
   run and test the workflow. Create new units, create new nodes.'
-follow_up_max_rounds: 4
+follow_up_max_rounds: 2
 rag:
   top_k: 5
 llm:

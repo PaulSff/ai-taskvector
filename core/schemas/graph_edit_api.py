@@ -15,7 +15,6 @@ GraphEditAction = Literal[
     "set_params",
     "connect",
     "disconnect",
-    "no_edit",
     "replace_graph",
     "replace_unit",
     "add_code_block",
@@ -90,7 +89,7 @@ class GraphEdit(BaseModel):
     action: GraphEditAction = Field(
         ...,
         description=(
-                    "add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | "
+                    "add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | "
                     "replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | "
                     "remove_todo_list | add_task | remove_task | mark_completed | set_implementer | "
                     "set_deadline | set_curator | add_environment | import_workflow"
@@ -134,7 +133,6 @@ class GraphEdit(BaseModel):
     to_port: str | None = Field(
         default=None, description="Target input port index for connect (default '0')"
     )
-    reason: str | None = Field(default=None, description="For no_edit")
     units: list[dict[str, JsonValue]] | None = Field(
         default=None, description="For replace_graph: full unit list"
     )

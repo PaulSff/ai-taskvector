@@ -97,7 +97,7 @@ def test_rag_search_edits_search_action_parses_query_and_max_results() -> None:
     )
     assert out == ("test", None)
     assert _search_action_from_edits([]) is None
-    assert _search_action_from_edits([{"action": "no_edit"}]) is None
+    assert _search_action_from_edits([{"action": "no_action"}]) is None
 
 
 # ---- Filter (data_bi) ----

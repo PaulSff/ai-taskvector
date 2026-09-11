@@ -93,7 +93,7 @@ def apply_workflow_edits(
         if act not in _GRAPH_EDIT_ACTIONS:
             continue
 
-        if act in (None, "no_edit"):
+        if act is None:
             continue
 
         if allowed_actions is not None and act not in allowed_actions:
@@ -107,7 +107,7 @@ def apply_workflow_edits(
             to_apply = [edit]
 
         for sub_edit in to_apply:
-            if sub_edit.action in (None, "no_edit"):
+            if sub_edit.action is None:
                 continue
 
             runtime = external_runtime_or_none(graph)

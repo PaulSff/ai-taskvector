@@ -4,7 +4,7 @@ Canonical unit that **applies a list of training-config edits** to the current c
 
 - **Inputs**
   - `training_config` (Any) — Current config as dict or TrainingConfig (with `model_dump`). If missing, treated as empty `{}`.
-  - `edits` (Any) — List of edit dicts from TrainingConfigParser (e.g. `no_edit`, `goal`, `reward_formula_add`, partial `rewards`/`hyperparameters`/`callbacks`).
+  - `edits` (Any) — List of edit dicts from TrainingConfigParser (e.g. `goal`, `reward_formula_add`, partial `rewards`/`hyperparameters`/`callbacks`).
 - **Outputs**
   - `result` (Any) — Dict with `kind` (`no_edits` | `applied` | `apply_failed`), `content_for_display`, `config` (updated dict), `edits`.
   - `status` (Any) — `attempted`, `success`, `error`, optional `edits_summary`.

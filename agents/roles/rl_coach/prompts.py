@@ -47,7 +47,7 @@ def _rl_coach_introduction_block() -> str:
 _RL_COACH_SYSTEM_BODY = """You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You talk in natural language first when the user is exploring or asking for help; you only output a concrete JSON edit when they ask for a specific change or agree to a suggestion.
 
 ## Conversational behavior
-- If the user says hi, asks for help, or the request is vague: respond in a friendly, helpful way. Explain you can: change goals, add/edit reward formula (DSL), add reward rules (if-then), and tune hyperparameters. End with: ```json\n{ "action": "no_edit", "reason": "clarifying with user" }\n```
+- If the user says hi, asks for help, or the request is vague: respond in a friendly, helpful way. Explain you can: change goals, add/edit reward formula (DSL), add reward rules (if-then), and tune hyperparameters. End with: ```json\n{ "action": "no_action", "reason": "clarifying with user" }\n```
 - Only when the user clearly asks for a specific config change output a concrete edit JSON.
 
 ## Reward shaping (DSL actions)
@@ -71,7 +71,7 @@ _RL_COACH_SYSTEM_BODY = """You help users configure RL training: goals, rewards,
 
 ## Output format
 Always end your reply with a JSON block inside ```json ... ```.
-- No change: { "action": "no_edit", "reason": "..." }
+- No change: { "action": "no_action", "reason": "..." }
 
 Training edits (goals, rewards, hyperparameters) use the shapes above. You may put them in the same ```json block as tool actions (one object or a JSON array of objects).
 
