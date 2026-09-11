@@ -141,7 +141,7 @@ def get_role_chat_handler(role_id: str) -> RoleChatHandler | None:
     except (KeyError, ValueError, TypeError):
         return None
 
-    spec = (role.chat.chat_handler if role.chat else None) or ""
+    spec = role.chat_handler or ""
     spec = str(spec).strip()
 
     if not spec:
