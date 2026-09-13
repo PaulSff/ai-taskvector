@@ -308,7 +308,10 @@ def get_optional_parser_output(
             f"got {type(value).__name__}"
         )
 
-    actions_value = value.get("actions", {})
+    if "actions" in value:
+        actions_value = value.get("actions")
+    else:
+        actions_value = value
 
     if isinstance(actions_value, ParsedActions):
         parsed_actions = actions_value
@@ -332,10 +335,13 @@ def get_optional_parser_output(
                 edits.append(raw_edit)
             elif is_string_keyed_dict(raw_edit):
                 try:
-                    edits.append(GraphEdit.model_validate(raw_edit))
+                    edits.append(
+                        GraphEdit.model_validate(raw_edit)
+                    )
                 except ValidationError as exc:
                     raise TypeError(
-                        f"Invalid {key!r}.actions.edits item: {raw_edit!r}"
+                        f"Invalid {key!r}.actions.edits item: "
+                        f"{raw_edit!r}"
                     ) from exc
             else:
                 raise TypeError(
@@ -343,7 +349,10 @@ def get_optional_parser_output(
                     "GraphEdit or string-keyed dictionary"
                 )
 
-        raw_tool_actions = actions_value.get("tool_actions", {})
+        raw_tool_actions = actions_value.get(
+            "tool_actions",
+            {},
+        )
 
         if raw_tool_actions is None:
             raw_tool_actions = {}
@@ -360,15 +369,14 @@ def get_optional_parser_output(
             if raw_values is None:
                 tool_actions[action_name] = []
             elif is_object_list(raw_values):
-                typed_values: list[Data] = [
+                tool_actions[action_name] = [
                     cast(Data, raw_value)
                     for raw_value in raw_values
                 ]
-                tool_actions[action_name] = typed_values
             else:
                 raise TypeError(
-                    f"{key!r}.actions.tool_actions[{action_name!r}] "
-                    "must be a list"
+                    f"{key!r}.actions.tool_actions"
+                    f"[{action_name!r}] must be a list"
                 )
 
         parsed_actions = ParsedActions(
