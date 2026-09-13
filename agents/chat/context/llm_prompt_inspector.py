@@ -9,13 +9,12 @@ Role workflows conventionally use a ``Prompt`` unit (often id ``prompt_llm``) be
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
 
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
     MergeResponse,
 )
-from core.schemas.primitives import Data, WorkflowOutputs
+from core.schemas.primitives import WorkflowOutputs
 
 # Common Prompt unit ids in agents/roles/*/…_workflow.json graphs.
 _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")
@@ -23,29 +22,26 @@ _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")
 
 def attach_llm_prompt_debug_from_outputs(
     outputs: WorkflowOutputs,
-    data: Data,
+    response: MergeResponse,
     *,
     prompt_unit_ids: tuple[str, ...] = _DEFAULT_PROMPT_UNIT_IDS,
 ) -> None:
-    """Merge Prompt unit outputs into ``data`` as
-    ``llm_system_prompt`` / ``llm_user_message``.
-    """
+    """Attach prompt-unit outputs to a MergeResponse."""
+
     for uid in prompt_unit_ids:
-        pl = outputs.get(uid)
+        prompt_output = outputs.get(uid)
 
-        if not isinstance(pl, dict):
+        if not isinstance(prompt_output, dict):
             continue
-
-        prompt_output = cast(dict[str, object], pl)
 
         sp = prompt_output.get("system_prompt")
         um = prompt_output.get("user_message")
 
         if isinstance(sp, str):
-            data["llm_system_prompt"] = sp
+            response.llm_system_prompt = sp
 
         if isinstance(um, str):
-            data["llm_user_message"] = um
+            response.llm_user_message = um
 
         if isinstance(sp, str) or isinstance(um, str):
             return
