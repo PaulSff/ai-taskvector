@@ -45,9 +45,6 @@ from agents.chat.context.todo_list_manager import get_summary_params
 from agents.chat.follow_up_executor.post_execution_messages import (
     get_post_apply_messages,
 )
-from agents.chat.utils.workflow_output_normalizer import (
-    formulas_calc_display_appendix,
-)
 from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.clone_role.follow_ups import CLONE_ROLE_FOLLOW_UP_USER_MESSAGE
@@ -369,7 +366,6 @@ async def run_execution_follow_up_chain_async(
         if prev_content:
             prev_show = (
                 prev_content
-                + formulas_calc_display_appendix(response)
             )
 
             ctx.append_message(
