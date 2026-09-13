@@ -103,13 +103,13 @@ def build_agents_chat_panel(
     if not _dropdown_role_ids:
         raise ValueError("list_chat_dropdown_role_ids() returned no roles")
 
-    _chat_agent_display_by_role = {
+    _chat_agent_label_by_role = {
         rid: get_role(rid).role_name for rid in _dropdown_role_ids
     }
-    _chat_role_by_display = {v: k for k, v in _chat_agent_display_by_role.items()}
+    _chat_role_by_display = {v: k for k, v in _chat_agent_label_by_role.items()}
 
     _chat_display_names = frozenset(_chat_role_by_display.keys())
-    _default_chat_display = _chat_agent_display_by_role[_dropdown_role_ids[0]]
+    _default_chat_display = _chat_agent_label_by_role[_dropdown_role_ids[0]]
 
     def _on_agent_dd_select() -> None:
         _update_model_label()
@@ -123,7 +123,7 @@ def build_agents_chat_panel(
         text_style=ft.TextStyle(size=11),
         border_color=ft.Colors.GREY_800,
         border_width=0,
-        options=[ft.dropdown.Option(_chat_agent_display_by_role[rid]) for rid in _dropdown_role_ids],
+        options=[ft.dropdown.Option(_chat_agent_label_by_role[rid]) for rid in _dropdown_role_ids],
         on_select=_on_agent_dd_select,
     )
 
@@ -933,7 +933,7 @@ def build_agents_chat_panel(
                     new_role_id = parser_out.get("role_id")
 
             if new_role_id and new_role_id in _dropdown_role_ids:
-                target_display = _chat_agent_display_by_role.get(new_role_id)
+                target_display = _chat_agent_label_by_role.get(new_role_id)
 
                 # Update dropdown selection if needed
                 if target_display and agent_dd.value != target_display:

@@ -6,6 +6,8 @@ import json
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, time, timedelta
+from enum import Enum
+from os import PathLike
 from typing import cast
 
 from core.schemas.primitives import (
@@ -114,9 +116,17 @@ def to_json_value(value: object) -> JsonValue:
     if isinstance(value, (datetime, date, time)):
         return value.isoformat()
 
-    # Optional: represent durations as seconds.
+    # Represent durations as seconds.
     if isinstance(value, timedelta):
         return value.total_seconds()
+
+    # Represent filesystem paths as strings.
+    if isinstance(value, PathLike):
+        return str(value)
+
+    # Represent enum members using their underlying values.
+    if isinstance(value, Enum):
+        return to_json_value(value.value)
 
     if isinstance(value, Mapping):
         json_object: JsonObject = {}
@@ -124,7 +134,7 @@ def to_json_value(value: object) -> JsonValue:
         for key, nested_value in value.items():
             if not isinstance(key, str):
                 raise TypeError(
-                    f"JSON object keys must be strings, "
+                    "JSON object keys must be strings, "
                     f"got {type(key).__name__}"
                 )
 
@@ -154,7 +164,8 @@ def to_json_value(value: object) -> JsonValue:
         return to_json_value(to_dict())
 
     raise TypeError(
-        f"Value of type {type(value).__name__} is not JSON serializable"
+        f"Value of type {type(value).__name__} is not JSON serializable: "
+        f"{value!r}"
     )
 
 

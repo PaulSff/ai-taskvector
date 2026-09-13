@@ -20,7 +20,7 @@
             "all": [{ "field": "auto_delegation_is_allowed", "equals": true }],
             "parser_output": {
               "run_workflow": {
-                "path": "{auto_delegate_workflow_path}",
+                "path": "{dispatcher_workflow_path}",
                 "initial_inputs": {
                   "inject_msg": {
                     "data": { "user_message": "{user_message}" }
@@ -97,15 +97,14 @@
               }
             ],
             "parser_output": {
+              "state": { "_raw": "context.state" },
+              "turn_id": { "_raw": "context.turn_id" },
               "user_message": { "_raw": "context.user_message" },
               "messenger": { "_raw": "context.messenger" },
               "role_id": "{dispatcher_out.delegate_req.data.delegate_to}",
-              "history": { "_raw": "context.history" },
-              "session_language": { "_raw": "context.session_language" },
-              "last_apply_result": { "_raw": "context.last_apply_result" },
               "graph": { "_raw": "context.graph" },
+              "last_apply_result": { "_raw": "context.last_apply_result" },
               "recent_changes": { "_raw": "context.recent_changes" },
-              "use_current_graph": { "_raw": "context.use_current_graph" },
               "provider": { "_raw": "context.provider" },
               "cfg": { "_raw": "context.cfg" },
               "rag_index_dir": { "_raw": "context.rag_index_dir" },
@@ -121,8 +120,8 @@
               "auto_delegation_is_allowed": {
                 "_raw": "context.auto_delegation_is_allowed"
               },
-              "auto_delegate_workflow_path": {
-                "_raw": "context.auto_delegate_workflow_path"
+              "dispatcher_workflow_path": {
+                "_raw": "context.dispatcher_workflow_path"
               }
             }
           },

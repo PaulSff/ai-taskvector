@@ -10,12 +10,13 @@ from pathlib import Path
 # Ensure project root is on PYTHONPATH (adjust parents[1] if scripts/ is deeper)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gui.components.settings import get_auto_delegate_workflow_path
+from agents.roles.registry import DISPATCHER_ROLE_ID
+from agents.roles.workflow_path import get_role_chat_workflow_path
 from runtime.run import run_workflow
 
 
 async def main():
-    ad_path = get_auto_delegate_workflow_path()
+    ad_path = get_role_chat_workflow_path(DISPATCHER_ROLE_ID)
     if not ad_path.is_file():
         print("workflow file not found:", ad_path)
         return

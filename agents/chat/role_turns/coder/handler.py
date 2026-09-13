@@ -54,6 +54,10 @@ from agents.chat.agent_workflow.helpers import (
     validate_graph_to_apply_inline,
 )
 from agents.chat.agent_workflow.wf_response_schema import is_apply_result
+from agents.chat.agent_workflow.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
+    default_wf_language_hint,
+)
 from agents.chat.context import PostExecutionFollowUpContext
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
@@ -62,28 +66,25 @@ from agents.chat.context.follow_up_context import (
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
+from agents.chat.context.role_turn_context import RoleChatTurnContext
 from agents.chat.context.todo_list_manager import get_summary_params
 from agents.chat.context.todo_list_manager.todo_list_manager import (
     augment_graph_with_client_tasks,
+)
+from agents.chat.follow_up_executor import (
+    run_execution_follow_up_chain_async,
+    run_post_execution_follow_up_chain_async,
 )
 from agents.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
-from agents.chat.parser_follow_up import (
-    run_execution_follow_up_chain_async,
-    run_post_execution_follow_up_chain_async,
-)
 from agents.chat.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
 )
 from agents.roles import CODER_ROLE_ID, get_role
-from agents.roles.workflow_designer.workflow_inputs import (
-    build_agent_workflow_initial_inputs,
-    default_wf_language_hint,
-)
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions, ParserOutput
@@ -106,8 +107,6 @@ from runtime.run import WorkflowTimeoutError
 from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
     ProgressResult,
 )
-
-from ..context import RoleChatTurnContext
 
 _CODER_WORKFLOW_PATH = get_role_chat_workflow_path(CODER_ROLE_ID).resolve()
 
@@ -393,12 +392,11 @@ class CoderChatHandler:
                     return None
 
             parser_ctx = ExecutionFollowUpContext(
-                page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
-                agent_label=turn_ctx.agent_display,
+                agent_label=turn_ctx.agent_label,
                 follow_up_contexts=follow_up_contexts_this_turn,
                 max_rounds=max_wd_follow_ups,
                 wf_language_hint=wf_lang_cell,
@@ -406,7 +404,6 @@ class CoderChatHandler:
                 toast=lambda message: turn_ctx.toast(message),
                 set_inline_status=turn_ctx.set_inline_status,
                 append_message=turn_ctx.append_message,
-                prepare_stream_row=turn_ctx.prepare_stream_row,
                 normalize_user_message_for_workflow=(
                     normalize_user_message_for_workflow
                 ),
@@ -416,7 +413,6 @@ class CoderChatHandler:
                 run_workflow_streaming=turn_ctx.run_workflow_streaming,
                 get_runtime_for_prompts=get_runtime_for_prompts,
                 format_previous_turn=format_previous_turn,
-                on_show_run_console=turn_ctx.on_show_run_console,
                 follow_up_tool_ids=wd_follow_up_tools,
                 follow_up_source_response=None,
                 agent_role_id=CODER_ROLE_ID,
@@ -467,12 +463,10 @@ class CoderChatHandler:
             if await try_run_auto_delegate_before_turn(
                 turn_ctx.delegate_request_ref,
                 user_message_for_workflow,
-                current_role_id=turn_ctx.profile,
+                current_role_id=turn_ctx.role_id,
             ):
                 turn_ctx.set_inline_status(None)
                 return
-
-            turn_ctx.prepare_stream_row()
 
             runtime = await get_runtime_for_prompts(
                 turn_ctx.graph_ref[0]
@@ -605,7 +599,7 @@ class CoderChatHandler:
                 ):
                     if (
                         delegate_to.strip().lower()
-                        != (turn_ctx.profile or "").strip().lower()
+                        != (turn_ctx.role_id or "").strip().lower()
                     ):
                         turn_ctx.delegate_request_ref[0] = (
                             delegate_output
@@ -737,7 +731,7 @@ class CoderChatHandler:
 
         meta = {
             "turn_id": turn_ctx.turn_id,
-            "agent": turn_ctx.agent_display,
+            "agent": turn_ctx.agent_label,
             "source": "agent_response",
             "workflow_response": {
                 "reply": display_content,
@@ -788,15 +782,14 @@ class CoderChatHandler:
             state=turn_ctx.state,
             token=turn_ctx.token,
             turn_id=turn_ctx.turn_id,
-            agent_role_id=turn_ctx.profile,
-            agent_label=turn_ctx.agent_display,
+            agent_role_id=turn_ctx.role_id,
+            agent_label=turn_ctx.agent_label,
             max_rounds=max_wd_follow_ups,
             wf_language_hint=wf_lang_cell,
             is_current_run=turn_ctx.is_current_run,
             toast=lambda message: turn_ctx.toast(message),
             set_inline_status=turn_ctx.set_inline_status,
             append_message=turn_ctx.append_message,
-            prepare_stream_row=turn_ctx.prepare_stream_row,
             normalize_user_message_for_workflow=(
                 normalize_user_message_for_workflow
             ),
@@ -806,7 +799,6 @@ class CoderChatHandler:
             run_workflow_streaming=turn_ctx.run_workflow_streaming,
             get_runtime_for_prompts=get_runtime_for_prompts,
             format_previous_turn=format_previous_turn,
-            replace_agent_message_row=turn_ctx.replace_agent_message_row,
             stream_buffer_ref=turn_ctx.stream_buffer_ref,
             agent_workflow_path=_CODER_WORKFLOW_PATH,
             record_llm_prompt_view=turn_ctx.record_llm_prompt_view,

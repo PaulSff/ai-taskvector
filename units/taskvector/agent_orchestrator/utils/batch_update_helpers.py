@@ -56,7 +56,7 @@ def make_publish_in_progress(
     batch_update_publisher: BatchUpdatePublisher | None,
     run_id: str | None = None,
     get_role_id: RoleIdGetter,
-    get_agent_display: AgentDisplayGetter,
+    get_agent_label: AgentDisplayGetter,
     get_turn_id: TurnIdGetter,
     get_messenger: MessengerGetter,
     get_follow_up_contexts: FollowUpContextsGetter,
@@ -88,7 +88,7 @@ def make_publish_in_progress(
         last_apply_result = get_last_apply_result()
         run_output = get_run_output()
         role_id = get_role_id()
-        agent_display = get_agent_display()
+        agent_label = get_agent_label()
         turn_id = get_turn_id()
         session_language = get_session_language()
         messenger = get_messenger()
@@ -97,8 +97,8 @@ def make_publish_in_progress(
         if role_id is None:
             raise ValueError("role_id is required")
 
-        if agent_display is None:
-            raise ValueError("agent_display is required")
+        if agent_label is None:
+            raise ValueError("agent_label is required")
 
         if turn_id is None:
             raise ValueError("turn_id is required")
@@ -124,7 +124,7 @@ def make_publish_in_progress(
         batch_update_publisher.publish_progress(
             status={"status": stage},
             role_id=role_id,
-            agent_display=agent_display,
+            agent_label=agent_label,
             display_content=str(
                 result.get("content_for_display")
                 or content

@@ -71,7 +71,6 @@ def build_post_apply_context(
         toast=proxy.toast,
         set_inline_status=proxy.set_inline_status,
         append_message=proxy.append_message,
-        prepare_stream_row=proxy.prepare_stream_row,
         normalize_user_message_for_workflow=(
             proxy.normalize_user_message_for_workflow
         ),
@@ -85,7 +84,6 @@ def build_post_apply_context(
             )
         ),
         format_previous_turn=proxy.format_previous_turn,
-        replace_agent_message_row=lambda _: None,
         stream_buffer_ref=[""],
         agent_workflow_path=agent_workflow_path,
         light_graph_mode=light_graph_mode,

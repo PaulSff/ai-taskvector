@@ -752,11 +752,6 @@ def get_auto_delegation_is_allowed() -> bool:
     )
 
 
-def get_auto_delegate_workflow_path() -> Path:
-    """Dispatcher role workflow: LLM analyses user message and calls delegate_request to hand off to the right role."""
-    return (REPO_ROOT / "agents/roles/dispatcher/dispatcher_workflow.json").resolve()
-
-
 def _coerce_llm_generation_options(
     temp_raw: Any,
     num_predict_raw: Any,

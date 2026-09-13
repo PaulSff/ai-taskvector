@@ -37,7 +37,6 @@ type ParserChainRunner = Callable[
 class ExecutionFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain."""
 
-    page: object | None
     graph_ref: list[ProcessGraph]
     state: ChatSessionState
     token: int
@@ -50,7 +49,6 @@ class ExecutionFollowUpContext:
     toast: Callable[[str], Awaitable[None]]
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
-    prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
     last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
@@ -145,7 +143,6 @@ class PostExecutionFollowUpContext:
     toast: Callable[[str], Awaitable[None]]
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
-    prepare_stream_row: Callable[[], None]
     normalize_user_message_for_workflow: Callable[[str], str]
     last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
@@ -159,7 +156,6 @@ class PostExecutionFollowUpContext:
         [list[dict[str, object]]],
         Awaitable[str],
     ]
-    replace_agent_message_row: Callable[[dict[str, object]], None]
     stream_buffer_ref: list[str]
     # apply_fn: Callable[[ProcessGraph], None]
     agent_workflow_path: Path | None = None

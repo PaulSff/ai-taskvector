@@ -10,6 +10,7 @@ from agents.chat.agent_workflow.helpers import (
     refresh_last_graph_apply_result,
 )
 from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
+from agents.chat.agent_workflow.workflow_inputs import default_wf_language_hint
 from agents.chat.context.language_control import (
     maybe_pin_session_language_from_workflow_response,
 )
@@ -18,7 +19,6 @@ from agents.chat.handlers.chat_turn_context import format_previous_turn
 from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
 from agents.chat.session.state import AgentChatHistory
 from agents.roles.types import RoleConfig
-from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,

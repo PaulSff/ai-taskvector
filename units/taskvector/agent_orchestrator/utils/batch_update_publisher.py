@@ -49,7 +49,7 @@ class BatchUpdatePublisher:
         *,
         status: Data,
         role_id: str,
-        agent_display: str,
+        agent_label: str,
         display_content: str,
         turn_id: str,
         source: str,
@@ -79,9 +79,9 @@ class BatchUpdatePublisher:
                 "message": {
                     "id": id,
                     "ts": ts if ts is not None else time.time(),
-                    "role": agent_display,
+                    "role": agent_label,
                     "content": display_content,
-                    "agent": agent_display,
+                    "agent": agent_label,
                     "turn_id": turn_id,
                     "source": source,
                     "workflow_response": {
@@ -110,7 +110,7 @@ class BatchUpdatePublisher:
             },
             "role": {
                 "role_id": role_id,
-                "name": agent_display,
+                "name": agent_label,
             },
             "error": error,
         }

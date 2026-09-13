@@ -19,6 +19,10 @@ from agents.chat.agent_workflow.helpers import get_optional_parser_output
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
 )
+from agents.chat.agent_workflow.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
+    default_wf_language_hint,
+)
 from agents.chat.context.context_mergers import (
     merge_preserved_apply_failure_into_response,
 )
@@ -38,15 +42,13 @@ from agents.chat.context.language_control import (
 )
 from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from agents.chat.context.todo_list_manager import get_summary_params
-from agents.chat.parser_follow_up.post_execution_messages import get_post_apply_messages
+from agents.chat.follow_up_executor.post_execution_messages import (
+    get_post_apply_messages,
+)
 from agents.chat.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
 )
 from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
-from agents.roles.workflow_designer.workflow_inputs import (
-    build_agent_workflow_initial_inputs,
-    default_wf_language_hint,
-)
 from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.clone_role.follow_ups import CLONE_ROLE_FOLLOW_UP_USER_MESSAGE
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
@@ -383,8 +385,6 @@ async def run_execution_follow_up_chain_async(
                 },
             )
 
-        ctx.prepare_stream_row()
-
         follow_up_msg = (
             ctx.normalize_user_message_for_workflow(
                 follow_up_msg
@@ -512,8 +512,12 @@ async def run_execution_follow_up_chain_async(
         )
 
         # run workflow streaming and invoke the callback
+        runner = ctx.run_workflow_streaming
+        if runner is None:
+            raise RuntimeError("run_workflow_streaming is not configured")
+
         if ctx.agent_workflow_path is None:
-            response = await ctx.run_workflow_streaming(
+            response = await runner(
                 run_agent_workflow,
                 initial_inputs,
                 follow_up_overrides,
@@ -521,7 +525,7 @@ async def run_execution_follow_up_chain_async(
                 _run_token=ctx.token,
             )
         else:
-            response = await ctx.run_workflow_streaming(
+            response = await runner(
                 run_agent_workflow,
                 initial_inputs,
                 follow_up_overrides,
@@ -653,9 +657,6 @@ async def run_post_execution_follow_up_chain_async(
             await _checkpoint(f"set_inline_status:{post_round}")
 
             try:
-                ctx.prepare_stream_row()
-                await _checkpoint(f"prepared_stream_row:{post_round}")
-
                 post_user_msg = ctx.normalize_user_message_for_workflow(post_user_msg)
 
                 # print("[phase2] DEBUG post_msg =", post_msg, flush=True)
@@ -742,7 +743,11 @@ async def run_post_execution_follow_up_chain_async(
                     f"before_run_workflow_streaming:{post_round}"
                 )
 
-                response = await ctx.run_workflow_streaming(
+                runner = ctx.run_workflow_streaming
+                if runner is None:
+                    raise RuntimeError("run_workflow_streaming is not configured")
+
+                response = await runner(
                     run_agent_workflow,
                     post_inputs,
                     ctx.overrides,
@@ -870,10 +875,6 @@ async def run_post_execution_follow_up_chain_async(
                                 "reply": content
                             }
 
-                        ctx.replace_agent_message_row(last)
-                        await _checkpoint(
-                            f"replaced_agent_row:{post_round}"
-                        )
                     else:
                         ctx.append_message(
                             "agent",
@@ -919,9 +920,7 @@ async def run_post_execution_follow_up_chain_async(
                 )
 
                 if post_errors and ctx.is_current_run(ctx.token):
-                    await _checkpoint(
-                        f"toast_workflow_error:{post_round}"
-                    )
+                    await _checkpoint(f"toast_workflow_error:{post_round}")
 
                     first_error = post_errors[0]
                     error_message = (
@@ -933,10 +932,10 @@ async def run_post_execution_follow_up_chain_async(
                         else str(first_error)
                     )
 
-                    await ctx.toast(
-                        f"Workflow error: {error_message[:120]}"
-                    )
-                    await _checkpoint(f"toast_sent:{post_round}")
+                    toast = ctx.toast
+                    if toast is not None:
+                        await toast(f"Workflow error: {error_message[:120]}")
+                        await _checkpoint(f"toast_sent:{post_round}")
 
             except (KeyError, TypeError, IndexError):
                 await _checkpoint(f"round_exception:{post_round}")

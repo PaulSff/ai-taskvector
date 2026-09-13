@@ -5,15 +5,17 @@ from __future__ import annotations
 import asyncio
 from typing import cast
 
+from agents.roles.registry import DISPATCHER_ROLE_ID
+from agents.roles.workflow_path import get_role_chat_workflow_path
+from core.schemas.primitives import Data
 from gui.components.settings import (
-    get_auto_delegate_workflow_path,
     get_auto_delegation_is_allowed,
 )
 from runtime.run import run_workflow
 
 
 async def try_run_auto_delegate_before_turn(
-    delegate_request_ref: list[dict[str, object] | None] | None,
+    delegate_request_ref: list[Data | None] | None,
     user_message_for_workflow: str,
     *,
     current_role_id: str | None = None,
@@ -27,7 +29,7 @@ async def try_run_auto_delegate_before_turn(
     if delegate_request_ref is None or not get_auto_delegation_is_allowed():
         return False
 
-    ad_path = get_auto_delegate_workflow_path()
+    ad_path = get_role_chat_workflow_path(DISPATCHER_ROLE_ID)
 
     if not ad_path.is_file():
         return False

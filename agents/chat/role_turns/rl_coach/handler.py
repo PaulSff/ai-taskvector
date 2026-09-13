@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.chat.agent_workflow import get_runtime_for_prompts
+from agents.chat.agent_workflow.workflow_inputs import default_wf_language_hint
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
 )
@@ -14,13 +15,14 @@ from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
 from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from agents.chat.context.role_turn_context import RoleChatTurnContext
+from agents.chat.follow_up_executor import (
+    run_execution_follow_up_chain_async,
+)
 from agents.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
-)
-from agents.chat.parser_follow_up import (
-    run_execution_follow_up_chain_async,
 )
 from agents.chat.role_turns.rl_coach.workflow_runner import (
     build_rl_coach_unit_param_overrides,
@@ -38,14 +40,12 @@ from agents.roles.rl_coach.workflow_inputs import (
     build_rl_coach_agent_aligned_initial_inputs,
     build_rl_coach_training_inject_updates,
 )
-from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
 
-from ..context import RoleChatTurnContext
 from ..turn_edits import set_commenter_for_new_comments
 
 _RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID).resolve()
@@ -130,7 +130,7 @@ class RlCoachChatHandler:
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
-                agent_label=turn_ctx.agent_display,
+                agent_label=turn_ctx.agent_label,
                 follow_up_contexts=follow_up_contexts_this_turn,
                 max_rounds=max_follow_ups,
                 wf_language_hint=wf_lang_cell,
@@ -202,7 +202,7 @@ class RlCoachChatHandler:
                 content,
                 meta={
                     "turn_id": turn_ctx.turn_id,
-                    "agent": turn_ctx.agent_display,
+                    "agent": turn_ctx.agent_label,
                     "source": "agent_response",
                     "workflow_response": {"reply": content},
                 },
@@ -347,7 +347,7 @@ class RlCoachChatHandler:
 
         meta = {
             "turn_id": turn_ctx.turn_id,
-            "agent": turn_ctx.agent_display,
+            "agent": turn_ctx.agent_label,
             "source": "agent_response",
             "workflow_response": {
                 "reply": content,

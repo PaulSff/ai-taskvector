@@ -231,8 +231,8 @@ def _edits_summary(
                 parts.append("add_code_block ?")
 
         elif action == "add_comment":
-            comment_id = edit.get("comment_id", "?")
-            parts.append(f"add_comment {comment_id}")
+            info = edit.get("info", "?")
+            parts.append(f"add_comment {info}")
 
         elif action == "remove_comment":
             parts.append(

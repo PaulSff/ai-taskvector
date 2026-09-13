@@ -19,11 +19,11 @@ def build_self_correction_retry_inputs(
     light_graph_mode: bool = False,
 ) -> WorkflowInputs:
     # lazy imports to break cycle
-    from agents.prompts import WORKFLOW_DESIGNER_RETRY_USER
-    from agents.roles.workflow_designer.workflow_inputs import (
+    from agents.chat.agent_workflow.workflow_inputs import (
         build_agent_workflow_initial_inputs,
         default_wf_language_hint,
     )
+    from agents.prompts import WORKFLOW_DESIGNER_RETRY_USER
 
     err_str = str(failed_apply_result.error or "Unknown")[:500]
 

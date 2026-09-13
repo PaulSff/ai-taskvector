@@ -9,6 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import cast
 
+from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.primitives import (
     Data,
@@ -127,35 +128,20 @@ def find_non_jsonable(
 # ---- Serialize initial inputs ----
 def _serialize_initial_inputs(
     initial_inputs: WorkflowInputs | None,
-) -> WorkflowInputs| None:
+) -> JsonObject | None:
     if initial_inputs is None:
         return None
 
-    serialized = deepcopy(initial_inputs)
+    normalized = to_json_value(initial_inputs)
 
-    inject_context = serialized.get("inject_context")
-    if not isinstance(inject_context, dict):
-        return serialized
-
-    context_data = inject_context.get("data")
-    if not isinstance(context_data, dict):
-        return serialized
-
-    graph = context_data.get("graph")
-    if graph is None:
-        return serialized
-
-    if not isinstance(graph, ProcessGraph):
+    if not isinstance(normalized, dict):
         raise TypeError(
-            "initial_inputs['inject_context']['data']['graph'] must be ProcessGraph, got {type(graph).__name__}"
+            "initial_inputs must normalize to a JSON object, "
+            f"got {type(normalized).__name__}"
         )
 
-    context_data["graph"] = graph.model_dump(
-        mode="json",
-        by_alias=True,
-    )
+    return normalized
 
-    return serialized
 
 
 # ------- Publish the orchestration workflow job to workflow-server -------

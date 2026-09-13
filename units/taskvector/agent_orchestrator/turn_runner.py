@@ -8,73 +8,44 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-import traceback
-from collections.abc import Mapping
-from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
-from pydantic import ValidationError
-
 from agents.chat.agent_workflow import AgentWorkflowResponse
-from agents.chat.context.follow_up_context import (
-    PostEditFlags,
+from agents.chat.agent_workflow.wf_response_schema import ProgressResult
+from agents.chat.context.role_turn_context import RoleChatTurnContext
+from agents.chat.handlers.chat_turn_context import (
+    normalize_user_message_for_workflow,
 )
-from agents.chat.context.todo_list_manager.helpers import graph_has_any_open_tasks
-from agents.chat.parser_follow_up.chain import (
-    run_execution_follow_up_chain_async,
-    run_post_execution_follow_up_chain_async,
-)
-from agents.chat.session.state import AgentChatHistory
+from agents.chat.role_turns.registry import get_role_chat_handler
+from agents.chat.session.state import AgentChatHistory, ChatSessionState
+from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 from core.normalizer.normalizer import graph_to_json_object
-from core.normalizer.shared import as_workflow_inputs, to_json_value
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import (
-    COMMENT_ACTIONS,
-    IMPORT_WORKFLOW_ACTION,
-    TODO_ACTIONS,
-    AgentApplyWorkflowEditsResult,
-    GraphEdit,
-)
-from core.schemas.primitives import Data, WorkflowInputs
+from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.primitives import Data
 from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
-from services.logging import setup_colored_logging
-from units.taskvector.agent_orchestrator.utils.follow_up_context_builder import (
-    build_parser_follow_up_context,
+from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
+    ProgressResponse,
+    make_publish_in_progress,
 )
-from units.taskvector.agent_orchestrator.utils.graph_augmenter import (
-    apply_and_augment_graph,
+from units.taskvector.agent_orchestrator.utils.batch_update_publisher import (
+    BatchUpdatePublisher,
 )
-from units.taskvector.agent_orchestrator.utils.graph_converter import coerce_graph
+from units.taskvector.agent_orchestrator.utils.graph_hasher import graph_md5
 from units.taskvector.agent_orchestrator.utils.ids import new_id
-from units.taskvector.agent_orchestrator.utils.inputs_builder import (
-    build_initial_inputs,
-)
-from units.taskvector.agent_orchestrator.utils.post_apply_context_builder import (
-    build_post_apply_context,
+from units.taskvector.agent_orchestrator.utils.merge_final_graph import (
+    merge_latest_graph_for_final_output,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (
     SessionProxy,
-)
-from units.taskvector.agent_orchestrator.utils.self_correction_driver import (
-    run_self_correction_retry_async,
+    TurnRuntimeProxy,
 )
 from units.taskvector.agent_orchestrator.utils.time import now_ts
 
-from .utils.batch_update_helpers import (
-    ProgressResponse,
-    ProgressResult,
-    make_publish_in_progress,
-)
-from .utils.batch_update_publisher import BatchUpdatePublisher
-from .utils.graph_hasher import graph_md5
-from .utils.merge_final_graph import merge_latest_graph_for_final_output
-
-logger = setup_colored_logging(logging.DEBUG)
-# ─── Main entry point ─────────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
 
 
 async def run_orchestrator_turn(
@@ -84,129 +55,34 @@ async def run_orchestrator_turn(
     batch_update_publisher: BatchUpdatePublisher | None = None,
     run_id: str | None,
 ) -> Data:
-    from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
-    from agents.chat.context.language_control import (
-        finalize_workflow_designer_turn_session_language,
-        maybe_pin_session_language_from_workflow_response,
-    )
-    from agents.chat.handlers.chat_turn_context import (
-        normalize_user_message_for_workflow,
-    )
-    from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
-    from agents.chat.utils.workflow_output_normalizer import (
-        apply_meta_with_formulas_calc_tool_status,
-        formulas_calc_display_appendix,
-    )
-    from agents.roles.registry import (
-        WORKFLOW_DESIGNER_ROLE_ID,
-        get_role,
-    )
-    from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-    from runtime.run import WorkflowTimeoutError
+    """
+    Role-handler orchestration layer.
+    """
 
-    # --- Safe defaults for the batch publisher ---
-    response = ProgressResponse()
-    result: ProgressResult = {}
-    content: str = ""
-    apply_meta: Data = {}
+    run_output: Data = {}
 
-    # Capture fallback graph so we can still assemble output on errors
     raw_graph = context.get("graph")
-
     if raw_graph is None:
         raise ValueError("Missing process graph")
 
-    graph: ProcessGraph = ProcessGraph.model_validate(raw_graph)
+    graph = ProcessGraph.model_validate(raw_graph)
 
-    fallback_graph: ProcessGraph | None = graph
-
-    followup_error: Data | None = None
-
-    def _get_progress_response() -> ProgressResponse | None:
-        if isinstance(response, dict):
-            return cast(ProgressResponse, response)
-        return None
-
-    def _get_run_output() -> Data:
-        if not isinstance(response, Mapping):
-            return {}
-
-        run_output = response.get("run_output")
-        return run_output if isinstance(run_output, dict) else {}
-
-
-    _publish_in_progress = make_publish_in_progress(
-        batch_update_publisher=batch_update_publisher,
-        run_id=run_id,  # passed through from agent_orchestrator
-        get_role_id=lambda: role_id,
-        get_agent_display=lambda: agent_display,
-        get_turn_id=lambda: turn_id,
-        get_messenger=lambda: messenger,
-        get_follow_up_contexts=lambda: follow_up_contexts,
-        get_graph_ref=lambda: graph_ref[0],
-        get_last_apply_result=lambda: last_apply_result_ref[0],
-        get_result=lambda: result,
-        get_content=lambda: content,
-        get_response=_get_progress_response,
-        get_apply_meta=lambda: apply_meta,
-        get_session_language=lambda: session.session_language,
-        get_run_output=_get_run_output,
-        get_source=lambda: "agent_response",
-    )
-
-    # --- Logging ---
-    async def _checkpoint(name: str) -> None:
-        # replace print with your logger if available
-        print(f"[orchestrator] checkpoint: {name} ts={time.time():.3f}")
-
-    async def _await_with_log(name: str, awaitable):
-        t0 = time.time()
-        try:
-            await _checkpoint(f"enter:{name}")
-            res = await awaitable
-            print(f"[orchestrator] done:{name} dt={time.time() - t0:.3f}s")
-            return res
-        except Exception as exc:
-            print(
-                f"[orchestrator] FAIL:{name} dt={time.time() - t0:.3f}s exc={type(exc).__name__}: {exc}"
-            )
-            traceback.print_exc()
-            raise
-
-    # ── Inline status ──
-    def _maybe_thinking_on() -> None:
-        try:
-            cb = stream_callback
-            if callable(cb):
-                cb(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
-        except (TypeError, ValueError):
-            # bad arguments or chunk type mismatch
-            return
-
-    def _maybe_thinking_off() -> None:
-        try:
-            cb = stream_callback
-            if callable(cb):
-                cb(inline_status_stream_chunk(None))
-        except (TypeError, ValueError):
-            return
-
-    # ── Unpack context ──
     user_message = normalize_user_message_for_workflow(
-        context.get("user_message") or ""
+        context.get("user_message") or "",
     )
+
     messenger = str(context.get("messenger") or "")
+
     role_id = (
         str(
             context.get("role_id")
             or context.get("role_hint")
-            or WORKFLOW_DESIGNER_ROLE_ID
+            or WORKFLOW_DESIGNER_ROLE_ID,
         ).strip()
         or WORKFLOW_DESIGNER_ROLE_ID
     )
 
     raw_history = context.get("history")
-
     history: AgentChatHistory = (
         list(raw_history)
         if isinstance(raw_history, list)
@@ -214,45 +90,102 @@ async def run_orchestrator_turn(
     )
 
     session_language = str(context.get("session_language") or "")
-    raw_last_apply_result = context.get("last_apply_result")
 
+    raw_last_apply_result = context.get("last_apply_result")
     last_apply_result: AgentApplyWorkflowEditsResult | None = (
         AgentApplyWorkflowEditsResult.model_validate(raw_last_apply_result)
         if raw_last_apply_result is not None
         else None
     )
 
-    initial_graph_md5 = graph_md5(graph)
     raw_recent_changes = context.get("recent_changes")
-
     recent_changes: str | None = (
         raw_recent_changes
         if isinstance(raw_recent_changes, str)
         else None
     )
 
-    coding_is_allowed = bool(context.get("coding_is_allowed", True))
-    contribution_is_allowed = bool(context.get("contribution_is_allowed", False))
+    coding_is_allowed = bool(
+        context.get("coding_is_allowed", True),
+    )
+    contribution_is_allowed = bool(
+        context.get("contribution_is_allowed", False),
+    )
 
-    timeout_s = context.get("timeout_s")
-    if timeout_s is None:
-        timeout_s = context.get("orchestrator_timeout_s")
+    initial_graph_md5 = graph_md5(graph)
 
-    # ── Mutable references ──
     graph_ref: list[ProcessGraph] = [graph]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None] = [last_apply_result]
-    wf_language_hint: list[str] = [default_wf_language_hint(session_language)]
-    session = SessionProxy(session_language=session_language, history=history)
+    last_apply_result_ref: list[
+        AgentApplyWorkflowEditsResult | None
+    ] = [last_apply_result]
 
-    # ── Role resolution ──
+    content_ref: list[str] = [""]
+    result_ref: list[ProgressResult] = [
+        {
+            "kind": "parse_error",
+            "content_for_display": "",
+            "apply_result": None,
+            "edits": [],
+        }
+    ]
+    stream_buffer_ref: list[str] = [""]
+    response_ref: list[AgentWorkflowResponse | None] = [None]
+    follow_up_contexts_ref: list[list[str]] = [[]]
+    apply_meta_ref: list[Data] = [{}]
+    error_ref: list[Data | None] = [None]
+
+
+    def _maybe_thinking_on() -> None:
+        callback = stream_callback
+        if not callable(callback):
+            return
+
+        try:
+            callback(
+                inline_status_stream_chunk(
+                    INLINE_STATUS_FOR_STREAMING,
+                ),
+            )
+        except (TypeError, ValueError):
+            return
+
+    def _maybe_thinking_off() -> None:
+        callback = stream_callback
+        if not callable(callback):
+            return
+
+        try:
+            callback(inline_status_stream_chunk(None))
+        except (TypeError, ValueError):
+            return
+
+    def get_progress_response() -> ProgressResponse | None:
+        response = response_ref[0]
+
+        if response is None:
+            return None
+
+        return {
+            "llm_user_message": getattr(
+                response,
+                "llm_user_message",
+                None,
+            ),
+            "llm_system_prompt": getattr(
+                response,
+                "llm_system_prompt",
+                None,
+            ),
+        }
+
     try:
         role_config = get_role(role_id)
-    except (FileNotFoundError, KeyError, ValueError, TypeError):
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
         role_id = WORKFLOW_DESIGNER_ROLE_ID
 
         try:
             role_config = get_role(role_id)
-        except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
+        except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
             return {
                 "status": None,
                 "token": None,
@@ -264,555 +197,263 @@ async def run_orchestrator_turn(
                 },
             }
 
-    agent_display = role_config.role_name or role_id
+    agent_label = role_config.role_name or role_id
 
+    handler = get_role_chat_handler(role_id)
+    if handler is None:
+        raise ValueError(
+            f"No chat handler configured for role: {role_id}",
+        )
 
-    # ── graph_summary override ──
-    try:
-        from agents.chat.context.todo_list_manager import get_summary_params
+    # The handler owns this reference when delegation is enabled.
+    delegate_request_ref: list[Data | None] | None = cast(
+        list[Data | None] | None,
+        context.get("delegate_request_ref"),
+    )
 
-        graph_value = coerce_graph(graph)
+    if (
+        delegate_request_ref is None
+        and bool(context.get("auto_delegation_is_allowed", False))
+    ):
+        delegate_request_ref = [None]
 
-        graph_for_summary: ProcessGraph | None = (
-            ProcessGraph.model_validate(graph_value)
-            if graph_value is not None
+    raw_token = context.get("token")
+
+    if raw_token is None:
+        token = 0
+    elif isinstance(raw_token, bool):
+        # Prevent True/False from being silently treated as 1/0.
+        raise TypeError("Context field 'token' must be an integer")
+    elif isinstance(raw_token, int):
+        token = raw_token
+    elif isinstance(raw_token, str):
+        try:
+            token = int(raw_token)
+        except ValueError as exc:
+            raise TypeError(
+                "Context field 'token' must contain an integer"
+            ) from exc
+    else:
+        raise TypeError(
+            "Context field 'token' must be an integer or numeric string"
+        )
+
+    raw_state = context.get("state")
+
+    if isinstance(raw_state, ChatSessionState):
+        state = raw_state
+
+    elif isinstance(raw_state, dict):
+        state_history = raw_state.get("history")
+
+        state_history_value: AgentChatHistory = (
+            list(state_history)
+            if isinstance(state_history, list)
+            else history
+        )
+
+        raw_created_at = raw_state.get("created_at")
+        created_at = (
+            raw_created_at
+            if isinstance(raw_created_at, str)
+            else ""
+        )
+
+        raw_chat_path = raw_state.get("chat_path")
+        chat_path = (
+            Path(raw_chat_path)
+            if isinstance(raw_chat_path, str) and raw_chat_path
             else None
         )
 
-        raw_overrides = role_config.chat_overrides
-
-        if isinstance(raw_overrides, dict):
-            overrides: dict[str, object] = dict(raw_overrides)
-        else:
-            overrides = {}
-
-        if role_config.light_graph_mode:
-            overrides["graph_summary"] = {
-                "include_code_block_source": False,
-                "include_structure": False,
-            }
-        else:
-            overrides["graph_summary"] = get_summary_params(
-                coding_is_allowed,
-                graph_for_summary,
-            )
-
-        role_config = replace(
-            role_config,
-            chat_overrides=overrides,
+        state = ChatSessionState(
+            history=state_history_value,
+            busy=bool(raw_state.get("busy", False)),
+            has_sent_any=bool(raw_state.get("has_sent_any", False)),
+            session_id=str(raw_state.get("session_id") or ""),
+            created_at=created_at,
+            chat_path=chat_path,
+            session_language=str(
+                raw_state.get("session_language") or "",
+            ),
         )
 
-    except (ImportError, KeyError, TypeError, ValueError, ValidationError):
-        pass
+    else:
+        raise TypeError(
+            "Context field 'state' must be ChatSessionState or a state mapping, "
+            f"got {type(raw_state).__name__}",
+        )
 
-    turn_id = new_id()
-    follow_up_contexts: list[str] = []
+    # The parsed state is the authoritative source for session data.
+    history = state.history
+    session_language = state.session_language or session_language
 
-    light_graph_mode = role_config.light_graph_mode
+    raw_turn_id = context.get("turn_id")
 
-    # ── Build initial workflow inputs ──
-    initial_inputs = await build_initial_inputs(
-        user_message,
-        graph,
-        last_apply_result,
-        recent_changes,
-        session_language,
-        history,
-        wf_language_hint[0],
-        coding_is_allowed=coding_is_allowed,
-        contribution_is_allowed=contribution_is_allowed,
-        light_graph_mode=light_graph_mode,
+    if not isinstance(raw_turn_id, str) or not raw_turn_id.strip():
+        raise TypeError(
+            "Context field 'turn_id' must be a non-empty string",
+        )
+
+    turn_id = raw_turn_id.strip()
+
+    session = SessionProxy(
+        session_language=session_language,
+        history=history,
     )
 
-    # ── Run main workflow ──
+    runtime = TurnRuntimeProxy(
+        graph_ref=graph_ref,
+        stream_callback=stream_callback,
+        stream_buffer_ref=stream_buffer_ref,
+        state=state,
+        token=token,
+        recent_changes=recent_changes,
+    )
+
+    _publish_in_progress = make_publish_in_progress(
+        batch_update_publisher=batch_update_publisher,
+        run_id=run_id,
+        get_role_id=lambda: role_id,
+        get_agent_label=lambda: agent_label,
+        get_turn_id=lambda: turn_id,
+        get_messenger=lambda: messenger,
+        get_follow_up_contexts=lambda: follow_up_contexts_ref[0],
+        get_graph_ref=lambda: graph_ref[0],
+        get_last_apply_result=lambda: last_apply_result_ref[0],
+        get_result=lambda: result_ref[0],
+        get_content=lambda: content_ref[0],
+        get_response=get_progress_response,
+        get_apply_meta=lambda: apply_meta_ref[0],
+        get_session_language=lambda: session.session_language,
+        get_run_output=lambda: (
+            getattr(response_ref[0], "run_output", {})
+            if response_ref[0] is not None
+            else {}
+        ),
+        get_source=lambda: "agent_response",
+    )
+
+    turn_context: Data = {
+        **context,
+        "state": state,
+        "user_message": user_message,
+        "recent_changes": recent_changes,
+        "messenger": messenger,
+        "role_id": role_id,
+        "provider": str(context.get("provider") or ""),
+        "cfg": role_config,
+        "auto_delegation_is_allowed": bool(
+            context.get("auto_delegation_is_allowed", False),
+        ),
+        "coding_is_allowed": coding_is_allowed,
+        "contribution_is_allowed": contribution_is_allowed,
+
+        "set_graph": runtime.set_graph,
+        "is_current_run": runtime.is_current_run,
+        "toast": runtime.toast,
+        "set_inline_status": runtime.set_inline_status,
+        "append_message": runtime.append_message,
+        "persist_history_debounced": runtime.persist_history_debounced,
+        "workflow_debug_log": runtime.workflow_debug_log,
+        "run_workflow_streaming": runtime.run_workflow_streaming,
+
+        "stream_buffer_ref": runtime.stream_buffer_ref,
+        "get_recent_changes": runtime.get_recent_changes,
+    }
+
+    turn_ctx = RoleChatTurnContext.from_context(
+        turn_context,
+        graph_ref=graph_ref,
+        token=token,
+        turn_id=turn_id,
+        agent_label=agent_label,
+        last_apply_result_ref=last_apply_result_ref,
+        delegate_request_ref=delegate_request_ref,
+        content_ref=content_ref,
+        result_ref=result_ref,
+        response_ref=response_ref,
+        follow_up_contexts_ref=follow_up_contexts_ref,
+        apply_meta_ref=apply_meta_ref,
+        error_ref=error_ref,
+    )
+
     try:
         _maybe_thinking_on()
 
-        raw_overrides = role_config.chat_overrides
-
-        param_overrides: WorkflowInputs | None = (
-            as_workflow_inputs(to_json_value(raw_overrides))
-            if raw_overrides is not None
-            else None
+        await handler.run_turn(
+            turn_ctx,
+            message_for_workflow=user_message,
         )
 
-        workflow_path_value = role_config.chat_workflow
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        raise
 
-        if workflow_path_value is not None and not isinstance(
-            workflow_path_value,
-            (str, Path),
-        ):
-            raise TypeError("chat_workflow must be a string, Path, or None")
-
-        workflow_path: str | Path | None = workflow_path_value
-
-        raw_timeout = timeout_s
-
-        if raw_timeout is not None and not isinstance(
-            raw_timeout,
-            (int, float),
-        ):
-            raise TypeError("timeout_s must be a number or None")
-
-        timeout: float | None = (
-            float(raw_timeout)
-            if raw_timeout is not None
-            else None
-        )
-        # run the agent role workflow
-        if timeout_s is not None:
-            response = await _await_with_log(
-                "run_agent_workflow(timed)",
-                asyncio.wait_for(
-                    run_agent_workflow(
-                        initial_inputs,
-                        param_overrides,
-                        None,
-                        stream_callback,
-                        workflow_path=workflow_path,
-                    ),
-                    timeout=timeout,
-                ),
-            )
-
-            # --- response normalization ---
-            if asyncio.iscoroutine(response):
-                response = await response
-
-            if isinstance(response, AgentWorkflowResponse):
-                normalized_response = response
-            elif isinstance(response, Mapping):
-                normalized_response = AgentWorkflowResponse.from_dict(response)
-            else:
-                raise TypeError(
-                    "Expected AgentWorkflowResponse or mapping, "
-                    f"got {type(response).__name__}"
-                )
-
-            response = normalized_response
-            # ---------------------------------------------------------------------
-        else:
-            response = await _await_with_log(
-                "run_agent_workflow",
-                run_agent_workflow(
-                    initial_inputs,
-                    param_overrides,
-                    None,
-                    stream_callback,
-                    workflow_path=workflow_path,
-                ),
-            )
-            # --- response normalization ---
-            if asyncio.iscoroutine(response):
-                response = await response
-
-            if isinstance(response, AgentWorkflowResponse):
-                normalized_response = response
-            elif isinstance(response, Mapping):
-                normalized_response = AgentWorkflowResponse.from_dict(response)
-            else:
-                raise TypeError(
-                    "Expected AgentWorkflowResponse or mapping, "
-                    f"got {type(response).__name__}"
-                )
-
-            response = normalized_response
-            # ---------------------------------------------------------------------
-
-    except WorkflowTimeoutError as ex:
-        _maybe_thinking_off()
-
-        timeout_s2 = getattr(ex, "timeout_s", 300)
-        content = (
-            f"(Request timed out after {timeout_s2:.0f}s. "
-            "Try again or check that the LLM/service is responding.)"
+    except Exception as exc:
+        logger.exception(
+            "[orchestrator] role handler failed",
+            extra={
+                "role_id": role_id,
+                "turn_id": turn_id,
+            },
         )
 
-        result = {
-            "kind": "parse_error",
-            "content_for_display": content,
-            "apply_result": None,
-            "edits": [],
-        }
-
-        last_apply_result_ref[0] = None
-        await _checkpoint("after:WorkflowTimeoutError")
-
-        followup_error = {
-            "type": "WorkflowTimeoutError",
-            "error": str(ex),
-        }
-
-    except (ValueError, TypeError, RuntimeError) as exc:
-        _maybe_thinking_off()
-
-        content = f"(Workflow error: {exc})"
-        result = {
-            "kind": "parse_error",
-            "content_for_display": content,
-            "apply_result": None,
-            "edits": [],
-        }
-
-        last_apply_result_ref[0] = None
-        await _checkpoint("after:WorkflowException")
-
-        followup_error = {
+        error_ref[0] = {
             "type": type(exc).__name__,
             "error": str(exc),
         }
 
+        content_ref[0] = (
+            f"(Role handler error: {type(exc).__name__}: {exc})"
+        )
 
-    else:
-        # ---stop inline status "Thinking" ---
+        result_ref[0] = {
+            "kind": "parse_error",
+            "content_for_display": content_ref[0],
+            "apply_result": None,
+            "edits": [],
+        }
+
+        last_apply_result_ref[0] = None
+
+    finally:
         _maybe_thinking_off()
 
-        try:
-            await _checkpoint("before:maybe_pin_session_language")
-            maybe_pin_session_language_from_workflow_response(session, response)
-            wf_language_hint[0] = default_wf_language_hint(session.session_language)
-            await _checkpoint("after:maybe_pin_session_language")
+    delegate_request = (
+        turn_ctx.delegate_request_ref[0]
+        if turn_ctx.delegate_request_ref is not None
+        else None
+    )
 
-            # ── Check delegation ──
-            await _checkpoint("before:delegate_check")
+    if (
+        isinstance(delegate_request, dict)
+        and delegate_request.get("ok") is True
+    ):
+        delegate_to = str(
+            delegate_request.get("delegate_to") or "",
+        ).strip().lower()
 
-            def _response_field(name: str) -> object:
-                if isinstance(response, Mapping):
-                    return response.get(name)
-
-                return getattr(response, name, None)
-
-            dr_out = _response_field("delegate_request")
-            if isinstance(dr_out, dict) and dr_out.get("ok") is True:
-                dt = str(dr_out.get("delegate_to") or "").strip().lower()
-                if dt and dt != role_id.lower():
-                    # publish batch update
-                    _publish_in_progress(
-                            stage="turn:delegated",
-                            kind=result.get("kind"),
-                        )
-                    await _checkpoint("delegating:early_return")
-                    return {
-                        "status": None,
-                        "token": None,
-                        "message": {
-                            "type": "delegate",
-                            "delegate_to": dt,
-                            "original_role": role_id,
-                        },
-                        "role": {"role_id": dt, "name": dt},
-                        "error": None,
-                    }
-            await _checkpoint("after:delegate_check")
-
-            _maybe_thinking_on()
-
-            if asyncio.iscoroutine(response):
-                response = await response
-
-
-            await _checkpoint("before:build_parser_follow_up_context")
-            parser_ctx = build_parser_follow_up_context(
-                session=session,
-                role_id=role_id,
-                role_config=role_config,
-                history=history,
-                turn_id=turn_id,
-                agent_display=agent_display,
-                follow_up_contexts=follow_up_contexts,
-                stream_cb=stream_callback,
-                graph_ref=graph_ref,
-                last_apply_result_ref=last_apply_result_ref,
-                wf_language_hint=wf_language_hint,
-                recent_changes=recent_changes,
-            )
-
-            async def _parser_chain_runner_async(
-                resp: AgentWorkflowResponse,
-            ) -> AgentWorkflowResponse:
-                await _checkpoint("parser_chain_runner:enter")
-
-                chained = await run_execution_follow_up_chain_async(parser_ctx, resp)
-
-                await _checkpoint("parser_chain_runner:done")
-                return chained if chained is not None else resp
-
-
-            response = await _await_with_log(
-                "parser_follow_up_chain",
-                _parser_chain_runner_async(response),
-            )
-
-            await _checkpoint("before:build_content_result")
-
-            merged_response = response.merged_response
-
-            raw_reply: object = merged_response.reply
-
-            if isinstance(raw_reply, dict) and "action" in raw_reply:
-                raw_reply = raw_reply.get("action") or ""
-
-            content = (
-                raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
-            ).strip() or "(No response from model.)"
-
-            result = cast(ProgressResult, merged_response.result)
-
-            raw_edits = result.get("edits") or []
-
-            edits = [
-                edit if isinstance(edit, GraphEdit)
-                else GraphEdit.model_validate(edit)
-                for edit in raw_edits
-            ]
-
-            await _checkpoint("before:set_commenter_for_new_comments")
-            await set_commenter_for_new_comments(
-                edits,
-                agent_role_id=role_id,
-            )
-
-            result["edits"] = edits
-
-            last_apply_result = merged_response.result.get("last_apply_result")
-
-            raw_apply_result: object = (
-                merged_response.status
-                or last_apply_result
-                or result.get("apply_result")
-            )
-
-            apply_result: AgentApplyWorkflowEditsResult | None = None
-
-            if isinstance(raw_apply_result, AgentApplyWorkflowEditsResult):
-                apply_result = raw_apply_result
-            elif isinstance(raw_apply_result, dict):
-                try:
-                    apply_result = AgentApplyWorkflowEditsResult.model_validate(
-                        raw_apply_result
-                    )
-                except ValidationError:
-                    apply_result = None
-
-            result["apply_result"] = apply_result
-
-            ar0 = result.get("apply_result")
-
-            if (
-                result.get("kind") != "apply_failed"
-                and ar0 is not None
-                and ar0.attempted
-                and not ar0.success
-            ):
-                result["kind"] = "apply_failed"
-
-            result["content_for_display"] = content
-
-            last_apply_result_ref[0] = apply_result
-
-            await _checkpoint("after:build_content_result")
-
+        if delegate_to and delegate_to != role_id.lower():
             _publish_in_progress(
-                stage="turn:workflow_completed",
-                kind=result.get("kind"),
+                stage="turn:delegated",
+                kind=result_ref[0].get("kind"),
             )
 
-            await _checkpoint("before:handle_kind_branch")
-
-            if result.get("kind") == "applied":
-                await _checkpoint("branch:applied")
-
-                raw_graph = result.get("graph")
-
-                if raw_graph is None:
-                    logger.warning(
-                        "[orchestrator] Applied result has no graph; skipping graph application"
-                    )
-                else:
-                    graph_to_apply = (
-                        raw_graph
-                        if isinstance(raw_graph, ProcessGraph)
-                        else ProcessGraph.model_validate(raw_graph)
-                    )
-
-                    raw_edits = result.get("edits") or []
-                    edits = [
-                        edit
-                        if isinstance(edit, GraphEdit)
-                        else GraphEdit.model_validate(edit)
-                        for edit in raw_edits
-                    ]
-
-                    applied_graph, _supplements, _v_err = await _await_with_log(
-                        "apply_and_augment_graph",
-                        apply_and_augment_graph(
-                            graph_to_apply,
-                            edits,
-                            {"coding_is_allowed": coding_is_allowed},
-                            graph_ref,
-                            last_apply_result_ref,
-                        ),
-                    )
-
-                    if applied_graph is not None:
-                        result["graph"] = applied_graph
-                        result["edits"] = edits
-
-                        _publish_in_progress(
-                            stage="turn:graph_applied",
-                            kind=result.get("kind"),
-                        )
-
-                    content_holder = [content]
-                    await _checkpoint("before:build_post_apply_context")
-                    post_ctx = build_post_apply_context(
-                        session=session,
-                        role_id=role_id,
-                        role_config=role_config,
-                        turn_id=turn_id,
-                        graph_ref=graph_ref,
-                        last_apply_result_ref=last_apply_result_ref,
-                        wf_language_hint=wf_language_hint,
-                        recent_changes=recent_changes,
-                    )
-                    await _checkpoint("after:build_post_apply_context")
-
-                    _todo_edits = [
-                        edit
-                        for edit in edits
-                        if isinstance(edit, dict) and edit.get("action") in TODO_ACTIONS
-                    ]
-
-                    had_todo_followup = any(
-                        edit.get("action") != "add_todo_list"
-                        for edit in _todo_edits
-                    ) or graph_has_any_open_tasks(applied_graph)
-
-                    flags = PostEditFlags(
-                        had_import_workflow=any(
-                            isinstance(edit, dict)
-                            and edit.get("action") == IMPORT_WORKFLOW_ACTION
-                            for edit in edits
-                        ),
-                        had_todo=had_todo_followup,
-                        had_add_comment=any(
-                            isinstance(edit, dict)
-                            and edit.get("action") in COMMENT_ACTIONS
-                            for edit in edits
-                        ),
-                    )
-
-                    async def _parser_chain_for_post(r: AgentWorkflowResponse) -> AgentWorkflowResponse:
-                        return await _parser_chain_runner_async(r)
-
-                    await _checkpoint("before:run_post_execution_follow_up_chain_async")
-                    await _await_with_log(
-                        "post_apply_follow_up_rounds_async",
-                        run_post_execution_follow_up_chain_async(
-                            post_ctx,
-                            result=result,
-                            content_holder=content_holder,
-                            parser_chain_runner=_parser_chain_for_post,
-                            flags=flags,
-                        ),
-                    )
-                    await _checkpoint("after:run_post_execution_follow_up_chain_async")
-
-                    _publish_in_progress(
-                        stage="turn:post_apply_completed",
-                        kind=result.get("kind"),
-                    )
-
-                    content = content_holder[0]
-
-            elif (
-                result.get("kind") == "apply_failed"
-                and not role_config.light_graph_mode
-            ):
-                await _checkpoint("branch:apply_failed")
-
-                raw_failed_apply = (
-                    result.get("last_apply_result")
-                    or result.get("apply_result")
-                )
-
-                if not isinstance(raw_failed_apply, AgentApplyWorkflowEditsResult):
-                    if not isinstance(raw_failed_apply, dict):
-                        return {}
-
-                    try:
-                        failed_apply = AgentApplyWorkflowEditsResult(
-                            **raw_failed_apply
-                        )
-                    except (TypeError, ValueError):
-                        return {}
-                else:
-                    failed_apply = raw_failed_apply
-
-                last_apply_result_ref[0] = failed_apply
-
-                await _checkpoint("before:self_correction_retry")
-
-                (
-                    _retry_resp,
-                    retry_result,
-                    retry_content,
-                ) = await _await_with_log(
-                    "self_correction_retry_async",
-                    run_self_correction_retry_async(
-                        failed_apply,
-                        session,
-                        role_config,
-                        graph_ref,
-                        last_apply_result_ref,
-                        wf_language_hint,
-                        stream_callback,
-                        history,
-                        recent_changes,
-                        coding_is_allowed,
-                        contribution_is_allowed,
-                        role_id,
-                    ),
-                )
-
-                await _checkpoint("after:self_correction_retry_async")
-
-                _publish_in_progress(
-                    stage="turn:self_correction_retry_completed",
-                    kind=(retry_result or {}).get("kind") if "retry_result" in locals() else result.get("kind"),
-                )
-
-                if retry_result and retry_result.get("kind") == "applied" and retry_content:
-                    content = content + "\n\n" + retry_content
-
-            await _checkpoint("after:handle_kind_branch")
-
-            # ── Finalize session language (WD only) ──
-            if role_id == WORKFLOW_DESIGNER_ROLE_ID:
-                await _checkpoint("before:finalize_session_language")
-                finalize_workflow_designer_turn_session_language(session, response)
-                await _checkpoint("after:finalize_session_language")
-
-        except (asyncio.CancelledError, KeyboardInterrupt) as exc:
-            # ensure we still build final output (incl. asyncio.CancelledError)
-            _maybe_thinking_off()
-
-            followup_error = {"type": type(exc).__name__, "error": str(exc)}
-            if fallback_graph is not None:
-                graph_ref[0] = fallback_graph
-
-            content = f"(Follow-up/apply error: {type(exc).__name__}: {exc})"
-            result = {
-                "kind": "parse_error",
-                "content_for_display": content,
-                "apply_result": None,
-                "edits": [],
+            return {
+                "status": None,
+                "token": None,
+                "message": {
+                    "type": "delegate",
+                    "delegate_to": delegate_to,
+                    "original_role": role_id,
+                },
+                "role": {
+                    "role_id": delegate_to,
+                    "name": delegate_to,
+                },
+                "error": None,
             }
-            last_apply_result_ref[0] = None
-            await _checkpoint("after:followup_error_outer_handler")
 
-
-    # ── Merge final graph with the most resent version ──
     merged_graph = await merge_latest_graph_for_final_output(
         graph_ref=graph_ref,
         initial_graph_md5=initial_graph_md5,
@@ -821,59 +462,51 @@ async def run_orchestrator_turn(
     if merged_graph is not None:
         graph_ref[0] = merged_graph
 
-    # ── Assemble final output ──
-    await _checkpoint("before:assemble_final_output")
+    content = content_ref[0]
+    result = result_ref[0]
+    workflow_response = response_ref[0]
+    follow_up_contexts = follow_up_contexts_ref[0]
+    apply_meta = apply_meta_ref[0]
 
-    progress_response: ProgressResponse = {}
-    run_output: Data = {}
-    graph_json = graph_to_json_object(graph_ref[0])
-
-    if isinstance(response, dict):
-        progress_response = {
-            "llm_user_message": (
-                response.get("llm_user_message")
-                if isinstance(response.get("llm_user_message"), str)
-                else None
-            ),
-            "llm_system_prompt": (
-                response.get("llm_system_prompt")
-                if isinstance(response.get("llm_system_prompt"), str)
-                else None
-            ),
-        }
-
-        raw_run_output = response.get("run_output")
+    if workflow_response is not None:
+        raw_run_output = getattr(
+            workflow_response,
+            "run_output",
+            None,
+        )
 
         if isinstance(raw_run_output, dict):
             run_output = raw_run_output
 
-    workflow_response: AgentWorkflowResponse | None = (
-        response if isinstance(response, AgentWorkflowResponse) else None
-    )
+        llm_user_message = getattr(
+            workflow_response,
+            "llm_user_message",
+            None,
+        )
+        llm_system_prompt = getattr(
+            workflow_response,
+            "llm_system_prompt",
+            None,
+        )
+    else:
+        llm_user_message = None
+        llm_system_prompt = None
 
-    display_content = str(result.get("content_for_display") or content)
+    graph_json = graph_to_json_object(graph_ref[0])
 
-    display_content += formulas_calc_display_appendix(
-        workflow_response
-    )
+    display_content = str(
+        result.get("content_for_display") or content,
+    ).strip()
 
-    apply_meta = apply_meta_with_formulas_calc_tool_status(
-        workflow_response,
-        result.get("apply_result", {}),
-    )
-
-
-    _publish_in_progress(
-        stage="turn:completed",
-        kind=result.get("kind"),
-    )
+    if not display_content:
+        display_content = "(No response from role handler.)"
 
     final_message: Data = {
         "id": new_id(),
         "ts": now_ts(),
         "role": "agent",
         "content": display_content,
-        "agent": agent_display,
+        "agent": agent_label,
         "turn_id": turn_id,
         "source": "agent_response",
         "workflow_response": {
@@ -888,17 +521,24 @@ async def run_orchestrator_turn(
         "last_apply_result": last_apply_result_ref[0],
         "session_language": session.session_language,
         "messenger": messenger,
-        "llm_user_message": progress_response.get("llm_user_message"),
-        "llm_system_prompt": progress_response.get("llm_system_prompt"),
+        "llm_user_message": llm_user_message,
+        "llm_system_prompt": llm_system_prompt,
     }
+
+    if error_ref[0] is not None:
+        final_message["error"] = error_ref[0]
+
+    _publish_in_progress(
+        stage="turn:completed",
+        kind=result.get("kind"),
+    )
 
     out = {
         "status": None,
         "token": {"type": "token", "token": display_content},
         "message": {"type": "final", "message": final_message},
-        "role": {"role_id": role_id, "name": agent_display},
-        "error": followup_error,
+        "role": {"role_id": role_id, "name": agent_label},
+        "error": error_ref[0],
     }
 
-    await _checkpoint("after:assemble_final_output")
     return out

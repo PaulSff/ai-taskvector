@@ -24,7 +24,7 @@ def build_parser_follow_up_context(
     role_config: RoleConfig,
     history: AgentChatHistory,
     turn_id: str,
-    agent_display: str,
+    agent_label: str,
     follow_up_contexts: list[str],
     stream_cb: GraphStreamCallback | None,
     graph_ref: list[ProcessGraph],
@@ -64,18 +64,17 @@ def build_parser_follow_up_context(
         stream_cb=stream_cb,
         recent_changes=recent_changes,
         turn_id=turn_id,
-        agent_label=agent_display,
+        agent_label=agent_label,
         max_rounds=max_rounds,
         ordered_follow_up_tools=ordered_follow_up_tools,
     )
 
     return ExecutionFollowUpContext(
-        page=None,
         graph_ref=graph_ref,
         state=session,
         token=proxy.token,
         turn_id=turn_id,
-        agent_label=agent_display,
+        agent_label=agent_label,
         follow_up_contexts=follow_up_contexts,
         max_rounds=max_rounds,
         wf_language_hint=wf_language_hint,
@@ -83,7 +82,6 @@ def build_parser_follow_up_context(
         toast=proxy.toast,
         set_inline_status=proxy.set_inline_status,
         append_message=proxy.append_message,
-        prepare_stream_row=proxy.prepare_stream_row,
         normalize_user_message_for_workflow=(
             proxy.normalize_user_message_for_workflow
         ),

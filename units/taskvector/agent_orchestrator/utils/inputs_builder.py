@@ -22,10 +22,10 @@ async def build_initial_inputs(
 ) -> WorkflowInputs:
     """Build initial_inputs for run_agent_workflow (workflow JSON injects)."""
     from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
-    from agents.chat.handlers.chat_turn_context import format_previous_turn
-    from agents.roles.workflow_designer.workflow_inputs import (
+    from agents.chat.agent_workflow.workflow_inputs import (
         build_agent_workflow_initial_inputs,
     )
+    from agents.chat.handlers.chat_turn_context import format_previous_turn
 
     runtime = await get_runtime_for_prompts(graph)
     previous_turn = await format_previous_turn(history)

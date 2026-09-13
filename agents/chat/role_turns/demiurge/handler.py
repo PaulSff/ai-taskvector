@@ -54,6 +54,10 @@ from agents.chat.agent_workflow.helpers import (
     validate_graph_to_apply_inline,
 )
 from agents.chat.agent_workflow.wf_response_schema import is_apply_result
+from agents.chat.agent_workflow.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
+    default_wf_language_hint,
+)
 from agents.chat.context import PostExecutionFollowUpContext
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
@@ -62,28 +66,25 @@ from agents.chat.context.follow_up_context import (
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
+from agents.chat.context.role_turn_context import RoleChatTurnContext
 from agents.chat.context.todo_list_manager import get_summary_params
 from agents.chat.context.todo_list_manager.todo_list_manager import (
     augment_graph_with_client_tasks,
+)
+from agents.chat.follow_up_executor import (
+    run_execution_follow_up_chain_async,
+    run_post_execution_follow_up_chain_async,
 )
 from agents.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
-from agents.chat.parser_follow_up import (
-    run_execution_follow_up_chain_async,
-    run_post_execution_follow_up_chain_async,
-)
 from agents.chat.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
 )
 from agents.roles import DEMIURGE_ROLE_ID, get_role
-from agents.roles.workflow_designer.workflow_inputs import (
-    build_agent_workflow_initial_inputs,
-    default_wf_language_hint,
-)
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions, ParserOutput
@@ -106,8 +107,6 @@ from runtime.run import WorkflowTimeoutError
 from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
     ProgressResult,
 )
-
-from ..context import RoleChatTurnContext
 
 _DEMIURGE_WORKFLOW_PATH = get_role_chat_workflow_path(DEMIURGE_ROLE_ID).resolve()
 
@@ -398,7 +397,7 @@ class DemiurgeChatHandler:
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
-                agent_label=turn_ctx.agent_display,
+                agent_label=turn_ctx.agent_label,
                 follow_up_contexts=follow_up_contexts_this_turn,
                 max_rounds=max_wd_follow_ups,
                 wf_language_hint=wf_lang_cell,
@@ -737,7 +736,7 @@ class DemiurgeChatHandler:
 
         meta = {
             "turn_id": turn_ctx.turn_id,
-            "agent": turn_ctx.agent_display,
+            "agent": turn_ctx.agent_label,
             "source": "agent_response",
             "workflow_response": {
                 "reply": display_content,
@@ -789,7 +788,7 @@ class DemiurgeChatHandler:
             token=turn_ctx.token,
             turn_id=turn_ctx.turn_id,
             agent_role_id=turn_ctx.profile,
-            agent_label=turn_ctx.agent_display,
+            agent_label=turn_ctx.agent_label,
             max_rounds=max_wd_follow_ups,
             wf_language_hint=wf_lang_cell,
             is_current_run=turn_ctx.is_current_run,

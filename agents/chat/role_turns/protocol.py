@@ -6,14 +6,75 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
+from agents.chat.agent_workflow.wf_response_schema import (
+    AgentWorkflowResponse,
+    MergeResponse,
+)
 from core.schemas.primitives import WorkflowInputs
+from core.schemas.process_graph import ProcessGraph
 from runtime.executor import GraphStreamCallback
 
 if TYPE_CHECKING:
-    from agents.chat.role_turns.context import RoleChatTurnContext
+    from agents.chat.context.role_turn_context import RoleChatTurnContext
+
+@runtime_checkable
+class SetGraphCallable(Protocol):
+    def __call__(self, graph: ProcessGraph) -> None:
+        ...
 
 
+@runtime_checkable
+class IsCurrentRunCallable(Protocol):
+    def __call__(self, token: int) -> bool:
+        ...
+
+
+@runtime_checkable
+class ToastCallable(Protocol):
+    def __call__(self, message: str) -> Awaitable[None]:
+        ...
+
+
+@runtime_checkable
+class SetInlineStatusCallable(Protocol):
+    def __call__(self, status: str | None) -> None:
+        ...
+
+
+@runtime_checkable
+class AppendMessageCallable(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> None:
+        ...
+
+
+@runtime_checkable
+class PersistHistoryDebouncedCallable(Protocol):
+    def __call__(self) -> None:
+        ...
+
+
+@runtime_checkable
+class WorkflowDebugLogCallable(Protocol):
+    def __call__(self, message: str) -> None:
+        ...
+
+
+@runtime_checkable
+class ApplyFromAgentCallable(Protocol):
+    def __call__(self, graph: ProcessGraph) -> None:
+        ...
+
+
+@runtime_checkable
+class GetRecentChangesCallable(Protocol):
+    def __call__(self) -> str | None:
+        ...
+
+
+@runtime_checkable
+class RecordLlmPromptViewCallable(Protocol):
+    def __call__(self, response: MergeResponse) -> None:
+        ...
 
 @runtime_checkable
 class RoleChatHandler(Protocol):
@@ -47,6 +108,7 @@ class WorkflowRunner(Protocol):
     ) -> Awaitable[AgentWorkflowResponse]:
         ...
 
+@runtime_checkable
 class WorkflowStreamingRunner(Protocol):
     async def __call__(
         self,

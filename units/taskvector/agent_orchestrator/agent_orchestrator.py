@@ -1,9 +1,9 @@
 """
 AgentOrchestrator unit: agent turn execution.
 
-Receives a context dict on the ``data`` input port containing:
+Receives a context dict (RoleChatTurnContext) on the ``data`` input port containing:
   user_message, messenger, role_id (or role_hint), history, session_language,
-  last_apply_result, graph, recent_changes, use_current_graph,
+  last_apply_result, graph, recent_changes, state,
   provider, cfg, rag_index_dir, mydata_dir, coding_is_allowed,
   contribution_is_allowed, training_config_path
 

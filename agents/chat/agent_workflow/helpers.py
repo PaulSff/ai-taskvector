@@ -302,7 +302,6 @@ def get_optional_parser_output(
                 f"{key!r}.actions must be a string-keyed dictionary"
             )
 
-        # Parse edits.
         raw_edits_value = actions_value.get("edits", [])
 
         if not is_object_list(raw_edits_value):
@@ -328,7 +327,6 @@ def get_optional_parser_output(
                     "GraphEdit or string-keyed dictionary"
                 )
 
-        # Parse tool actions.
         raw_tool_actions = actions_value.get("tool_actions", {})
 
         if raw_tool_actions is None:
@@ -364,7 +362,9 @@ def get_optional_parser_output(
 
     error_value = value.get("error")
 
-    return ParserOutput(
+    normalized = ParserOutput(
         actions=parsed_actions,
         error=error_value if isinstance(error_value, str) else None,
     )
+
+    return normalized

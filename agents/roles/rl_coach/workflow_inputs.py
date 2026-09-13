@@ -6,7 +6,7 @@ Kept under ``agents/roles/rl_coach`` so headless code and tests do not depend on
 
 from __future__ import annotations
 
-from agents.roles.workflow_designer.workflow_inputs import (
+from agents.chat.agent_workflow.workflow_inputs import (
     build_agent_workflow_initial_inputs,
 )
 from core.schemas import ProcessGraph

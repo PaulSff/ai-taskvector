@@ -51,12 +51,15 @@ from agents.chat.utils.workflow_run_utils import (
 )
 from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
-from core.normalizer.normalizer import get_process_graph_from_any
+from agents.roles.registry import DISPATCHER_ROLE_ID
+from agents.roles.workflow_path import get_role_chat_workflow_path
+from core.normalizer.normalizer import (
+    get_process_graph_from_any,
+)
 from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
 from core.schemas.primitives import Data, JsonObject
 from gui.components.settings import (
     get_agentic_loop_execution_timeout_s,
-    get_auto_delegate_workflow_path,
     get_auto_delegation_is_allowed,
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
@@ -726,16 +729,25 @@ async def handle_turn(
 
         agent = role_id or "default"
 
+        chat_session_state = {
+            "history": s.history,
+            "busy": s.busy,
+            "has_sent_any": s.has_sent_any,
+            "session_id": s.session_id,
+            "created_at": s.created_at,
+            "chat_path": s.chat_path,
+            "session_language": s.session_language,
+        }
+
         context = {
+            "state": chat_session_state,
+            "turn_id": turn_id,
             "user_message": message_for_workflow,
             "messenger": messenger,
             "role_id": role_id,
-            "history": [message_for_persist(m) for m in s.history], # sanitize _flet_row
-            "session_language": s.session_language,
-            "last_apply_result": s.last_apply_result,
             "graph": graph_dict,
+            "last_apply_result": s.last_apply_result,
             "recent_changes": recent_changes,
-            "use_current_graph": False,
             "provider": get_llm_provider(agent=agent),
             "cfg": get_llm_provider_config(agent=agent) or {},
             "rag_index_dir": str(get_rag_index_dir()),
@@ -745,7 +757,7 @@ async def handle_turn(
             "contribution_is_allowed": get_contribution_is_allowed(),
             "training_config_path": get_training_config_path(),
             "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
-            "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
+            "dispatcher_workflow_path": str(get_role_chat_workflow_path(DISPATCHER_ROLE_ID)),
         }
 
         assistant_message_id = new_id()
