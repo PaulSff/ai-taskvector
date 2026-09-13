@@ -185,7 +185,10 @@ def get_optional_data(data: Mapping[str, object], key: str) -> Data | None:
     return value if is_string_keyed_dict(value) else None
 
 
-def get_graph(data: Data, key: str = "graph") -> ProcessGraph | None:
+def get_graph(
+    data: Data,
+    key: str = "graph",
+) -> ProcessGraph | None:
     value: object
 
     # Direct MergeResponse data:
@@ -203,7 +206,20 @@ def get_graph(data: Data, key: str = "graph") -> ProcessGraph | None:
 
         value = aggregate_data.get(key)
 
-    return value if isinstance(value, ProcessGraph) else None
+    if isinstance(value, ProcessGraph):
+        return value
+
+    if isinstance(value, dict):
+        try:
+            return ProcessGraph.model_validate(value)
+        except (TypeError, ValueError, ValidationError) as exc:
+            logger.warning(
+                "Could not parse graph as ProcessGraph: %s",
+                exc,
+            )
+            return None
+
+    return None
 
 
 def get_units_response(outputs: Mapping[str, object]) -> list[Data]:
