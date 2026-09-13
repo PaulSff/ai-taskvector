@@ -49,7 +49,6 @@ from agents.chat.agent_workflow import (
     run_agent_workflow,
 )
 from agents.chat.agent_workflow.helpers import (
-    get_optional_parser_output,
     validate_graph_to_apply_inline,
 )
 from agents.chat.agent_workflow.wf_response_schema import is_apply_result
@@ -77,10 +76,6 @@ from agents.chat.follow_up_executor import (
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
-)
-from agents.chat.utils.workflow_output_normalizer import (
-    apply_meta_with_formulas_calc_tool_status,
-    formulas_calc_display_appendix,
 )
 from agents.roles import ANALYST_ROLE_ID, get_role
 from agents.roles.workflow_path import get_role_chat_workflow_path
@@ -282,20 +277,7 @@ class AnalystChatHandler:
             if parser_output is None:
                 return
 
-            if isinstance(parser_output, dict):
-                parser_output = get_optional_parser_output(
-                    {"parser_output": parser_output},
-                    key="parser_output",
-                )
-
-            if parser_output is None:
-                return
-
             actions = parser_output.actions
-
-            logger.info("Analyst workflow edits: %s", actions.edits)
-            logger.info("Analyst tool actions: %s", actions.tool_actions)
-
             turn_actions.edits.extend(actions.edits)
 
             for action, values in actions.tool_actions.items():
@@ -664,17 +646,8 @@ class AnalystChatHandler:
         if not isinstance(content_for_display, str) or not content_for_display:
             content_for_display = content
 
-        display_content = content_for_display
-
-        display_content += formulas_calc_display_appendix(response)
-
-        content = display_content
+        content = content_for_display
         result["content_for_display"] = content
-
-        apply_meta = apply_meta_with_formulas_calc_tool_status(
-            response,
-            result.get("apply_result", {}),
-        )
 
         meta = {
             "turn_id": turn_ctx.turn_id,
