@@ -2,7 +2,7 @@
 previous_graph = turn_ctx.graph_ref[0]
 
 workflow response
-    ├─ runtime applies workflow edits inline
+    ├─ runtime applies workflow edits inline (during the workflow execution)
     ├─ graph now contains after_graph
     ├─ collect parser edits
     ├─ collect parser tool_actions
@@ -33,13 +33,12 @@ response = await context.run_workflow_streaming(
 if context.on_workflow_response is not None:
     await context.on_workflow_response(
         response,
-        previous_graph,
     )
 """
 
 from __future__ import annotations
 
-import asyncio
+import logging
 
 from agents.chat.agent_workflow import (
     AgentWorkflowResponse,
@@ -50,7 +49,6 @@ from agents.chat.agent_workflow import (
     run_agent_workflow,
 )
 from agents.chat.agent_workflow.helpers import (
-    get_optional_str,
     validate_graph_to_apply_inline,
 )
 from agents.chat.agent_workflow.wf_response_schema import is_apply_result
@@ -75,16 +73,12 @@ from agents.chat.follow_up_executor import (
     run_execution_follow_up_chain_async,
     run_post_execution_follow_up_chain_async,
 )
-from agents.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
-from agents.chat.utils.workflow_output_normalizer import (
-    apply_meta_with_formulas_calc_tool_status,
-    formulas_calc_display_appendix,
-)
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+from agents.roles.registry import is_role_light_graph_mode_enabled
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions, ParserOutput
@@ -102,16 +96,17 @@ from core.schemas.primitives import (
     WorkflowInputs,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
+from services.logging import setup_colored_logging
 from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
     ProgressResult,
 )
 
-_WORKFLOW_DESIGNER_WORKFLOW_PATH = (
-    get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID).resolve()
-)
+_WORKFLOW_DESIGNER_WORKFLOW_PATH = get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID).resolve()
+_IS_LIGHT_GRAPH_MODE_ENABLED = is_role_light_graph_mode_enabled(WORKFLOW_DESIGNER_ROLE_ID)
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
+
+logger = setup_colored_logging(logging.DEBUG)
 
 
 class WorkflowDesignerChatHandler:
@@ -159,6 +154,30 @@ class WorkflowDesignerChatHandler:
         response = AgentWorkflowResponse()
         content = ""
         result: ProgressResult = {}
+        updated_graph = turn_ctx.graph_ref[0]
+        apply_result: AgentApplyWorkflowEditsResult | None = None
+        apply_meta: dict = {}
+        follow_up_contexts_this_turn: list[str] = []
+
+        # A successful turn clears an error left by a previous execution.
+        turn_ctx.error_ref[0] = None
+
+        def publish_state() -> None:
+            """
+            Publish the complete handler state.
+
+            This must be called before every terminal return, including
+            intentionally converted failures.
+            """
+            turn_ctx.graph_ref[0] = updated_graph
+            turn_ctx.last_apply_result_ref[0] = apply_result
+            turn_ctx.content_ref[0] = content
+            turn_ctx.result_ref[0] = result
+            turn_ctx.response_ref[0] = response
+            turn_ctx.follow_up_contexts_ref[0] = (
+                list(follow_up_contexts_this_turn)
+            )
+            turn_ctx.apply_meta_ref[0] = apply_meta
 
         overrides: WorkflowInputs = (
             build_agent_workflow_unit_param_overrides(
@@ -171,8 +190,34 @@ class WorkflowDesignerChatHandler:
         validated_graph, validation_error = (
             await validate_graph_to_apply_inline(graph)
         )
-        if validation_error is not None:
-            raise ValueError(validation_error)
+
+        if validation_error is not None or validated_graph is None:
+            error = ValueError(
+                validation_error or "Graph validation returned no graph"
+            )
+
+            turn_ctx.error_ref[0] = {
+                "type": "RoleExecutionError",
+                "error": str(error),
+            }
+
+            content = f"(Role execution error: {error})"
+            result = {
+                "kind": "parse_error",
+                "content_for_display": content,
+                "apply_result": None,
+                "edits": [],
+            }
+            apply_result = None
+
+            # Keep the already-valid graph in the context.
+            updated_graph = turn_ctx.graph_ref[0]
+            publish_state()
+            return
+
+        updated_graph: ProcessGraph = validated_graph
+        turn_ctx.graph_ref[0] = updated_graph
+
 
         overrides["graph_summary"] = get_summary_params(
             turn_ctx.coding_is_allowed,
@@ -194,7 +239,6 @@ class WorkflowDesignerChatHandler:
                 edits_summary="No workflow edits were applied.",
             )
 
-        follow_up_contexts_this_turn: list[str] = []
         wf_lang_cell = [
             default_wf_language_hint(turn_ctx.state.session_language)
         ]
@@ -211,19 +255,15 @@ class WorkflowDesignerChatHandler:
             if wd_role.tools
             else tuple(
                 tid
-                for tid, _ in ordered_tools_for_role_id(
-                    WORKFLOW_DESIGNER_ROLE_ID
-                )
+                for tid, _ in ordered_tools_for_role_id(WORKFLOW_DESIGNER_ROLE_ID)
             )
         )
 
-        # All parser actions emitted during this handler turn are retained.
         turn_actions = ParsedActions()
 
         had_import_workflow = False
         had_todo = False
         had_add_comment = False
-
 
         def collect_actions(
             workflow_response: AgentWorkflowResponse,
@@ -233,61 +273,47 @@ class WorkflowDesignerChatHandler:
             nonlocal had_add_comment
 
             merged = workflow_response.merged_response
+            parser_output = merged.parser_output
 
-            apply_result_value = (
-                merged.status.get("last_apply_result")
-                or merged.result.get("last_apply_result")
-                or {}
-            )
+            if parser_output is None:
+                return
 
+            actions = parser_output.actions
+            turn_actions.edits.extend(actions.edits)
+
+            for action, values in actions.tool_actions.items():
+                turn_actions.tool_actions.setdefault(action, []).extend(values)
+
+            apply_result_value = merged.status.get("last_apply_result") or {}
             applied_ok = (
                 isinstance(apply_result_value, dict)
                 and apply_result_value.get("attempted") is True
                 and apply_result_value.get("success") is True
             )
 
-            parser_output = merged.parser_output
-            if parser_output is None:
-                return
-
-            actions = parser_output.actions
-
-            turn_actions.edits.extend(actions.edits)
-
-            for action, values in actions.tool_actions.items():
-                turn_actions.tool_actions.setdefault(action, []).extend(values)
-
             if not applied_ok:
                 return
 
             had_import_workflow = had_import_workflow or any(
-                edit.action == IMPORT_WORKFLOW_ACTION
-                for edit in actions.edits
+                edit.action == IMPORT_WORKFLOW_ACTION for edit in actions.edits
             )
 
             had_todo = had_todo or any(
-                edit.action in TODO_ACTIONS
-                for edit in actions.edits
+                edit.action in TODO_ACTIONS for edit in actions.edits
             )
 
             had_add_comment = had_add_comment or any(
-                edit.action in COMMENT_ACTIONS
-                for edit in actions.edits
+                edit.action in COMMENT_ACTIONS for edit in actions.edits
             )
+
 
         async def reconcile_workflow_response(
             workflow_response: AgentWorkflowResponse,
         ) -> None:
-            """
-            Reconcile one complete workflow transition.
+            nonlocal updated_graph
+            nonlocal apply_result
+            nonlocal apply_meta
 
-            The workflow runtime has already applied its graph edits inline.
-            This function therefore does not reapply those edits. It only:
-              - collects edits and tool actions;
-              - validates the runtime's after graph;
-              - applies client-side task supplements when needed;
-              - refreshes last_apply_result_ref.
-            """
             collect_actions(workflow_response)
 
             merged = workflow_response.merged_response
@@ -338,39 +364,35 @@ class WorkflowDesignerChatHandler:
                     else turn_ctx.set_graph
                 )
                 apply_fn(supplemented_graph)
-                final_graph = supplemented_graph
+                updated_graph = supplemented_graph
             else:
-                final_graph = validated_after_graph
+                updated_graph = validated_after_graph
 
-            # Promote the workflow result into the shared turn context.
-            turn_ctx.graph_ref[0] = final_graph
+            turn_ctx.graph_ref[0] = updated_graph
 
             previous_apply = turn_ctx.last_apply_result_ref[0]
 
-            turn_ctx.last_apply_result_ref[0] = (
-                await refresh_last_graph_apply_result(
-                    previous_apply,
-                    ApplyWorkflowEditsResult(
-                        success=True,
-                        graph=final_graph,
-                        error=None,
-                    ),
-                    supplement_summary="; ".join(supplements),
-                )
+            apply_result = await refresh_last_graph_apply_result(
+                previous_apply,
+                ApplyWorkflowEditsResult(
+                    success=True,
+                    graph=updated_graph,
+                    error=None,
+                ),
+                supplement_summary="; ".join(supplements),
             )
+
+            turn_ctx.last_apply_result_ref[0] = apply_result
 
         async def on_workflow_response(
             workflow_response: AgentWorkflowResponse,
         ) -> None:
-            await reconcile_workflow_response(
-                workflow_response,
-            )
+            await reconcile_workflow_response(workflow_response)
 
         async def run_workflow_turn(
             inputs: WorkflowInputs,
         ) -> AgentWorkflowResponse:
-
-            workflow_response = await turn_ctx.run_workflow_streaming(
+            return await turn_ctx.run_workflow_streaming(
                 run_agent_workflow,
                 inputs,
                 overrides,
@@ -379,23 +401,15 @@ class WorkflowDesignerChatHandler:
                 workflow_path=_WORKFLOW_DESIGNER_WORKFLOW_PATH,
             )
 
-            await on_workflow_response(
-                workflow_response,
-            )
-
-            return workflow_response
-
         async def parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
-
             parser_output = resp.merged_response.parser_output
 
             if parser_output is None:
-                    return None
+                return None
 
             parser_ctx = ExecutionFollowUpContext(
-                page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
                 state=turn_ctx.state,
                 token=turn_ctx.token,
@@ -408,7 +422,6 @@ class WorkflowDesignerChatHandler:
                 toast=lambda message: turn_ctx.toast(message),
                 set_inline_status=turn_ctx.set_inline_status,
                 append_message=turn_ctx.append_message,
-                prepare_stream_row=turn_ctx.prepare_stream_row,
                 normalize_user_message_for_workflow=(
                     normalize_user_message_for_workflow
                 ),
@@ -418,13 +431,13 @@ class WorkflowDesignerChatHandler:
                 run_workflow_streaming=turn_ctx.run_workflow_streaming,
                 get_runtime_for_prompts=get_runtime_for_prompts,
                 format_previous_turn=format_previous_turn,
-                on_show_run_console=turn_ctx.on_show_run_console,
                 follow_up_tool_ids=wd_follow_up_tools,
                 follow_up_source_response=None,
                 agent_role_id=WORKFLOW_DESIGNER_ROLE_ID,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 action_context=parser_output,
                 on_workflow_response=on_workflow_response,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
             return await run_execution_follow_up_chain_async(
@@ -437,7 +450,6 @@ class WorkflowDesignerChatHandler:
                 ),
             )
 
-
         try:
             last_user_content: str | None = None
 
@@ -446,12 +458,12 @@ class WorkflowDesignerChatHandler:
                     str(message.get("role", "")).strip().lower()
                     == "user"
                 ):
-                    content = (
+                    message_content = (
                         message.get("content")
                         or message.get("content_for_display")
                         or ""
                     )
-                    last_user_content = str(content)
+                    last_user_content = str(message_content)
                     break
 
             user_message_for_workflow = (
@@ -464,16 +476,6 @@ class WorkflowDesignerChatHandler:
                     else message_for_workflow
                 )
             )
-
-            if await try_run_auto_delegate_before_turn(
-                turn_ctx.delegate_request_ref,
-                user_message_for_workflow,
-                current_role_id=turn_ctx.profile,
-            ):
-                turn_ctx.set_inline_status(None)
-                return
-
-            turn_ctx.prepare_stream_row()
 
             runtime = await get_runtime_for_prompts(
                 turn_ctx.graph_ref[0]
@@ -496,55 +498,16 @@ class WorkflowDesignerChatHandler:
                 ),
                 language_hint=wf_lang_cell[0],
                 session_language=turn_ctx.state.session_language,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
             response = await run_workflow_turn(initial_inputs)
+            await on_workflow_response(response)
 
-        except WorkflowTimeoutError as exc:
-            turn_ctx.set_inline_status(None)
-
-            content = (
-                f"(Request timed out after "
-                f"{getattr(exc, 'timeout_s', 300):.0f}s. "
-                "Try again or check that the LLM/service is responding.)"
-            )
-
-            response = AgentWorkflowResponse(
-                merged_response=MergeResponse(
-                    reply="",
-                    result=self.parse_error_result(content),
-                )
-            )
-
-            result = response.merged_response.result
-            turn_ctx.last_apply_result_ref[0] = failed_apply_result(
-                content
-            )
-
-        except TypeError as exc:
-            turn_ctx.set_inline_status(None)
-
-            content = f"(Workflow error: {exc})"
-
-            response = AgentWorkflowResponse(
-                merged_response=MergeResponse(
-                    reply="",
-                    result=self.parse_error_result(content),
-                )
-            )
-
-            result = response.merged_response.result
-            turn_ctx.last_apply_result_ref[0] = failed_apply_result(
-                content
-            )
-
-        else:
             chained = await parser_output_follow_up_chain(response)
 
-            if chained is None:
-                return
-
-            response = chained
+            if chained is not None:
+                response = chained
 
             merged = response.merged_response
             result = merged.result
@@ -554,124 +517,24 @@ class WorkflowDesignerChatHandler:
                 result,
             )
 
-            applied_ok = (
-                isinstance(apply_result_value, dict)
-                and apply_result_value.get("attempted") is True
-                and apply_result_value.get("success") is True
-            )
-
-            if applied_ok:
-                parser_output = response.merged_response.parser_output
-
-                parsed_actions = (
-                    parser_output.actions
-                    if parser_output is not None
-                    else ParsedActions()
-                )
-
-                edits = parsed_actions.edits
-
-                had_import_workflow = any(
-                    edit.action == IMPORT_WORKFLOW_ACTION
-                    for edit in edits
-                )
-
-                had_todo = any(
-                    edit.action in TODO_ACTIONS
-                    for edit in edits
-                )
-
-                had_add_comment = any(
-                    edit.action in COMMENT_ACTIONS
-                    for edit in edits
-                )
-
-            delegate_output = merged.delegate_request
-
-            if turn_ctx.delegate_request_ref is not None:
-                delegate_to = get_optional_str(
-                    delegate_output,
-                    "delegate_to",
-                )
-                delegate_error = get_optional_str(
-                    delegate_output,
-                    "error",
-                )
-
-                if (
-                    delegate_output.get("ok") is True
-                    and delegate_to
-                    and delegate_to.strip()
-                ):
-                    if (
-                        delegate_to.strip().lower()
-                        != (turn_ctx.profile or "").strip().lower()
-                    ):
-                        turn_ctx.delegate_request_ref[0] = (
-                            delegate_output
-                        )
-                elif (
-                    delegate_error
-                    and turn_ctx.is_current_run(turn_ctx.token)
-                ):
-                    await turn_ctx.toast(delegate_error.strip()[:200])
-
-            report_output = merged.report_output
-
-            if (
-                turn_ctx.is_current_run(turn_ctx.token)
-                and report_output.get("ok")
-            ):
-                turn_ctx.set_inline_status("Generating file…")
-
-                try:
-                    from gui.components.settings import (
-                        get_rag_update_workflow_path,
-                    )
-                    from runtime.run import run_workflow
-
-                    rag_path = get_rag_update_workflow_path()
-
-                    if rag_path.exists():
-                        rag_overrides: WorkflowInputs = {
-                            "rag_update": {
-                                "rag_index_data_dir": str(
-                                    turn_ctx.rag_index_dir
-                                ),
-                                "units_dir": str(UNITS_DIR),
-                                "mydata_dir": str(turn_ctx.mydata_dir),
-                                "embedding_model": (
-                                    turn_ctx.rag_embedding_model
-                                ),
-                            }
-                        }
-
-                        await asyncio.to_thread(
-                            run_workflow,
-                            rag_path,
-                            initial_inputs={},
-                            unit_param_overrides=rag_overrides,
-                            format="dict",
-                        )
-
-                except (TypeError, WorkflowTimeoutError):
-                    pass
-
-                if turn_ctx.is_current_run(turn_ctx.token):
-                    turn_ctx.set_inline_status(None)
+            apply_result = apply_result_value
 
             content = (
                 merged.reply.strip()
                 or "(No response from the model.)"
             )
 
-            if content == "(No response from the model.)" and (
-                parser_output := merged.parser_output
-            ) is not None and (
-                parser_output.actions.edits or parser_output.actions.tool_actions
+            parser_output = merged.parser_output
+
+            if (
+                content == "(No response from the model.)"
+                and parser_output is not None
+                and (
+                    parser_output.actions.edits
+                    or parser_output.actions.tool_actions
+                )
             ):
                 content = "Workflow actions completed."
-
 
             workflow_errors = merged.workflow_errors
 
@@ -694,10 +557,6 @@ class WorkflowDesignerChatHandler:
                     "Please try sending again."
                 )
 
-            result["content_for_display"] = content
-
-            result["apply_result"] = apply_result_value
-
             if (
                 result.get("kind") != "apply_failed"
                 and isinstance(apply_result_value, dict)
@@ -705,6 +564,9 @@ class WorkflowDesignerChatHandler:
                 and apply_result_value.get("success") is False
             ):
                 result["kind"] = "apply_failed"
+
+            result["content_for_display"] = content
+            result["apply_result"] = apply_result_value
 
             if workflow_errors and turn_ctx.is_current_run(
                 turn_ctx.token
@@ -716,31 +578,84 @@ class WorkflowDesignerChatHandler:
                         f" (+{len(workflow_errors) - 1} more)"
                     )
 
-                if user_message_missing:
-                    await turn_ctx.toast(
+                await turn_ctx.toast(
+                    (
                         "Your message didn't reach the model. "
                         "Please try again."
                     )
-                else:
-                    await turn_ctx.toast(
-                        f"Workflow error: {error_message}"
-                    )
+                    if user_message_missing
+                    else f"Workflow error: {error_message}"
+                )
 
-        display_content = (
-            result.get("content_for_display")
-            if isinstance(result.get("content_for_display"), str)
-            and result.get("content_for_display")
-            else content
-        )
+        except WorkflowTimeoutError as exc:
+            turn_ctx.set_inline_status(None)
 
-        display_content = formulas_calc_display_appendix(response)
+            content = (
+                f"(Request timed out after "
+                f"{getattr(exc, 'timeout_s', 300):.0f}s. "
+                "Try again or check that the LLM/service is responding.)"
+            )
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result=self.parse_error_result(content),
+                )
+            )
+
+            result = response.merged_response.result
+            apply_result = failed_apply_result(content)
+
+        except TypeError as exc:
+            turn_ctx.set_inline_status(None)
+
+            content = f"(Workflow error: {exc})"
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result=self.parse_error_result(content),
+                )
+            )
+
+            result = response.merged_response.result
+            apply_result = failed_apply_result(content)
+
+        except Exception as exc:
+            logger.exception("Unexpected error during role execution")
+
+            turn_ctx.set_inline_status(None)
+
+            turn_ctx.error_ref[0] = {
+                "type": "RoleExecutionError",
+                "error": str(exc),
+            }
+
+            content = f"(Role execution error: {exc})"
+
+            result = {
+                "kind": "parse_error",
+                "content_for_display": content,
+                "apply_result": None,
+                "edits": [],
+            }
+
+            apply_result = None
+
+        content_for_display = result.get("content_for_display")
+
+        if not isinstance(content_for_display, str) or not content_for_display:
+            content_for_display = content
+
+        content = content_for_display
+        result["content_for_display"] = content
 
         meta = {
             "turn_id": turn_ctx.turn_id,
             "agent": turn_ctx.agent_label,
             "source": "agent_response",
             "workflow_response": {
-                "reply": display_content,
+                "reply": content,
                 "result_kind": result.get("kind"),
             },
             "parsed_edits": [
@@ -750,10 +665,7 @@ class WorkflowDesignerChatHandler:
                 for edit in turn_actions.edits
             ],
             "tool_actions": turn_actions.tool_actions,
-            "apply": apply_meta_with_formulas_calc_tool_status(
-                response,
-                result.get("apply_result", {}),
-            ),
+            "apply": apply_meta,
         }
 
         if result.get("kind") == "parse_error":
@@ -764,23 +676,22 @@ class WorkflowDesignerChatHandler:
                 follow_up_contexts_this_turn
             )
 
-        turn_ctx.append_message(
-            "agent",
-            display_content,
-            meta=meta,
-        )
+        if turn_ctx.is_current_run(turn_ctx.token):
+            turn_ctx.append_message(
+                "agent",
+                content,
+                meta=meta,
+            )
+
+        updated_graph = turn_ctx.graph_ref[0]
+        publish_state()
 
         if not turn_ctx.is_current_run(turn_ctx.token):
             return
 
         turn_ctx.set_inline_status(None)
 
-        # The graph has already been applied by the workflow runtime.
-        # Post-execution rounds are terminal: they may summarize or plan, but must
-        # not emit tools or graph edits because there is no later round to process
-        # them.
         parser_output = response.merged_response.parser_output
-
         final_content_holder = [content]
 
         final_ctx = PostExecutionFollowUpContext(
@@ -788,7 +699,7 @@ class WorkflowDesignerChatHandler:
             state=turn_ctx.state,
             token=turn_ctx.token,
             turn_id=turn_ctx.turn_id,
-            agent_role_id=turn_ctx.profile,
+            agent_role_id=turn_ctx.role_id,
             agent_label=turn_ctx.agent_label,
             max_rounds=max_wd_follow_ups,
             wf_language_hint=wf_lang_cell,
@@ -796,7 +707,6 @@ class WorkflowDesignerChatHandler:
             toast=lambda message: turn_ctx.toast(message),
             set_inline_status=turn_ctx.set_inline_status,
             append_message=turn_ctx.append_message,
-            prepare_stream_row=turn_ctx.prepare_stream_row,
             normalize_user_message_for_workflow=(
                 normalize_user_message_for_workflow
             ),
@@ -806,16 +716,16 @@ class WorkflowDesignerChatHandler:
             run_workflow_streaming=turn_ctx.run_workflow_streaming,
             get_runtime_for_prompts=get_runtime_for_prompts,
             format_previous_turn=format_previous_turn,
-            replace_agent_message_row=turn_ctx.replace_agent_message_row,
             stream_buffer_ref=turn_ctx.stream_buffer_ref,
             agent_workflow_path=_WORKFLOW_DESIGNER_WORKFLOW_PATH,
             record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             action_context=(
-                    parser_output
-                    if parser_output is not None
-                    else ParserOutput()
-                ),
+                parser_output
+                if parser_output is not None
+                else ParserOutput()
+            ),
             on_workflow_response=on_workflow_response,
+            light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
         await run_post_execution_follow_up_chain_async(
@@ -829,6 +739,12 @@ class WorkflowDesignerChatHandler:
                 had_add_comment=had_add_comment,
             ),
         )
+
+        content = final_content_holder[0]
+        result["content_for_display"] = content
+        updated_graph = turn_ctx.graph_ref[0]
+
+        publish_state()
 
         finalize_workflow_designer_turn_session_language(
             turn_ctx.state,

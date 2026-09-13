@@ -1,58 +1,115 @@
-"""RL Coach agents chat turn (extracted from ``chat.py``)."""
+"""Workflow Designer agents chat turn (extracted from ``chat.py``).
+previous_graph = turn_ctx.graph_ref[0]
+
+workflow response
+    ├─ runtime applies workflow edits inline (during the workflow execution)
+    ├─ graph now contains after_graph
+    ├─ collect parser edits
+    ├─ collect parser tool_actions
+    ├─ validate after_graph
+    ├─ augment client-side tasks
+    ├─ apply only changed client-side supplements
+    └─ refresh last_apply_result_ref
+
+optional final planning response
+    └─ repeat the same response reconciliation
+
+persist final state
+
+---
+The parser runner must invoke the callback for every response it creates:
+
+previous_graph = context.graph_ref[0]
+
+response = await context.run_workflow_streaming(
+    run_agent_workflow,
+    inputs,
+    context.overrides,
+    timeout,
+    _run_token=context.token,
+    workflow_path=context.agent_workflow_path,
+)
+
+if context.on_workflow_response is not None:
+    await context.on_workflow_response(
+        response,
+    )
+"""
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-from typing import Any
+import logging
 
-from agents.chat.agent_workflow import get_runtime_for_prompts
-from agents.chat.agent_workflow.workflow_inputs import default_wf_language_hint
+from agents.chat.agent_workflow import (
+    AgentWorkflowResponse,
+    MergeResponse,
+    build_agent_workflow_unit_param_overrides,
+    get_runtime_for_prompts,
+    refresh_last_graph_apply_result,
+    run_agent_workflow,
+)
+from agents.chat.agent_workflow.helpers import (
+    validate_graph_to_apply_inline,
+)
+from agents.chat.agent_workflow.wf_response_schema import is_apply_result
+from agents.chat.agent_workflow.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
+    default_wf_language_hint,
+)
+from agents.chat.context import PostExecutionFollowUpContext
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
+    PostEditFlags,
 )
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
-from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from agents.chat.context.role_turn_context import RoleChatTurnContext
+from agents.chat.context.todo_list_manager import get_summary_params
+from agents.chat.context.todo_list_manager.todo_list_manager import (
+    augment_graph_with_client_tasks,
+)
 from agents.chat.follow_up_executor import (
     run_execution_follow_up_chain_async,
+    run_post_execution_follow_up_chain_async,
 )
-from agents.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from agents.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
-from agents.chat.role_turns.rl_coach.workflow_runner import (
-    build_rl_coach_unit_param_overrides,
-    get_training_config_dict,
-    get_training_config_summary,
-    get_training_results_follow_up,
-    run_rl_coach_workflow,
-)
-from agents.chat.utils.workflow_output_normalizer import (
-    apply_meta_with_formulas_calc_tool_status,
-    formulas_calc_display_appendix,
-)
 from agents.roles import RL_COACH_ROLE_ID, get_role
-from agents.roles.rl_coach.workflow_inputs import (
-    build_rl_coach_agent_aligned_initial_inputs,
-    build_rl_coach_training_inject_updates,
-)
+from agents.roles.registry import is_role_light_graph_mode_enabled
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
+from agents.tools.types import ParsedActions, ParserOutput
+from core.schemas import ProcessGraph
+from core.schemas.graph_edit_api import (
+    COMMENT_ACTIONS,
+    IMPORT_WORKFLOW_ACTION,
+    TODO_ACTIONS,
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+)
+from core.schemas.primitives import (
+    Data,
+    ModelDumpable,
+    WorkflowInputs,
+)
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
-
-from ..turn_edits import set_commenter_for_new_comments
+from services.logging import setup_colored_logging
+from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
+    ProgressResult,
+)
 
 _RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID).resolve()
+_IS_LIGHT_GRAPH_MODE_ENABLED = is_role_light_graph_mode_enabled(RL_COACH_ROLE_ID)
+_WORKFLOW_EXECUTION_TIMEOUT = None # default
 
+logger = setup_colored_logging(logging.DEBUG)
 
 class RlCoachChatHandler:
-    """Runs RL Coach workflow with Analyst-style merge_response and parser follow-ups."""
+    """Runs one Workflow Designer turn."""
 
     @property
     def role_id(self) -> str:
@@ -60,290 +117,537 @@ class RlCoachChatHandler:
 
     @property
     def role_name(self) -> str:
-        return get_role(RL_COACH_ROLE_ID).role_name
+        return get_role(self.role_id).role_name
+
+    @staticmethod
+    def parse_error_result(content: str) -> ProgressResult:
+        return ProgressResult(
+            kind="parse_error",
+            content_for_display=content,
+            apply_result=None,
+            edits=[],
+        )
+
+    @staticmethod
+    def get_apply_result(
+        status: Data,
+        result: ProgressResult,
+    ) -> AgentApplyWorkflowEditsResult | None:
+        value = (
+            status.get("last_apply_result")
+            or result.get("last_apply_result")
+        )
+
+        if not is_apply_result(value):
+            return None
+
+        return value
+
 
     async def run_turn(
-        self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str
+        self,
+        turn_ctx: RoleChatTurnContext,
+        *,
+        message_for_workflow: str,
     ) -> None:
-        last_user_content = None
-        for m in reversed(turn_ctx.state.history or []):
-           if isinstance(m, dict) and str(m.get("role", "")).strip().lower() == "user":
-                last_user_content = (
-                    m.get("content") or m.get("content_for_display") or ""
-                )
-                break
-        user_message_for_workflow = normalize_user_message_for_workflow(
-            last_user_content
-            if (last_user_content is not None and str(last_user_content).strip())
-            else message_for_workflow
+        response = AgentWorkflowResponse()
+        content = ""
+        result: ProgressResult = {}
+        updated_graph = turn_ctx.graph_ref[0]
+        apply_result: AgentApplyWorkflowEditsResult | None = None
+        apply_meta: dict = {}
+        follow_up_contexts_this_turn: list[str] = []
+
+        # A successful turn clears an error left by a previous execution.
+        turn_ctx.error_ref[0] = None
+
+        def publish_state() -> None:
+            """
+            Publish the complete handler state.
+
+            This must be called before every terminal return, including
+            intentionally converted failures.
+            """
+            turn_ctx.graph_ref[0] = updated_graph
+            turn_ctx.last_apply_result_ref[0] = apply_result
+            turn_ctx.content_ref[0] = content
+            turn_ctx.result_ref[0] = result
+            turn_ctx.response_ref[0] = response
+            turn_ctx.follow_up_contexts_ref[0] = (
+                list(follow_up_contexts_this_turn)
+            )
+            turn_ctx.apply_meta_ref[0] = apply_meta
+
+        overrides: WorkflowInputs = (
+            build_agent_workflow_unit_param_overrides(
+                role_id=RL_COACH_ROLE_ID,
+            )
         )
-        if await try_run_auto_delegate_before_turn(
-            turn_ctx.delegate_request_ref,
-            user_message_for_workflow,
-            current_role_id=turn_ctx.profile,
-        ):
-            turn_ctx.set_inline_status(None)
+
+        graph = turn_ctx.graph_ref[0]
+
+        validated_graph, validation_error = (
+            await validate_graph_to_apply_inline(graph)
+        )
+
+        if validation_error is not None or validated_graph is None:
+            error = ValueError(
+                validation_error or "Graph validation returned no graph"
+            )
+
+            turn_ctx.error_ref[0] = {
+                "type": "RoleExecutionError",
+                "error": str(error),
+            }
+
+            content = f"(Role execution error: {error})"
+            result = {
+                "kind": "parse_error",
+                "content_for_display": content,
+                "apply_result": None,
+                "edits": [],
+            }
+            apply_result = None
+
+            # Keep the already-valid graph in the context.
+            updated_graph = turn_ctx.graph_ref[0]
+            publish_state()
             return
 
-        report_dir = str(Path(turn_ctx.mydata_dir) / "reports")
-        overrides = build_rl_coach_unit_param_overrides(
-            turn_ctx.provider,
-            turn_ctx.cfg,
-            report_output_dir=report_dir,
-        )
-        overrides["graph_summary"] = {
-            "include_code_block_source": False,
-            "include_structure": False,
-        }
+        updated_graph: ProcessGraph = validated_graph
+        turn_ctx.graph_ref[0] = updated_graph
 
-        _graph = turn_ctx.graph_ref[0]
-        follow_up_contexts_this_turn: list[str] = []
-        wf_lang_cell = [default_wf_language_hint(turn_ctx.state.session_language)]
-        _rl_role = get_role(RL_COACH_ROLE_ID)
-        max_follow_ups = (
-            _rl_role.follow_up_max_rounds
-            if _rl_role.follow_up_max_rounds is not None
+
+        overrides["graph_summary"] = get_summary_params(
+            turn_ctx.coding_is_allowed,
+            validated_graph,
+        )
+
+        def failed_apply_result(
+            error: str,
+            *,
+            attempted: bool = True,
+        ) -> AgentApplyWorkflowEditsResult:
+            return AgentApplyWorkflowEditsResult(
+                attempted=attempted,
+                apply_result=ApplyWorkflowEditsResult(
+                    success=False,
+                    graph=turn_ctx.graph_ref[0],
+                    error=error,
+                ),
+                edits_summary="No workflow edits were applied.",
+            )
+
+        wf_lang_cell = [
+            default_wf_language_hint(turn_ctx.state.session_language)
+        ]
+
+        wd_role = get_role(RL_COACH_ROLE_ID)
+        max_wd_follow_ups = (
+            wd_role.follow_up_max_rounds
+            if wd_role.follow_up_max_rounds is not None
             else get_workflow_designer_max_follow_ups()
         )
-        follow_up_tools = (
-            _rl_role.tools if _rl_role.tools else tuple(
-                tid for tid, _ in ordered_tools_for_role_id(RL_COACH_ROLE_ID))
+
+        wd_follow_up_tools = (
+            wd_role.tools
+            if wd_role.tools
+            else tuple(
+                tid
+                for tid, _ in ordered_tools_for_role_id(RL_COACH_ROLE_ID)
+            )
         )
 
-        async def _extend_rl_inputs(
-            base: dict[str, dict[str, Any]],
-        ) -> dict[str, dict[str, Any]]:
-            summary, tdict = await asyncio.gather(
-                asyncio.to_thread(get_training_config_summary),
-                asyncio.to_thread(get_training_config_dict),
-            )
-            results = get_training_results_follow_up()
-            extra = build_rl_coach_training_inject_updates(summary, results, tdict)
-            return {**base, **extra}
+        turn_actions = ParsedActions()
 
-        async def _parser_output_follow_up_chain(
-            resp: dict[str, Any],
-        ) -> dict[str, Any] | None:
+        had_import_workflow = False
+        had_todo = False
+        had_add_comment = False
+
+        def collect_actions(
+            workflow_response: AgentWorkflowResponse,
+        ) -> None:
+            nonlocal had_import_workflow
+            nonlocal had_todo
+            nonlocal had_add_comment
+
+            merged = workflow_response.merged_response
+            parser_output = merged.parser_output
+
+            if parser_output is None:
+                return
+
+            actions = parser_output.actions
+            turn_actions.edits.extend(actions.edits)
+
+            for action, values in actions.tool_actions.items():
+                turn_actions.tool_actions.setdefault(action, []).extend(values)
+
+            apply_result_value = merged.status.get("last_apply_result") or {}
+            applied_ok = (
+                isinstance(apply_result_value, dict)
+                and apply_result_value.get("attempted") is True
+                and apply_result_value.get("success") is True
+            )
+
+            if not applied_ok:
+                return
+
+            had_import_workflow = had_import_workflow or any(
+                edit.action == IMPORT_WORKFLOW_ACTION for edit in actions.edits
+            )
+
+            had_todo = had_todo or any(
+                edit.action in TODO_ACTIONS for edit in actions.edits
+            )
+
+            had_add_comment = had_add_comment or any(
+                edit.action in COMMENT_ACTIONS for edit in actions.edits
+            )
+
+
+        async def reconcile_workflow_response(
+            workflow_response: AgentWorkflowResponse,
+        ) -> None:
+            nonlocal updated_graph
+            nonlocal apply_result
+            nonlocal apply_meta
+
+            collect_actions(workflow_response)
+
+            merged = workflow_response.merged_response
+            after_graph = merged.graph
+
+            if after_graph is None:
+                raise ValueError(
+                    "Workflow response did not contain an after graph"
+                )
+
+            validated_after_graph, graph_error = (
+                await validate_graph_to_apply_inline(after_graph)
+            )
+
+            if graph_error is not None or validated_after_graph is None:
+                raise ValueError(
+                    "ValidateGraphToApply: invalid after graph: "
+                    f"{graph_error or 'unknown validation error'}"
+                )
+
+            parser_output = merged.parser_output
+            parsed_actions = (
+                parser_output.actions
+                if parser_output is not None
+                else ParsedActions()
+            )
+
+            supplemented_graph, supplements = (
+                await augment_graph_with_client_tasks(
+                    validated_after_graph,
+                    parsed_actions.edits,
+                    coding_is_allowed=turn_ctx.coding_is_allowed,
+                )
+            )
+
+            if isinstance(supplemented_graph, dict):
+                supplemented_graph = ProcessGraph.model_validate(
+                    supplemented_graph
+                )
+
+            validated_dump = validated_after_graph.model_dump(by_alias=True)
+            supplemented_dump = supplemented_graph.model_dump(by_alias=True)
+
+            if supplemented_dump != validated_dump:
+                apply_fn = (
+                    turn_ctx.apply_from_agent
+                    if turn_ctx.apply_from_agent
+                    else turn_ctx.set_graph
+                )
+                apply_fn(supplemented_graph)
+                updated_graph = supplemented_graph
+            else:
+                updated_graph = validated_after_graph
+
+            turn_ctx.graph_ref[0] = updated_graph
+
+            previous_apply = turn_ctx.last_apply_result_ref[0]
+
+            apply_result = await refresh_last_graph_apply_result(
+                previous_apply,
+                ApplyWorkflowEditsResult(
+                    success=True,
+                    graph=updated_graph,
+                    error=None,
+                ),
+                supplement_summary="; ".join(supplements),
+            )
+
+            turn_ctx.last_apply_result_ref[0] = apply_result
+
+        async def on_workflow_response(
+            workflow_response: AgentWorkflowResponse,
+        ) -> None:
+            await reconcile_workflow_response(workflow_response)
+
+        async def run_workflow_turn(
+            inputs: WorkflowInputs,
+        ) -> AgentWorkflowResponse:
+            return await turn_ctx.run_workflow_streaming(
+                run_agent_workflow,
+                inputs,
+                overrides,
+                _WORKFLOW_EXECUTION_TIMEOUT,
+                _run_token=turn_ctx.token,
+                workflow_path=_RL_COACH_WORKFLOW_PATH,
+            )
+
+        async def parser_output_follow_up_chain(
+            resp: AgentWorkflowResponse,
+        ) -> AgentWorkflowResponse | None:
+            parser_output = resp.merged_response.parser_output
+
+            if parser_output is None:
+                return None
+
             parser_ctx = ExecutionFollowUpContext(
-                page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
                 agent_label=turn_ctx.agent_label,
                 follow_up_contexts=follow_up_contexts_this_turn,
-                max_rounds=max_follow_ups,
+                max_rounds=max_wd_follow_ups,
                 wf_language_hint=wf_lang_cell,
                 is_current_run=turn_ctx.is_current_run,
-                toast=lambda m: turn_ctx.toast(m),
+                toast=lambda message: turn_ctx.toast(message),
                 set_inline_status=turn_ctx.set_inline_status,
                 append_message=turn_ctx.append_message,
-                prepare_stream_row=turn_ctx.prepare_stream_row,
-                normalize_user_message_for_workflow=normalize_user_message_for_workflow,
+                normalize_user_message_for_workflow=(
+                    normalize_user_message_for_workflow
+                ),
                 last_apply_result_ref=turn_ctx.last_apply_result_ref,
                 get_recent_changes=turn_ctx.get_recent_changes,
                 overrides=overrides,
                 run_workflow_streaming=turn_ctx.run_workflow_streaming,
                 get_runtime_for_prompts=get_runtime_for_prompts,
                 format_previous_turn=format_previous_turn,
-                on_show_run_console=turn_ctx.on_show_run_console,
-                follow_up_tool_ids=follow_up_tools,
+                follow_up_tool_ids=wd_follow_up_tools,
                 follow_up_source_response=None,
                 agent_role_id=RL_COACH_ROLE_ID,
-                agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
-                light_graph_mode=True,
-                ordered_follow_up_tools=ordered_tools_for_role_id(RL_COACH_ROLE_ID),
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
-                extend_agent_initial_inputs_async=_extend_rl_inputs,
+                action_context=parser_output,
+                on_workflow_response=on_workflow_response,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
-            return await run_execution_follow_up_chain_async(parser_ctx, resp)
 
-        training_config_summary = await asyncio.to_thread(get_training_config_summary)
-        training_results = get_training_results_follow_up()
-        previous_turn = await format_previous_turn(turn_ctx.state.history[:-1])
-        training_config_dict = await asyncio.to_thread(get_training_config_dict)
-        _runtime = await get_runtime_for_prompts(_graph)
-        initial_inputs = build_rl_coach_agent_aligned_initial_inputs(
-            user_message_for_workflow,
-            _graph,
-            turn_ctx.last_apply_result_ref[0],
-            turn_ctx.get_recent_changes() if turn_ctx.get_recent_changes else None,
-            training_config=training_config_summary,
-            training_results=training_results,
-            previous_turn=previous_turn,
-            training_config_dict=training_config_dict,
-            runtime=_runtime,
-            coding_is_allowed=turn_ctx.coding_is_allowed,
-            contribution_is_allowed=turn_ctx.contribution_is_allowed,
-            language_hint=wf_lang_cell[0],
-            session_language=turn_ctx.state.session_language,
-            light_graph_mode=True,
-        )
+            return await run_execution_follow_up_chain_async(
+                parser_ctx,
+                resp,
+                flags=PostEditFlags(
+                    had_import_workflow=had_import_workflow,
+                    had_todo=had_todo,
+                    had_add_comment=had_add_comment,
+                ),
+            )
 
-        turn_ctx.prepare_stream_row()
-        response: dict[str, Any] = {}
         try:
-            response = await turn_ctx.run_workflow_streaming(
-                run_rl_coach_workflow,
-                initial_inputs,
-                overrides,
-                None,
-                _run_token=turn_ctx.token,
-            )
-        except WorkflowTimeoutError as ex:
-            turn_ctx.set_inline_status(None)
-            content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again.)"
-            response = {"reply": content, "workflow_errors": []}
-            record_llm_prompt_view_if_present(response, turn_ctx.record_llm_prompt_view)
-            turn_ctx.clear_stream_row()
-            turn_ctx.set_inline_status(None)
-            turn_ctx.append_message(
-                "agent",
-                content,
-                meta={
-                    "turn_id": turn_ctx.turn_id,
-                    "agent": turn_ctx.agent_label,
-                    "source": "agent_response",
-                    "workflow_response": {"reply": content},
-                },
-            )
-            finalize_workflow_designer_turn_session_language(
-                turn_ctx.state, response, debug_log=turn_ctx.workflow_debug_log
-            )
-            turn_ctx.persist_history_debounced()
-            return
-        else:
-            chained = await _parser_output_follow_up_chain(response)
-            if chained is None:
-                return
-            response = chained
+            last_user_content: str | None = None
 
-        record_llm_prompt_view_if_present(response, turn_ctx.record_llm_prompt_view)
-
-        wf_result_early = response.get("result") or {}
-        result_early = (
-            dict(wf_result_early) if isinstance(wf_result_early, dict) else {}
-        )
-        dh_training = result_early.get("delegate_handoff")
-        if turn_ctx.delegate_request_ref is not None and isinstance(dh_training, dict):
-            if (
-                turn_ctx.delegate_request_ref is not None
-                and isinstance(dh_training, dict)
-                and dh_training.get("ok") is True
-                and (dh_training.get("delegate_to") or "").strip()
-                and (dh_training.get("delegate_to") or "").strip().lower()
-                    != (turn_ctx.profile or "").strip().lower()
-            ):
-                turn_ctx.delegate_request_ref[0] = dh_training
-                turn_ctx.clear_stream_row()
-                turn_ctx.set_inline_status(None)
-                finalize_workflow_designer_turn_session_language(
-                    turn_ctx.state, response, debug_log=turn_ctx.workflow_debug_log
-                )
-                turn_ctx.persist_history_debounced()
-                return
-
-            err_dh = (
-                (dh_training.get("error") or "").strip()
-                if isinstance(dh_training, dict)
-                else ""
-            )
-            if err_dh and turn_ctx.is_current_run(turn_ctx.token):
-                await turn_ctx.toast(err_dh[:200])
-
-        dr_out = response.get("delegate_request")
-        if turn_ctx.delegate_request_ref is not None and isinstance(dr_out, dict):
-            if dr_out.get("ok") is True and (dr_out.get("delegate_to") or "").strip():
-                dt = (dr_out.get("delegate_to") or "").strip().lower()
-                if dt != (turn_ctx.profile or "").strip().lower():
-                    turn_ctx.delegate_request_ref[0] = dr_out
-            else:
-                err_d = (dr_out.get("error") or "").strip()
-                if err_d and turn_ctx.is_current_run(turn_ctx.token):
-                    await turn_ctx.toast(err_d[:200])
-
-        report_out = response.get("report_output")
-        if (
-            turn_ctx.is_current_run(turn_ctx.token)
-            and isinstance(report_out, dict)
-            and report_out.get("ok")
-        ):
-            turn_ctx.set_inline_status("Making report…")
-            try:
-                from gui.components.settings import get_rag_update_workflow_path
-                from runtime.run import run_workflow
-
-                path = get_rag_update_workflow_path()
-                if path.exists():
-                    overrides_rag = {
-                        "rag_update": {
-                            "rag_index_data_dir": str(turn_ctx.rag_index_dir),
-                            "units_dir": str(UNITS_DIR),
-                            "mydata_dir": str(turn_ctx.mydata_dir),
-                            "embedding_model": turn_ctx.rag_embedding_model,
-                        },
-                    }
-                    await asyncio.to_thread(
-                        run_workflow,
-                        path,
-                        initial_inputs={},
-                        unit_param_overrides=overrides_rag,
-                        format="dict",
+            for message in reversed(turn_ctx.state.history or []):
+                if (
+                    str(message.get("role", "")).strip().lower()
+                    == "user"
+                ):
+                    message_content = (
+                        message.get("content")
+                        or message.get("content_for_display")
+                        or ""
                     )
-            except (TypeError):
-                pass
-            if turn_ctx.is_current_run(turn_ctx.token):
-                turn_ctx.set_inline_status(None)
+                    last_user_content = str(message_content)
+                    break
 
-        raw_reply = response.get("reply")
-        if isinstance(raw_reply, dict) and "action" in raw_reply:
-            raw_reply = raw_reply.get("action") or ""
-        content = (
-            raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
-        ).strip() or "(No response from model.)"
-        if content == "(No response from model.)":
-            po = response.get("parser_output")
-            edits = (
-                po
-                if isinstance(po, list)
-                else (po.get("edits") if isinstance(po, dict) else None)
-            )
-            if isinstance(edits, list) and edits:
-                content = "No tool actions requested."
-
-        wf_result = response.get("result") or {}
-        result = dict(wf_result) if isinstance(wf_result, dict) else {}
-        await set_commenter_for_new_comments(
-            result.get("edits"), agent_role_id=turn_ctx.profile
-        )
-
-        workflow_errors = response.get("workflow_errors") or []
-        user_message_missing = any(
-            err
-            and (
-                (str(err[0]) == "llm_agent" and (err[1] or "").strip())
-                or "placeholder" in (err[1] or "").lower()
-                or "no message" in (err[1] or "").lower()
-            )
-            for err in workflow_errors
-        )
-        if user_message_missing:
-            content = "Your message didn't reach the model. Please try sending again."
-
-        content = content + formulas_calc_display_appendix(response)
-
-        turn_ctx.clear_stream_row()
-        turn_ctx.set_inline_status(None)
-        if workflow_errors and turn_ctx.is_current_run(turn_ctx.token):
-            err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
-            if len(workflow_errors) > 1:
-                err_msg += f" (+{len(workflow_errors) - 1} more)"
-            if user_message_missing:
-                await turn_ctx.toast(
-                    "Your message didn't reach the model. Please try again."
+            user_message_for_workflow = (
+                normalize_user_message_for_workflow(
+                    last_user_content
+                    if (
+                        last_user_content is not None
+                        and last_user_content.strip()
+                    )
+                    else message_for_workflow
                 )
-            else:
-                await turn_ctx.toast(f"Workflow error: {err_msg}")
+            )
+
+            runtime = await get_runtime_for_prompts(
+                turn_ctx.graph_ref[0]
+            )
+
+            initial_inputs = build_agent_workflow_initial_inputs(
+                user_message_for_workflow,
+                turn_ctx.graph_ref[0],
+                turn_ctx.last_apply_result_ref[0],
+                (
+                    turn_ctx.get_recent_changes()
+                    if turn_ctx.get_recent_changes
+                    else None
+                ),
+                runtime=runtime,
+                coding_is_allowed=turn_ctx.coding_is_allowed,
+                contribution_is_allowed=turn_ctx.contribution_is_allowed,
+                previous_turn=await format_previous_turn(
+                    turn_ctx.state.history[:-1]
+                ),
+                language_hint=wf_lang_cell[0],
+                session_language=turn_ctx.state.session_language,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
+            )
+
+            response = await run_workflow_turn(initial_inputs)
+            await on_workflow_response(response)
+
+            chained = await parser_output_follow_up_chain(response)
+
+            if chained is not None:
+                response = chained
+
+            merged = response.merged_response
+            result = merged.result
+
+            apply_result_value = self.get_apply_result(
+                merged.status,
+                result,
+            )
+
+            apply_result = apply_result_value
+
+            content = (
+                merged.reply.strip()
+                or "(No response from the model.)"
+            )
+
+            parser_output = merged.parser_output
+
+            if (
+                content == "(No response from the model.)"
+                and parser_output is not None
+                and (
+                    parser_output.actions.edits
+                    or parser_output.actions.tool_actions
+                )
+            ):
+                content = "Workflow actions completed."
+
+            workflow_errors = merged.workflow_errors
+
+            user_message_missing = any(
+                error
+                and (
+                    (
+                        str(error[0]) == "llm_agent"
+                        and (error[1] or "").strip()
+                    )
+                    or "placeholder" in (error[1] or "").lower()
+                    or "no message" in (error[1] or "").lower()
+                )
+                for error in workflow_errors
+            )
+
+            if user_message_missing:
+                content = (
+                    "Your message didn't reach the model. "
+                    "Please try sending again."
+                )
+
+            if (
+                result.get("kind") != "apply_failed"
+                and isinstance(apply_result_value, dict)
+                and apply_result_value.get("attempted") is True
+                and apply_result_value.get("success") is False
+            ):
+                result["kind"] = "apply_failed"
+
+            result["content_for_display"] = content
+            result["apply_result"] = apply_result_value
+
+            if workflow_errors and turn_ctx.is_current_run(
+                turn_ctx.token
+            ):
+                error_message = workflow_errors[0][1][:150]
+
+                if len(workflow_errors) > 1:
+                    error_message += (
+                        f" (+{len(workflow_errors) - 1} more)"
+                    )
+
+                await turn_ctx.toast(
+                    (
+                        "Your message didn't reach the model. "
+                        "Please try again."
+                    )
+                    if user_message_missing
+                    else f"Workflow error: {error_message}"
+                )
+
+        except WorkflowTimeoutError as exc:
+            turn_ctx.set_inline_status(None)
+
+            content = (
+                f"(Request timed out after "
+                f"{getattr(exc, 'timeout_s', 300):.0f}s. "
+                "Try again or check that the LLM/service is responding.)"
+            )
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result=self.parse_error_result(content),
+                )
+            )
+
+            result = response.merged_response.result
+            apply_result = failed_apply_result(content)
+
+        except TypeError as exc:
+            turn_ctx.set_inline_status(None)
+
+            content = f"(Workflow error: {exc})"
+
+            response = AgentWorkflowResponse(
+                merged_response=MergeResponse(
+                    reply="",
+                    result=self.parse_error_result(content),
+                )
+            )
+
+            result = response.merged_response.result
+            apply_result = failed_apply_result(content)
+
+        except Exception as exc:
+            logger.exception("Unexpected error during role execution")
+
+            turn_ctx.set_inline_status(None)
+
+            turn_ctx.error_ref[0] = {
+                "type": "RoleExecutionError",
+                "error": str(exc),
+            }
+
+            content = f"(Role execution error: {exc})"
+
+            result = {
+                "kind": "parse_error",
+                "content_for_display": content,
+                "apply_result": None,
+                "edits": [],
+            }
+
+            apply_result = None
+
+        content_for_display = result.get("content_for_display")
+
+        if not isinstance(content_for_display, str) or not content_for_display:
+            content_for_display = content
+
+        content = content_for_display
+        result["content_for_display"] = content
 
         meta = {
             "turn_id": turn_ctx.turn_id,
@@ -353,48 +657,98 @@ class RlCoachChatHandler:
                 "reply": content,
                 "result_kind": result.get("kind"),
             },
-            "parsed_edits": result.get("edits", []),
-            "apply": apply_meta_with_formulas_calc_tool_status(
-                response,
-                response.get("status") or {},
-            ),
+            "parsed_edits": [
+                edit.model_dump(by_alias=True)
+                if isinstance(edit, ModelDumpable)
+                else edit
+                for edit in turn_actions.edits
+            ],
+            "tool_actions": turn_actions.tool_actions,
+            "apply": apply_meta,
         }
+
+        if result.get("kind") == "parse_error":
+            meta["format_error"] = True
+
         if follow_up_contexts_this_turn:
-            meta["follow_up_contexts"] = follow_up_contexts_this_turn
-        turn_ctx.append_message("agent", content, meta=meta)
+            meta["follow_up_contexts"] = (
+                follow_up_contexts_this_turn
+            )
 
-        applied_config = None
-        if isinstance(result, dict) and result.get("kind") == "applied":
-            applied_config = result.get("config")
+        if turn_ctx.is_current_run(turn_ctx.token):
+            turn_ctx.append_message(
+                "agent",
+                content,
+                meta=meta,
+            )
 
-        if applied_config and turn_ctx.is_current_run(turn_ctx.token):
-            try:
-                import yaml
+        updated_graph = turn_ctx.graph_ref[0]
+        publish_state()
 
-                from gui.components.settings import REPO_ROOT
+        if not turn_ctx.is_current_run(turn_ctx.token):
+            return
 
-                path_str = (turn_ctx.training_config_path or "").strip()
-                if path_str:
-                    path = Path(path_str)
-                    if not path.is_absolute() and REPO_ROOT is not None:
-                        path = (REPO_ROOT / path_str).resolve()
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    with path.open("w", encoding="utf-8") as f:
-                        yaml.dump(
-                            applied_config,
-                            f,
-                            default_flow_style=False,
-                            allow_unicode=True,
-                            sort_keys=False,
-                        )
-                    await turn_ctx.toast("Training config updated and saved.")
-            except (TypeError, WorkflowTimeoutError):
-                if turn_ctx.is_current_run(turn_ctx.token):
-                    await turn_ctx.toast("Config was applied but save to file failed.")
-        elif turn_ctx.is_current_run(turn_ctx.token):
-            await turn_ctx.toast("RL Coach reply.")
+        turn_ctx.set_inline_status(None)
+
+        parser_output = response.merged_response.parser_output
+        final_content_holder = [content]
+
+        final_ctx = PostExecutionFollowUpContext(
+            graph_ref=turn_ctx.graph_ref,
+            state=turn_ctx.state,
+            token=turn_ctx.token,
+            turn_id=turn_ctx.turn_id,
+            agent_role_id=turn_ctx.role_id,
+            agent_label=turn_ctx.agent_label,
+            max_rounds=max_wd_follow_ups,
+            wf_language_hint=wf_lang_cell,
+            is_current_run=turn_ctx.is_current_run,
+            toast=lambda message: turn_ctx.toast(message),
+            set_inline_status=turn_ctx.set_inline_status,
+            append_message=turn_ctx.append_message,
+            normalize_user_message_for_workflow=(
+                normalize_user_message_for_workflow
+            ),
+            last_apply_result_ref=turn_ctx.last_apply_result_ref,
+            get_recent_changes=turn_ctx.get_recent_changes,
+            overrides=overrides,
+            run_workflow_streaming=turn_ctx.run_workflow_streaming,
+            get_runtime_for_prompts=get_runtime_for_prompts,
+            format_previous_turn=format_previous_turn,
+            stream_buffer_ref=turn_ctx.stream_buffer_ref,
+            agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
+            record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
+            action_context=(
+                parser_output
+                if parser_output is not None
+                else ParserOutput()
+            ),
+            on_workflow_response=on_workflow_response,
+            light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
+        )
+
+        await run_post_execution_follow_up_chain_async(
+            final_ctx,
+            result=result,
+            content_holder=final_content_holder,
+            parser_chain_runner=parser_output_follow_up_chain,
+            flags=PostEditFlags(
+                had_import_workflow=had_import_workflow,
+                had_todo=had_todo,
+                had_add_comment=had_add_comment,
+            ),
+        )
+
+        content = final_content_holder[0]
+        result["content_for_display"] = content
+        updated_graph = turn_ctx.graph_ref[0]
+
+        publish_state()
 
         finalize_workflow_designer_turn_session_language(
-            turn_ctx.state, response, debug_log=turn_ctx.workflow_debug_log
+            turn_ctx.state,
+            response,
+            debug_log=turn_ctx.workflow_debug_log,
         )
+
         turn_ctx.persist_history_debounced()

@@ -78,6 +78,7 @@ from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
 )
 from agents.roles import ANALYST_ROLE_ID, get_role
+from agents.roles.registry import is_role_light_graph_mode_enabled
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions, ParserOutput
@@ -102,7 +103,7 @@ from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
 )
 
 _ANALYST_WORKFLOW_PATH = get_role_chat_workflow_path(ANALYST_ROLE_ID).resolve()
-
+_IS_LIGHT_GRAPH_MODE_ENABLED = is_role_light_graph_mode_enabled(ANALYST_ROLE_ID)
 _WORKFLOW_EXECUTION_TIMEOUT = None # default
 
 logger = setup_colored_logging(logging.DEBUG)
@@ -436,7 +437,7 @@ class AnalystChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 action_context=parser_output,
                 on_workflow_response=on_workflow_response,
-                light_graph_mode=True,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
             return await run_execution_follow_up_chain_async(
@@ -497,7 +498,7 @@ class AnalystChatHandler:
                 ),
                 language_hint=wf_lang_cell[0],
                 session_language=turn_ctx.state.session_language,
-                light_graph_mode=True,
+                light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
             response = await run_workflow_turn(initial_inputs)
@@ -724,7 +725,7 @@ class AnalystChatHandler:
                 else ParserOutput()
             ),
             on_workflow_response=on_workflow_response,
-            light_graph_mode=True,
+            light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
         await run_post_execution_follow_up_chain_async(
