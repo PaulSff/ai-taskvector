@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from core.graph.diff import graph_diff as _graph_diff
 from core.schemas import ProcessGraph
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 GRAPH_DIFF_INPUT_PORTS = [("prev_graph", "ProcessGraph"), ("current_graph", "ProcessGraph")]
@@ -31,11 +32,11 @@ def _as_graph(value: object) -> ProcessGraph | None:
     )
 
 def _graph_diff_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     """Compute the structured diff between the previous and current graphs."""
     prev = _as_graph(inputs.get("prev_graph"))
     current = _as_graph(inputs.get("current_graph"))

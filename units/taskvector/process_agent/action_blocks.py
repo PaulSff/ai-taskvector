@@ -128,12 +128,6 @@ def _parsed_blocks_to_action_blocks(
 
         registration.handle(actions, block)
 
-        logger.debug(
-            "Action handled successfully: action=%r parsed=%r",
-            action,
-            block,
-        )
-
     return ParserOutput(actions=actions)
 
 

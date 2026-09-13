@@ -362,20 +362,9 @@ def _apply_edits_step(
     raw_actions = inputs.get("actions")
     graph_origin = inputs.get("graph_origin")
 
-    logger.debug(
-        "ApplyEdits started: actions_type=%s, graph_origin=%s",
-        type(raw_actions).__name__,
-        graph_origin if isinstance(graph_origin, str) else None,
-    )
-
-
     try:
         graph = graph_to_json_object(inputs.get("graph"))
         result["graph"] = graph
-
-        logger.debug(
-            "ApplyEdits loaded graph successfully"
-        )
 
     except (TypeError, ValueError) as exc:
         error_string = f"Invalid graph: {exc}"
@@ -403,11 +392,6 @@ def _apply_edits_step(
         )
 
     edits, extraction_error = _extract_edits(raw_actions)
-
-    logger.debug(
-        "ApplyEdits extracted edits: count=%d",
-        len(edits),
-    )
 
     result["edits"] = to_json_value(edits)
 
@@ -475,12 +459,6 @@ def _apply_edits_step(
 
         edits = patched_edits
         result["edits"] = to_json_value(edits)
-
-        logger.debug(
-            "ApplyEdits applied graph origin to import edits: "
-            "origin=%s",
-            origin,
-        )
 
     try:
         validated_edits = [
@@ -554,8 +532,8 @@ def _apply_edits_step(
     if allowed_values:
         allowed = frozenset(allowed_values)
 
-        logger.debug(
-            "ApplyEdits restricted allowed actions: %s",
+        logger.warning(
+            "ApplyEdits restricted. Allowed actions: %s",
             ", ".join(sorted(allowed)),
         )
 
