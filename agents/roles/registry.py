@@ -225,6 +225,18 @@ def is_role_chat_panel_enabled(role: RoleConfig) -> bool:
     return role.chat_enabled
 
 
+def is_role_light_graph_mode_enabled(role_id: str) -> bool:
+    """
+    Return whether light graph mode is enabled for a role.
+
+    The value is read from:
+        chat.light_graph_mode
+    in the role's role.yaml file.
+    """
+    role = get_role(role_id)
+    return role.light_graph_mode
+
+
 def list_chat_dropdown_role_ids() -> RoleIds:
     """
     Return role ids for the agents chat dropdown.
