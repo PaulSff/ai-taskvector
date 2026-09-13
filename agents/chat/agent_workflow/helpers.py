@@ -17,7 +17,12 @@ from core.schemas.graph_edit_api import (
     ApplyWorkflowEditsResult,
     GraphEdit,
 )
-from core.schemas.primitives import Data, is_object_list, is_string_keyed_dict
+from core.schemas.primitives import (
+    Data,
+    JsonValue,
+    is_object_list,
+    is_string_keyed_dict,
+)
 from core.schemas.process_graph import ProcessGraph
 
 logger = logging.getLogger(__name__)
@@ -392,3 +397,44 @@ def get_optional_parser_output(
     )
 
     return normalized
+
+
+def non_empty_diff(value: object) -> JsonValue | None:
+    if isinstance(value, dict):
+        filtered_dict: dict[str, JsonValue] = {}
+
+        for key, item in value.items():
+            if not isinstance(key, str):
+                continue
+
+            cleaned = non_empty_diff(item)
+
+            if cleaned is not None:
+                filtered_dict[key] = cleaned
+
+        return filtered_dict or None
+
+    if isinstance(value, list):
+        filtered_list: list[JsonValue] = []
+
+        for item in value:
+            cleaned = non_empty_diff(item)
+
+            if cleaned is not None:
+                filtered_list.append(cleaned)
+
+        return filtered_list or None
+
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return value if value else None
+
+    if isinstance(value, (int, float)):
+        return value
+
+    if isinstance(value, str):
+        return value if value.strip() else None
+
+    return None
