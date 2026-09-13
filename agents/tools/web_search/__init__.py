@@ -2,21 +2,70 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from agents.chat.agent_workflow import (
-    WEB_SEARCH_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
+from pydantic import ValidationError
+
 from agents.chat.context.follow_up_context import ExecutionFollowUpContext
-from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
-from agents.tools.web_search.follow_ups import (
-    WEB_SEARCH_FOLLOW_UP_PREFIX,
-    WEB_SEARCH_FOLLOW_UP_SUFFIX,
-)
-from core.schemas.primitives import Data, WorkflowInputs
-from units.web import register_web_units
 
 EXECUTION_TIMEOUT_S: float = 30.0
+
+
+def _empty_web_search_contribution(
+    hint: LanguageHintGetter,
+) -> FollowUpContribution:
+    # Lazy imports prevent web_search.__init__ from importing this module
+    # while it is still being initialized.
+    from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
+    from agents.tools.types import FollowUpContribution
+    from agents.tools.web_search.follow_ups import (
+        WEB_SEARCH_FOLLOW_UP_PREFIX,
+        WEB_SEARCH_FOLLOW_UP_SUFFIX,
+    )
+
+    return FollowUpContribution(
+        context_chunks=[
+            WEB_SEARCH_FOLLOW_UP_PREFIX
+            + TOOL_EMPTY_RESULT_LINE
+            + WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
+                language=hint(),
+                session_language=hint(),
+            )
+        ],
+        any_empty_tool=True,
+    )
+
+
+def _extract_web_search_result(out: object) -> str:
+    """
+    Extract the serialized web-search result from the workflow output.
+
+    Expected workflow shape:
+
+        {
+            "web_search": {
+                "out": "..."
+            }
+        }
+    """
+    if not isinstance(out, Mapping):
+        return ""
+
+    web_search_result = out.get("web_search")
+
+    if not isinstance(web_search_result, Mapping):
+        return ""
+
+    raw_result = web_search_result.get("out")
+
+    if isinstance(raw_result, str):
+        return raw_result.strip()
+
+    # Keep this defensive in case the web-search workflow returns
+    # structured or list data in the future.
+    if raw_result is not None:
+        return str(raw_result).strip()
+
+    return ""
 
 
 async def run_web_search_follow_up(
@@ -25,49 +74,72 @@ async def run_web_search_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
+    # All application imports are intentionally local. This avoids the cycle:
+
+    # web_search.__init__
+    #   -> action_block
+    #   -> follow_ups
+    #   -> agent_workflow
+    #   -> settings / web_search package
+
+    from agents.chat.agent_workflow import (
+        WEB_SEARCH_WORKFLOW_PATH,
+        run_workflow_with_errors,
+    )
+    from agents.tools.types import FollowUpContribution
+    from agents.tools.web_search.action_block import (
+        WebSearchActionBlock,
+    )
+    from agents.tools.web_search.follow_ups import (
+        WEB_SEARCH_FOLLOW_UP_PREFIX,
+        WEB_SEARCH_FOLLOW_UP_SUFFIX,
+    )
+    from core.schemas.primitives import WorkflowInputs
+
     try:
-        ctx.set_inline_status("Searching web…")
+        ctx.set_inline_status("Searching the web…")
     except (AttributeError, TypeError):
         pass
 
     hint = language_hint
-    chunk_ws: str | None = None
 
     try:
-        register_web_units()
-
-        web_search_actions = po.actions.get_tool_actions("web_search")
-        web_search_data: Data = (
-            web_search_actions[0] if web_search_actions else {}
+        web_search_actions = po.actions.get_tool_actions(
+            "web_search"
         )
 
-        q = web_search_data.get("web_search", "")
+        if not web_search_actions:
+            raise ValueError(
+                "Web search follow-up was requested, but no "
+                "web_search action was found"
+            )
 
-        if isinstance(q, (list, tuple)):
-            q = " ".join(map(str, q))
+        raw_action = web_search_actions[0]
 
-        q = "" if q is None else str(q).strip()
+        # Validate and normalize the parser output using the
+        # authoritative ActionBlock schema.
+        try:
+            action = WebSearchActionBlock.model_validate(raw_action)
+        except ValidationError as exc:
+            raise ValueError(
+                "Invalid web_search action block: "
+                f"{raw_action!r}; errors={exc.errors()!r}"
+            ) from exc
 
-        raw_max_results = web_search_data.get(
-            "web_search_max_results",
-            10,
+        query = action.query.strip()
+        max_results = max(1, min(int(action.max_results), 20))
+
+        print(
+            "[run_web_search_follow_up] "
+            "validated action "
+            f"query={query!r} "
+            f"max_results={max_results}",
+            flush=True,
         )
-
-        if isinstance(raw_max_results, bool):
-            max_results = 10
-        elif isinstance(raw_max_results, (str, int, float)):
-            try:
-                max_results = int(raw_max_results)
-            except ValueError:
-                max_results = 10
-        else:
-            max_results = 10
-
-        max_results = max(1, min(max_results, 20))
 
         initial_inputs: WorkflowInputs = {
             "inject_query": {
-                "data": q,
+                "data": query,
             }
         }
 
@@ -80,8 +152,10 @@ async def run_web_search_follow_up(
 
         print(
             "[run_web_search_follow_up] "
-            f"calling run_workflow_with_errors "
-            f"q={q[:80]!r} max_results={max_results}"
+            "calling run_workflow_with_errors "
+            f"query={query[:120]!r} "
+            f"max_results={max_results}",
+            flush=True,
         )
 
         out, errs = await run_workflow_with_errors(
@@ -94,12 +168,20 @@ async def run_web_search_follow_up(
 
         print(
             "[run_web_search_follow_up] "
-            f"run_workflow_with_errors returned "
+            "run_workflow_with_errors returned "
             f"errs_len={len(errs)} "
-            f"out_keys={list((out or {}).keys())}"
+            f"out_type={type(out).__name__} "
+            f"out_keys={list(out.keys()) if isinstance(out, Mapping) else None}",
+            flush=True,
         )
 
         if errs:
+            print(
+                "[run_web_search_follow_up] "
+                f"workflow_errors={errs!r}",
+                flush=True,
+            )
+
             try:
                 await ctx.toast(
                     f"Web search error: {errs[0][1][:120]}"
@@ -107,41 +189,26 @@ async def run_web_search_follow_up(
             except (AttributeError, TypeError, IndexError):
                 pass
 
-        res = ""
+        result = _extract_web_search_result(out)
 
-        if isinstance(out, Mapping):
-            web_search_result = out.get("web_search")
+        print(
+            "[run_web_search_follow_up] "
+            f"extracted_result_len={len(result)} "
+            f"result_preview={result[:500]!r}",
+            flush=True,
+        )
 
-            if isinstance(web_search_result, Mapping):
-                raw_res = web_search_result.get("out")
-
-                if isinstance(raw_res, str):
-                    res = raw_res
-
-
-        if res.strip():
-            chunk_ws = (
-                WEB_SEARCH_FOLLOW_UP_PREFIX
-                + res
-                + WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
-                    language=hint(),
-                    session_language=hint(),
-                )
+        if not result:
+            print(
+                "[run_web_search_follow_up] "
+                "no extractable web-search result",
+                flush=True,
             )
+            return _empty_web_search_contribution(hint)
 
-    except (KeyError, TypeError, ValueError, IndexError) as e:
-        try:
-            await ctx.toast(
-                "Web search workflow crashed: "
-                f"{type(e).__name__}: {str(e)[:120]}"
-            )
-        except (AttributeError, TypeError):
-            pass
-
-    if not chunk_ws:
-        chunk_ws = (
+        chunk = (
             WEB_SEARCH_FOLLOW_UP_PREFIX
-            + TOOL_EMPTY_RESULT_LINE
+            + result
             + WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
                 language=hint(),
                 session_language=hint(),
@@ -149,14 +216,39 @@ async def run_web_search_follow_up(
         )
 
         return FollowUpContribution(
-            context_chunks=[chunk_ws],
-            any_empty_tool=True,
+            context_chunks=[chunk],
+            any_empty_tool=False,
         )
 
-    return FollowUpContribution(
-        context_chunks=[chunk_ws],
-        any_empty_tool=False,
-    )
+    except TimeoutError:
+        try:
+            await ctx.toast("Web search timed out")
+        except (AttributeError, TypeError):
+            pass
+
+        return _empty_web_search_contribution(hint)
+
+    except ValidationError as exc:
+        try:
+            await ctx.toast(
+                "Invalid web search action: "
+                f"{str(exc)[:120]}"
+            )
+        except (AttributeError, TypeError):
+            pass
+
+        raise
+
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        try:
+            await ctx.toast(
+                "Web search workflow crashed: "
+                f"{type(exc).__name__}: {str(exc)[:120]}"
+            )
+        except (AttributeError, TypeError):
+            pass
+
+        raise
 
 
 __all__ = ["run_web_search_follow_up"]
