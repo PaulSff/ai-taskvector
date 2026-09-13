@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 
 from agents.chat.agent_workflow.wf_response_schema import (
@@ -17,6 +18,7 @@ from core.schemas.primitives import (
     WorkflowOutputs,
     is_string_keyed_dict,
 )
+from services.logging import setup_colored_logging
 
 from .helpers import (
     get_data,
@@ -28,6 +30,8 @@ from .helpers import (
     get_str,
     get_units_response,
 )
+
+logger = setup_colored_logging(logging.DEBUG)
 
 
 def collect_workflow_errors(
@@ -168,9 +172,23 @@ The processing order is therefore:
     6. Build AgentWorkflowResponse
 
     """
+    logger.debug(
+        "MergeWorkflowResponse started: output_keys=%s",
+        sorted(outputs.keys()),
+    )
+
     workflow_errors = collect_workflow_errors(outputs)
 
     merge_response_data = get_nested_data(outputs, "merge_response")
+
+    logger.debug(
+        "MergeWorkflowResponse diff=%r",
+        (
+            merge_response_data.get("diff")
+            if is_string_keyed_dict(merge_response_data)
+            else None
+        ),
+    )
 
     merged_response = MergeResponse(
         reply=get_str(merge_response_data, "reply"),
@@ -232,11 +250,37 @@ The processing order is therefore:
         merged_response_data,
     )
 
-    merged_response = MergeResponse.from_dict(merged_response_data)
-
-    return AgentWorkflowResponse(
-        merged_response=merged_response,
-        merged_errors=_build_merge_errors(outputs),
-        direct_units_response=_build_direct_units_response(outputs),
-        direct_units_errors=workflow_errors,
+    # Preserve the typed MergeResponse fields. The dictionary is only used
+    # as a temporary container for attaching prompt-debug fields.
+    merged_response.llm_prompt = merged_response_data.get("llm_prompt")
+    merged_response.llm_prompt_debug = merged_response_data.get(
+        "llm_prompt_debug"
     )
+    merged_response.llm_system_prompt = merged_response_data.get(
+        "llm_system_prompt"
+    )
+    merged_response.llm_user_message = merged_response_data.get(
+        "llm_user_message"
+    )
+
+    response = AgentWorkflowResponse(
+            merged_response=merged_response,
+            merged_errors=_build_merge_errors(outputs),
+            direct_units_response=_build_direct_units_response(outputs),
+            direct_units_errors=workflow_errors,
+        )
+
+    logger.debug(
+        "MergeWorkflowResponse finished: reply_length=%d, "
+        "has_result=%s, has_status=%s, has_graph=%s, has_diff=%s, "
+        "workflow_error_count=%d, merged_errors=%r",
+        len(response.merged_response.reply),
+        response.merged_response.result is not None,
+        response.merged_response.status is not None,
+        response.merged_response.graph is not None,
+        bool(response.merged_response.diff),
+        len(response.direct_units_errors),
+        response.merged_errors,
+    )
+
+    return response
