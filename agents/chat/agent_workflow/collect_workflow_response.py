@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
 
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
@@ -29,6 +28,7 @@ from .helpers import (
     get_optional_str,
     get_str,
     get_units_response,
+    non_empty_diff,
 )
 
 logger = setup_colored_logging(logging.DEBUG)
@@ -67,13 +67,6 @@ def _build_merge_errors(outputs: WorkflowOutputs) -> MergeErrors:
         llm_agent=get_str(merge_errors_data, "llm_agent"),
         parser=get_str(merge_errors_data, "parser"),
         process=get_str(merge_errors_data, "process"),
-        run_workflow=get_str(merge_errors_data, "run_workflow"),
-        report=get_str(merge_errors_data, "report"),
-        grep=get_str(merge_errors_data, "grep"),
-        delegate_request=get_str(
-            merge_errors_data,
-            "delegate_request",
-        ),
     )
 
 def _build_direct_units_response(
@@ -88,25 +81,6 @@ def _build_direct_units_response(
         parser_output=get_optional_parser_output(
             outputs,
             "parser_output",
-        ),
-        run_output=get_data(outputs, "run_output"),
-        report_output=get_data(outputs, "report_output"),
-        grep_output=get_data(outputs, "grep_output"),
-        formulas_calc_output=get_data(
-            outputs,
-            "formulas_calc_output",
-        ),
-        formulas_calc_error=get_str(
-            outputs,
-            "formulas_calc_error",
-        ),
-        delegate_request=get_data(
-            outputs,
-            "delegate_request",
-        ),
-        delegate_request_error=get_str(
-            outputs,
-            "delegate_request_error",
         ),
         units_response=get_units_response(outputs),
     )
@@ -181,12 +155,12 @@ The processing order is therefore:
 
     merge_response_data = get_nested_data(outputs, "merge_response")
 
-    logger.debug(
-        "MergeWorkflowResponse diff=%r",
+    logger.info(
+        "MergeWorkflowResponse workflow diff=%r",
         (
-            merge_response_data.get("diff")
+            non_empty_diff(merge_response_data.get("diff")) or {}
             if is_string_keyed_dict(merge_response_data)
-            else None
+            else {}
         ),
     )
 
@@ -198,39 +172,11 @@ The processing order is therefore:
             ),
         status=get_data(merge_response_data, "status"),
         graph=get_graph(merge_response_data, "graph"),
-        diff=get_str(merge_response_data, "diff"),
+        diff=get_data(merge_response_data, "diff"),
         workflow_errors=workflow_errors,
         parser_output=get_optional_parser_output(
             merge_response_data,
             "parser_output",
-        ),
-        run_output=get_data(
-            merge_response_data,
-            "run_output",
-        ),
-        report_output=get_data(
-            merge_response_data,
-            "report_output",
-        ),
-        grep_output=get_data(
-            merge_response_data,
-            "grep_output",
-        ),
-        formulas_calc_output=get_data(
-            merge_response_data,
-            "formulas_calc_output",
-        ),
-        formulas_calc_error=get_str(
-            merge_response_data,
-            "formulas_calc_error",
-        ),
-        delegate_request=get_data(
-            merge_response_data,
-            "delegate_request",
-        ),
-        delegate_request_error=get_str(
-            merge_response_data,
-            "delegate_request_error",
         ),
     )
 
@@ -243,24 +189,9 @@ The processing order is therefore:
             if isinstance(action, str) and action.strip():
                 merged_response.reply = action.strip()
 
-    merged_response_data = asdict(merged_response)
-
     attach_llm_prompt_debug_from_outputs(
         outputs,
-        merged_response_data,
-    )
-
-    # Preserve the typed MergeResponse fields. The dictionary is only used
-    # as a temporary container for attaching prompt-debug fields.
-    merged_response.llm_prompt = merged_response_data.get("llm_prompt")
-    merged_response.llm_prompt_debug = merged_response_data.get(
-        "llm_prompt_debug"
-    )
-    merged_response.llm_system_prompt = merged_response_data.get(
-        "llm_system_prompt"
-    )
-    merged_response.llm_user_message = merged_response_data.get(
-        "llm_user_message"
+        merged_response,
     )
 
     response = AgentWorkflowResponse(

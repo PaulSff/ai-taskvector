@@ -71,7 +71,7 @@ class MergeResponse:
         )
     status: Data = field(default_factory=dict)
     graph: ProcessGraph | None = None
-    diff: str = ""
+    diff: Data = field(default_factory=dict)
 
     workflow_errors: WorkflowErrors = field(default_factory=list)
 
@@ -81,15 +81,6 @@ class MergeResponse:
     llm_user_message: str | None = None
 
     parser_output: ParserOutput | None = None
-    run_output: Data = field(default_factory=dict)
-    report_output: Data = field(default_factory=dict)
-    grep_output: Data = field(default_factory=dict)
-
-    formulas_calc_output: Data = field(default_factory=dict)
-    formulas_calc_error: str = ""
-
-    delegate_request: Data = field(default_factory=dict)
-    delegate_request_error: str = ""
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> Self:
@@ -116,10 +107,6 @@ class MergeErrors:
     llm_agent: str = ""
     parser: str = ""
     process: str = ""
-    run_workflow: str = ""
-    report: str = ""
-    grep: str = ""
-    delegate_request: str = ""
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> Self:
@@ -148,15 +135,6 @@ class DirectUnitsResponse:
     llm_prompt_debug: Data | None = None
 
     parser_output: ParserOutput | None = None
-    run_output: Data = field(default_factory=dict)
-    report_output: Data = field(default_factory=dict)
-    grep_output: Data = field(default_factory=dict)
-
-    formulas_calc_output: Data = field(default_factory=dict)
-    formulas_calc_error: str = ""
-
-    delegate_request: Data = field(default_factory=dict)
-    delegate_request_error: str = ""
 
     units_response: list[Data] = field(default_factory=list)
 
