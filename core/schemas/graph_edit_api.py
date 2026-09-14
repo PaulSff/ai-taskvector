@@ -5,7 +5,7 @@ from typing import ClassVar, Literal, TypeGuard
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from core.schemas import NodePosition, ProcessGraph
-from core.schemas.primitives import Data, JsonValue, is_object_list
+from core.schemas.primitives import JsonValue, is_object_list
 
 # Action types
 GraphEditAction = Literal[
@@ -211,43 +211,99 @@ class MultipleEditsSequential(BaseModel):
         description="Graph edits to apply sequentially",
     )
 
-class ApplyWorkflowEditsResult(BaseModel):
-    success: bool
-    graph: ProcessGraph
+
+class ApplyWorkflowEditsStatus(BaseModel):
+    """
+    Compact graph edit status.
+    (returned through the status output port by the ApplyEdits Unit).
+    """
+
+    attempted: bool
+    success: bool | None = None
     error: str | None = None
+    edits_summary: str | None = None
+
+
+class ApplyWorkflowEditsResult(BaseModel):
+    """
+    Detailed record of the most recent workflow-edit operation.
+
+    (also corresponds to result["last_apply_result"] at the ApplyEdits Unit)
+    """
+
+    attempted: bool
+    success: bool
+    error: str | None = None
+
+    graph_after: ProcessGraph = Field(
+        description=(
+            "Complete canonical process graph after the edit attempt. "
+            "None when application was not attempted."
+        ),
+    )
+
+    edits_summary: str | None = None
+
 
 
 class AgentApplyWorkflowEditsResult(BaseModel):
-    """Metadata describing a graph-apply operation for LLM."""
+    """
+    Result payload of an Agent workflow edit attempt
+    (also passed through the ApplyEdits Unit result output port).
+    """
 
-    attempted: bool = Field(
-        default=True,
-        description="Whether a graph-apply operation was attempted.",
-    )
-    apply_result: ApplyWorkflowEditsResult = Field(
-        ...,
-        description="Result returned by applying the workflow edits.",
-    )
-    edits_summary: str = Field(
+    kind: Literal["no_edits", "applied", "apply_failed"]
+
+    content_for_display: str = Field(
         default="",
-        description="Human-readable summary of applied edits.",
+        description="Human-readable content for display.",
+    )
+
+    graph: ProcessGraph = Field(
+        ...,
+        description="Current canonical process graph.",
+    )
+
+    edits: list[GraphEdit] = Field(
+        default_factory=list,
+        description="Parsed and validated graph edits the graph was attempted to modify with.",
+    )
+
+    error_reason: str | None = Field(
+        default=None,
+        description=(
+            "Reason edit extraction, graph loading, or edit validation failed."
+        ),
+    )
+
+    last_apply_result: ApplyWorkflowEditsResult | None = Field(
+        default=None,
+        description=(
+            "Details of the most recent workflow-edit operation. "
+            "Absent when no edits were provided."
+        ),
     )
 
     @computed_field
     @property
     def success(self) -> bool:
-        return self.apply_result.success
+        result = self.last_apply_result
+        return result.success if result is not None else False
 
     @computed_field
     @property
-    def graph_after(self) -> Data:
-        from core.graph.summary import graph_summary
-        return graph_summary(self.apply_result.graph)
+    def graph_after(self) -> ProcessGraph:
+        result = self.last_apply_result
+        return result.graph_after if result is not None else self.graph
 
     @computed_field
     @property
     def error(self) -> str | None:
-        return self.apply_result.error
+        result = self.last_apply_result
+        if result is not None:
+            return result.error
+
+        return self.error_reason
 
 
 # helpers
