@@ -14,7 +14,7 @@ from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 GRAPH_DIFF_INPUT_PORTS = [("prev_graph", "ProcessGraph"), ("current_graph", "ProcessGraph")]
-GRAPH_DIFF_OUTPUT_PORTS = [("diff", "str")]
+GRAPH_DIFF_OUTPUT_PORTS = [("diff", "GraphDiffPayload")]
 
 
 def _as_graph(value: object) -> ProcessGraph | None:

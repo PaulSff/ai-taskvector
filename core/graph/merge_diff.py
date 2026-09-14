@@ -204,8 +204,9 @@ def _apply_edits_safe(
         logger.exception("apply_workflow_edits failed")
 
         return ApplyWorkflowEditsResult(
+            attempted=True,
             success=False,
-            graph=prev_d,
+            graph_after=prev_d,
             error=str(e),
         )
 
@@ -352,6 +353,6 @@ def merge_graph_actions_from_diff(
     return MergeResult(
         multiple_edits_sequential=edit_sequence,
         success=result.success,
-        graph=result.graph,
+        graph=result.graph_after,
         error=result.error,
     )

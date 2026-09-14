@@ -114,15 +114,17 @@ def apply_workflow_edits(
 
             if runtime is not None and _edit_adds_rlgym(sub_edit):
                 return ApplyWorkflowEditsResult(
+                    attempted=True,
                     success=False,
-                    graph=graph,
+                    graph_after=graph,
                     error=_ERR_RLGYM_EXTERNAL.format(runtime=runtime),
                 )
 
             if runtime is None and _edit_adds_rloracle(sub_edit):
                 return ApplyWorkflowEditsResult(
+                    attempted=True,
                     success=False,
-                    graph=graph,
+                    graph_after=graph,
                     error=_ERR_RLORACLE_NATIVE,
                 )
 
@@ -130,13 +132,15 @@ def apply_workflow_edits(
                 graph = apply_graph_edit(graph, sub_edit)
             except (ValueError, TypeError) as ex:
                 return ApplyWorkflowEditsResult(
+                    attempted=True,
                     success=False,
-                    graph=graph,
+                    graph_after=graph,
                     error=str(ex)[:500],
                 )
 
     return ApplyWorkflowEditsResult(
+        attempted=True,
         success=True,
-        graph=graph,
+        graph_after=graph,
         error=None,
     )
