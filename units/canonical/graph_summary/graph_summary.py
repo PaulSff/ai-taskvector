@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import cast
 
 from core.graph.summary import graph_summary as _graph_summary
+from core.schemas.primitives import Data, Output
 from core.schemas.process_graph import ProcessGraph
 from units.registry import UnitSpec, register_unit
 
@@ -43,11 +44,11 @@ def _source_unit_ids(value: object) -> list[str] | None:
 
 
 def _graph_summary_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     """
     Produce an LLM-friendly summary from a validated ProcessGraph.
 
