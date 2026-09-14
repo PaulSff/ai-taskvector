@@ -9,69 +9,38 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from typing import Literal, Self, TypedDict, TypeGuard, cast
+from typing import Self, TypeGuard
 
 from agents.tools.types import ParserOutput
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult, GraphEdit
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+    ApplyWorkflowEditsStatus,
+)
 from core.schemas.primitives import Data, WorkflowErrors
 from core.schemas.process_graph import ProcessGraph
-
+from core.schemas.process_graph_diff import GraphDiffPayload
 
 # Units standard API:
 #   Data = dict[str, object]
 #   Output = tuple[Data, Data] | Data
 #   WorkflowOutputs = JsonObject
 #   WorkflowErrors = list[tuple[str, str]]
-#
-def empty_progress_result() -> ProgressResult:
-    return {}
-
-def get_progress_result(data: Data, key: str) -> ProgressResult:
-    value = data.get(key)
-
-    if value is None:
-        return empty_progress_result()
-
-    if not isinstance(value, dict):
-        raise TypeError(f"{key} must be a mapping")
-
-    return cast(ProgressResult, value)
 
 def is_apply_result(
     value: object,
-) -> TypeGuard[AgentApplyWorkflowEditsResult]:
-    if not isinstance(value, dict):
-        return False
-
-    return (
-        isinstance(value.get("attempted"), bool)
-        and isinstance(value.get("success"), bool)
-    )
-
-
-# workflow modification result (e.g. TODO tasks, comments, units, connections, etc.)
-class ProgressResult(TypedDict, total=False):
-    content_for_display: str | None
-    edits: list[GraphEdit]
-    kind: Literal[
-        "parse_error",
-        "applied",
-        "apply_failed",
-    ]
-    apply_result: AgentApplyWorkflowEditsResult | None
-    graph: ProcessGraph | None
+) -> TypeGuard[ApplyWorkflowEditsResult]:
+    return isinstance(value, ApplyWorkflowEditsResult)
 
 
 # merged result from all the units of the workflow
 @dataclass
 class MergeResponse:
     reply: str = ""
-    result: ProgressResult = field(
-            default_factory=empty_progress_result
-        )
-    status: Data = field(default_factory=dict)
+    result: AgentApplyWorkflowEditsResult | None = None
+    status: ApplyWorkflowEditsStatus | None = None
     graph: ProcessGraph | None = None
-    diff: Data = field(default_factory=dict)
+    diff: GraphDiffPayload | None = None
 
     workflow_errors: WorkflowErrors = field(default_factory=list)
 
@@ -79,6 +48,11 @@ class MergeResponse:
     llm_prompt_debug: Data | None = None
     llm_system_prompt: str | None = None
     llm_user_message: str | None = None
+
+    language: str | None = None
+
+    is_question: bool = False
+    question_sentence: str | None = None
 
     parser_output: ParserOutput | None = None
 
