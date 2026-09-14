@@ -13,7 +13,9 @@ from agents.chat.role_turns.protocol import WorkflowStreamingRunner
 from agents.chat.session import ChatSessionState
 from agents.tools.catalog import OrderedToolsForRole
 from agents.tools.types import ParserOutput, ToolList
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
@@ -50,7 +52,7 @@ class ExecutionFollowUpContext:
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
+    last_apply_result_ref: list[ApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
     run_workflow_streaming: WorkflowStreamingRunner
@@ -144,7 +146,7 @@ class PostExecutionFollowUpContext:
     set_inline_status: Callable[[str | None], None]
     append_message: Callable[..., None]
     normalize_user_message_for_workflow: Callable[[str], str]
-    last_apply_result_ref: list[AgentApplyWorkflowEditsResult | None]
+    last_apply_result_ref: list[ApplyWorkflowEditsResult | None]
     get_recent_changes: Callable[[], str | None] | None
     overrides: WorkflowInputs
     run_workflow_streaming: WorkflowStreamingRunner
