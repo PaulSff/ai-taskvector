@@ -4,11 +4,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, TypedDict
 
-from agents.chat.agent_workflow.wf_response_schema import ProgressResult
 from agents.chat.context.follow_up_context import FollowUpContexts
 from core.normalizer.normalizer import graph_to_json_object
 from core.normalizer.shared import to_json_value
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.process_graph import ProcessGraph
 
 from .batch_update_publisher import BatchUpdatePublisher
@@ -30,9 +32,9 @@ type FollowUpContextsGetter = Callable[
 ]
 type GraphGetter = Callable[[], ProcessGraph]
 type ApplyResultGetter = Callable[
-    [], AgentApplyWorkflowEditsResult | None
+    [], ApplyWorkflowEditsResult | None
 ]
-type ResultGetter = Callable[[], ProgressResult]
+type ResultGetter = Callable[[], AgentApplyWorkflowEditsResult]
 type ContentGetter = Callable[[], str | None]
 type ResponseGetter = Callable[[], ProgressResponse | None]
 type ApplyMetaGetter = Callable[[], ApplyMeta | None]
@@ -125,8 +127,8 @@ def make_publish_in_progress(
             status={"status": stage},
             role_id=role_id,
             agent_label=agent_label,
-            display_content=str(
-                result.get("content_for_display")
+            display_content = str(
+                result.content_for_display
                 or content
                 or ""
             ),
@@ -139,7 +141,7 @@ def make_publish_in_progress(
             id=None,
             ts=None,
             graph=graph_to_json_object(get_graph_ref()),
-            parsed_edits=to_json_value(result.get("edits", [])),
+            parsed_edits=to_json_value(result.edits),
             apply_meta=to_json_value(apply_meta or {}),
             follow_up_contexts=to_json_value(get_follow_up_contexts()),
             last_apply_result=to_json_value(last_apply_result),

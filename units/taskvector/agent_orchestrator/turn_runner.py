@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import cast
 
 from agents.chat.agent_workflow import AgentWorkflowResponse
-from agents.chat.agent_workflow.wf_response_schema import ProgressResult
 from agents.chat.context.role_turn_context import RoleChatTurnContext
 from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
@@ -22,7 +21,10 @@ from agents.chat.session.state import AgentChatHistory, ChatSessionState
 from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 from core.normalizer.normalizer import graph_to_json_object
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data
 from runtime.executor import GraphStreamCallback
 from runtime.run import INLINE_STATUS_FOR_STREAMING
@@ -92,8 +94,8 @@ async def run_orchestrator_turn(
     session_language = str(context.get("session_language") or "")
 
     raw_last_apply_result = context.get("last_apply_result")
-    last_apply_result: AgentApplyWorkflowEditsResult | None = (
-        AgentApplyWorkflowEditsResult.model_validate(raw_last_apply_result)
+    last_apply_result: ApplyWorkflowEditsResult | None = (
+        ApplyWorkflowEditsResult.model_validate(raw_last_apply_result)
         if raw_last_apply_result is not None
         else None
     )
@@ -116,17 +118,18 @@ async def run_orchestrator_turn(
 
     graph_ref: list[ProcessGraph] = [graph]
     last_apply_result_ref: list[
-        AgentApplyWorkflowEditsResult | None
+        ApplyWorkflowEditsResult | None
     ] = [last_apply_result]
 
     content_ref: list[str] = [""]
-    result_ref: list[ProgressResult] = [
-        {
-            "kind": "parse_error",
-            "content_for_display": "",
-            "apply_result": None,
-            "edits": [],
-        }
+    result_ref: list[AgentApplyWorkflowEditsResult] = [
+        AgentApplyWorkflowEditsResult(
+            kind="apply_failed",
+            content_for_display="",
+            graph=graph,
+            edits=[],
+            last_apply_result=last_apply_result,
+        )
     ]
     stream_buffer_ref: list[str] = [""]
     response_ref: list[AgentWorkflowResponse | None] = [None]
@@ -407,12 +410,14 @@ async def run_orchestrator_turn(
             f"(Role handler error: {type(exc).__name__}: {exc})"
         )
 
-        result_ref[0] = {
-            "kind": "parse_error",
-            "content_for_display": content_ref[0],
-            "apply_result": None,
-            "edits": [],
-        }
+        result_ref[0] = AgentApplyWorkflowEditsResult(
+                kind="apply_failed",
+                content_for_display=content_ref[0],
+                graph=graph_ref[0],
+                edits=[],
+                error_reason=str(exc),
+                last_apply_result=None,
+            )
 
         last_apply_result_ref[0] = None
 
@@ -436,7 +441,7 @@ async def run_orchestrator_turn(
         if delegate_to and delegate_to != role_id.lower():
             _publish_in_progress(
                 stage="turn:delegated",
-                kind=result_ref[0].get("kind"),
+                kind=result_ref[0].kind,
             )
 
             return {
@@ -495,7 +500,7 @@ async def run_orchestrator_turn(
     graph_json = graph_to_json_object(graph_ref[0])
 
     display_content = str(
-        result.get("content_for_display") or content,
+        result.content_for_display or content,
     ).strip()
 
     if not display_content:
@@ -511,9 +516,9 @@ async def run_orchestrator_turn(
         "source": "agent_response",
         "workflow_response": {
             "reply": display_content,
-            "result_kind": result.get("kind"),
+            "result_kind": result_ref[0].kind,
         },
-        "parsed_edits": result.get("edits", []),
+        "parsed_edits": result.edits,
         "apply": apply_meta,
         "graph": graph_json,
         "run_output": run_output,
@@ -530,7 +535,7 @@ async def run_orchestrator_turn(
 
     _publish_in_progress(
         stage="turn:completed",
-        kind=result.get("kind"),
+        kind=result_ref[0].kind,
     )
 
     out = {
