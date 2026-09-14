@@ -62,12 +62,12 @@ from agents.tools.read_file.follow_ups import (
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import is_string_keyed_dict
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
-    ProgressResult,
-)
 
 from .tool_follow_ups_runner import run_role_ordered_follow_ups
 
@@ -86,6 +86,9 @@ async def run_execution_follow_up_chain_async(
 
     Returns None when the user cancelled the run mid-chain.
     """
+
+    print( "[parser_follow_up_chain] ==== ENTERED! ")
+
     effective_flags = (
         flags
         if flags is not None
@@ -582,8 +585,10 @@ async def run_execution_follow_up_chain_async(
 
     if (
         preserved_apply_failure is not None
-        and response.merged_response.result.get("kind")
-        != "applied"
+        and (
+            response.merged_response.result is None
+            or response.merged_response.result.kind != "applied"
+        )
     ):
         response = merge_preserved_apply_failure_into_response(
             response,
@@ -606,7 +611,7 @@ async def run_execution_follow_up_chain_async(
 async def run_post_execution_follow_up_chain_async(
     ctx: PostExecutionFollowUpContext,
     *,
-    result: ProgressResult,
+    result: AgentApplyWorkflowEditsResult,
     content_holder: list[str],
     parser_chain_runner: ParserChainRunner,
     flags: PostEditFlags,
@@ -706,7 +711,7 @@ async def run_post_execution_follow_up_chain_async(
 
                 assert (
                     last_apply is None
-                    or isinstance(last_apply, AgentApplyWorkflowEditsResult)
+                    or isinstance(last_apply, ApplyWorkflowEditsResult)
                 )
 
                 post_inputs = build_agent_workflow_initial_inputs(
@@ -841,10 +846,12 @@ async def run_post_execution_follow_up_chain_async(
                 if post_reply:
                     content = content + "\n\n" + post_reply
                     content_holder[0] = content
-                    result["content_for_display"] = content
+                    result.content_for_display = content
+
                     await _checkpoint(
                         f"appended_post_reply:{post_round}:{len(content)}"
                     )
+
 
                     last = (
                         ctx.state.history[-1]
@@ -903,10 +910,10 @@ async def run_post_execution_follow_up_chain_async(
                     break
 
                 post_result = merged_response.result
-                post_kind = post_result.get("kind")
 
                 await _checkpoint(
-                    f"post_result_fields:{post_round}:kind={post_kind}"
+                    f"post_result_fields:{post_round}:kind="
+                    f"{post_result.kind if post_result is not None else None}"
                 )
 
                 post_errors = merged_response.workflow_errors
