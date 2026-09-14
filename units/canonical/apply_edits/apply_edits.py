@@ -43,7 +43,6 @@ from pydantic import ValidationError
 
 from agents.tools.types import ParsedActions
 from core.graph.batch_edits import apply_workflow_edits
-from core.graph.summary import graph_summary
 from core.normalizer import graph_to_json_object, to_process_graph
 from core.normalizer.shared import to_json_value
 from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
@@ -559,7 +558,7 @@ def _apply_edits_step(
         apply_result["success"] = True
         result["kind"] = "applied"
 
-        result_graph = wf_result.graph.model_dump(
+        result_graph = wf_result.graph_after.model_dump(
             mode="python",
             by_alias=True,
             exclude_none=True,
@@ -589,11 +588,15 @@ def _apply_edits_step(
             apply_result["error"],
         )
 
+    graph_after = wf_result.graph_after.model_dump(
+        mode="python",
+        by_alias=True,
+        exclude_none=True,
+    )
+
     result["last_apply_result"] = {
         **apply_result,
-        "graph_after": to_json_value(
-            graph_summary(wf_result.graph)
-        ),
+        "graph_after": to_json_value(graph_after),
     }
 
     out_graph = result.get("graph")
@@ -606,12 +609,6 @@ def _apply_edits_step(
         error_value
         if isinstance(error_value, str)
         else None
-    )
-
-    logger.debug(
-        "ApplyEdits finished: attempted=%s, success=%s",
-        apply_result["attempted"],
-        apply_result["success"],
     )
 
     return (
