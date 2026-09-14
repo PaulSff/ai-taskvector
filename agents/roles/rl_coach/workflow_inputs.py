@@ -10,7 +10,9 @@ from agents.chat.agent_workflow.workflow_inputs import (
     build_agent_workflow_initial_inputs,
 )
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data, WorkflowInputs
 
 
@@ -31,7 +33,7 @@ def build_rl_coach_training_inject_updates(
 def build_rl_coach_agent_aligned_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: AgentApplyWorkflowEditsResult | None,
+    last_apply_result: ApplyWorkflowEditsResult | None,
     recent_changes: str | None,
     *,
     training_config: str,
