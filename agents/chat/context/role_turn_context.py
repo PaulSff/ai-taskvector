@@ -13,7 +13,6 @@ from typing import TypeGuard, TypeVar
 from agents.chat.agent_workflow.wf_response_schema import (
     AgentWorkflowResponse,
     MergeResponse,
-    ProgressResult,
 )
 from agents.chat.role_turns.protocol import (
     AppendMessageCallable,
@@ -30,7 +29,10 @@ from agents.chat.role_turns.protocol import (
 )
 from agents.chat.session.state import ChatSessionState
 from agents.roles.types import RoleConfig
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    AgentApplyWorkflowEditsResult,
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 
@@ -75,7 +77,7 @@ class RoleChatTurnContext:
     get_recent_changes: Callable[[], str | None] | None
 
     last_apply_result_ref: list[
-        AgentApplyWorkflowEditsResult | None
+        ApplyWorkflowEditsResult | None
     ]
     stream_buffer_ref: list[str]
 
@@ -103,15 +105,8 @@ class RoleChatTurnContext:
         kw_only=True,
     )
 
-    result_ref: list[ProgressResult] = field(
-        default_factory=lambda: [
-            {
-                "kind": "parse_error",
-                "content_for_display": "",
-                "apply_result": None,
-                "edits": [],
-            }
-        ],
+    result_ref: list[AgentApplyWorkflowEditsResult] = field(
+        default_factory=list,
         kw_only=True,
     )
 
@@ -145,11 +140,11 @@ class RoleChatTurnContext:
         turn_id: str,
         agent_label: str,
         last_apply_result_ref: list[
-            AgentApplyWorkflowEditsResult | None
+            ApplyWorkflowEditsResult | None
         ],
         delegate_request_ref: list[Data | None] | None,
         content_ref: list[str],
-        result_ref: list[ProgressResult],
+        result_ref: list[AgentApplyWorkflowEditsResult],
         response_ref: list[AgentWorkflowResponse | None],
         follow_up_contexts_ref: list[list[str]],
         apply_meta_ref: list[Data],
