@@ -7,7 +7,6 @@ from agents.chat.agent_workflow.wf_response_schema import (
     DirectUnitsResponse,
     MergeErrors,
     MergeResponse,
-    get_progress_result,
 )
 from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
@@ -20,14 +19,17 @@ from core.schemas.primitives import (
 from services.logging import setup_colored_logging
 
 from .helpers import (
-    get_data,
+    get_apply_workflow_edits_status,
+    get_bool,
     get_graph,
+    get_graph_diff_payload,
     get_nested_data,
     get_optional_data,
     get_optional_parser_output,
     get_optional_str,
     get_str,
     get_units_response,
+    get_workflow_edit_apply_result,
     non_empty_diff,
 )
 
@@ -164,20 +166,77 @@ The processing order is therefore:
         ),
     )
 
-    merged_response = MergeResponse(
-        reply=get_str(merge_response_data, "reply"),
-        result=get_progress_result(
-                merge_response_data,
-                "result",
-            ),
-        status=get_data(merge_response_data, "status"),
-        graph=get_graph(merge_response_data, "graph"),
-        diff=get_data(merge_response_data, "diff"),
-        workflow_errors=workflow_errors,
-        parser_output=get_optional_parser_output(
+    try:
+        result = get_workflow_edit_apply_result(
+            merge_response_data,
+            "result",
+        )
+    except Exception:
+        logger.exception(
+            "get_workflow_edit_apply_result failed: merge_response_data=%r",
+            merge_response_data,
+        )
+        raise
+
+    try:
+        status = get_apply_workflow_edits_status(
+            merge_response_data,
+            "status",
+        )
+    except Exception:
+        logger.exception(
+            "get_apply_workflow_edits_status failed: merge_response_data=%r",
+            merge_response_data,
+        )
+        raise
+
+    try:
+        graph = get_graph(
+            merge_response_data,
+            "graph",
+        )
+    except Exception:
+        logger.exception(
+            "get_graph failed: merge_response_data=%r",
+            merge_response_data,
+        )
+        raise
+
+    try:
+        diff = get_graph_diff_payload(
+            merge_response_data,
+            "diff",
+        )
+    except Exception:
+        logger.exception(
+            "get_graph_diff_payload failed: merge_response_data=%r",
+            merge_response_data,
+        )
+        raise
+
+    try:
+        parser_output = get_optional_parser_output(
             merge_response_data,
             "parser_output",
-        ),
+        )
+    except Exception:
+        logger.exception(
+            "get_optional_parser_output failed: merge_response_data=%r",
+            merge_response_data,
+        )
+        raise
+
+    merged_response = MergeResponse(
+        reply=get_str(merge_response_data, "reply"),
+        language=get_str(merge_response_data, "language"),
+        is_question=get_bool(merge_response_data, "is_question"),
+        question_sentence=get_str(merge_response_data, "question_sentence"),
+        result=result,
+        status=status,
+        graph=graph,
+        diff=diff,
+        workflow_errors=workflow_errors,
+        parser_output=parser_output,
     )
 
     if not merged_response.reply.strip():
