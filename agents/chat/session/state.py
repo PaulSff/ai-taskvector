@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, TypeVar, cast, final
 
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data
 from gui.utils import now_ts
 
@@ -33,7 +35,7 @@ class SessionSnapshot(TypedDict):
     chat_path: str | None
     session_language: str
     messenger: str | None
-    last_apply_result: AgentApplyWorkflowEditsResult | None
+    last_apply_result: ApplyWorkflowEditsResult | None
 
 type AgentChatHistory = list[Data]
 
@@ -48,7 +50,7 @@ class _Session:
         self.chat_path: Path | None = None
         self.session_language: str = ""
         self.messenger: str | None = None
-        self.last_apply_result: AgentApplyWorkflowEditsResult | None = None
+        self.last_apply_result: ApplyWorkflowEditsResult | None = None
         # run control
         self.run_token: int = 0
         self.run_lock: threading.Lock = threading.Lock()
@@ -120,7 +122,7 @@ def from_snapshot(payload: Mapping[str, object]) -> _Session:
 
     if isinstance(last_res, dict):
         s.last_apply_result = cast(
-            AgentApplyWorkflowEditsResult,
+            ApplyWorkflowEditsResult,
             last_res,
         )
     else:

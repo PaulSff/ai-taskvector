@@ -56,7 +56,9 @@ from agents.roles.workflow_path import get_role_chat_workflow_path
 from core.normalizer.normalizer import (
     get_process_graph_from_any,
 )
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import Data, JsonObject
 from gui.components.settings import (
     get_agentic_loop_execution_timeout_s,
@@ -225,7 +227,7 @@ def restore_session(session_id: str, *, path: Path, payload: Data) -> None:
         last_res = payload.get("last_apply_result")
 
         if isinstance(last_res, dict):
-            s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(last_res)
+            s.last_apply_result = ApplyWorkflowEditsResult.model_validate(last_res)
         else:
             s.last_apply_result = None
 
@@ -645,7 +647,7 @@ async def handle_turn(
                 s.session_language = new_lang
 
             if isinstance(last_apply_result_raw, dict) and last_apply_result_raw:
-                s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                s.last_apply_result = ApplyWorkflowEditsResult.model_validate(
                     last_apply_result_raw
                 )
             else:
@@ -894,7 +896,7 @@ async def handle_turn(
                 last_apply_result = inner_msg.get("last_apply_result")
 
                 if isinstance(last_apply_result, dict) and last_apply_result:
-                    s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                    s.last_apply_result = ApplyWorkflowEditsResult.model_validate(
                         last_apply_result
                     )
                 else:
@@ -1046,7 +1048,7 @@ async def handle_turn(
             raw_result = raw_msg.get("last_apply_result")
 
             if isinstance(raw_result, dict):
-                s.last_apply_result = AgentApplyWorkflowEditsResult.model_validate(
+                s.last_apply_result = ApplyWorkflowEditsResult.model_validate(
                     raw_result
                 )
             else:
