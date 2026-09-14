@@ -49,15 +49,19 @@ def maybe_pin_session_language_from_workflow_response(
     response: AgentWorkflowResponse | None,
 ) -> bool:
     """
-    If the response includes a non-empty ``language`` field and the session has
-    no pinned language yet, set ``state.session_language`` and return True.
+    If the merged response includes a non-empty ``language`` field and the
+    session has no pinned language yet, set ``state.session_language`` and
+    return True.
     """
     if response is None or str(state.session_language or "").strip():
         return False
 
-    detected = str(
-        response.merged_response.result.get("language") or ""
-    ).strip()
+    merged_response = response.merged_response
+
+    if merged_response is None:
+        return False
+
+    detected = (merged_response.language or "").strip()
 
     if not detected:
         return False
@@ -79,9 +83,7 @@ def finalize_workflow_designer_turn_session_language(
     detected = ""
 
     if response is not None:
-        detected = str(
-            response.merged_response.result.get("language") or ""
-        ).strip()
+        detected = (response.merged_response.language or "").strip()
 
     if detected and not str(state.session_language or "").strip():
         state.session_language = detected
