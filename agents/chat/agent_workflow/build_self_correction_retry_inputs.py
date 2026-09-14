@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import ApplyWorkflowEditsResult
 from core.schemas.primitives import WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
 
 def build_self_correction_retry_inputs(
-    failed_apply_result: AgentApplyWorkflowEditsResult,
+    failed_apply_result: ApplyWorkflowEditsResult,
     graph: ProcessGraph,
     recent_changes: str | None,
     runtime: str = "native",

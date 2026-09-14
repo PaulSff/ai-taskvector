@@ -23,7 +23,9 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 from core.schemas import ProcessGraph
-from core.schemas.graph_edit_api import AgentApplyWorkflowEditsResult
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
 from core.schemas.primitives import WorkflowInputs
 
 from .wf_inputs_schema import WorkflowDesignerWorkflowInputs
@@ -37,7 +39,7 @@ def default_wf_language_hint(session_language: str) -> str:
 
 
 def _build_turn_state_string(
-    last_apply_result: AgentApplyWorkflowEditsResult | None,
+    last_apply_result: ApplyWorkflowEditsResult | None,
 ) -> str:
     """Build the turn state line for inject_turn_state."""
     prefix = WORKFLOW_DESIGNER_TURN_STATE_PREFIX
@@ -49,7 +51,7 @@ def _build_turn_state_string(
         error = last_apply_result.error or "Unknown error"
         return prefix + f"Last action: failed (error: {error})."
 
-    summary = last_apply_result.edits_summary.strip()
+    summary = (last_apply_result.edits_summary or "").strip()
     if summary:
         return prefix + f"Last action: applied successfully ({summary})."
 
@@ -58,7 +60,7 @@ def _build_turn_state_string(
 
 
 def _build_last_edit_block_string(
-    last_apply_result: AgentApplyWorkflowEditsResult | None,
+    last_apply_result: ApplyWorkflowEditsResult | None,
     self_correction_template: str = WORKFLOW_DESIGNER_SELF_CORRECTION,
     *,
     language: str = "English (en)",
@@ -86,7 +88,7 @@ def _build_last_edit_block_string(
             + WORKFLOW_DESIGNER_DO_NOT_REPEAT
         )
 
-    summary = last_apply_result.edits_summary.strip()
+    summary = (last_apply_result.edits_summary or "").strip()
 
     if summary:
         return (
@@ -105,7 +107,7 @@ def _build_last_edit_block_string(
 def build_agent_workflow_initial_inputs(
     user_message: str,
     graph: ProcessGraph,
-    last_apply_result: AgentApplyWorkflowEditsResult | None,
+    last_apply_result: ApplyWorkflowEditsResult | None,
     recent_changes: str | None,
     follow_up_context: str = "",
     runtime: str = "native",
