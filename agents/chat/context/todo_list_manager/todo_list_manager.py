@@ -85,7 +85,7 @@ async def _ensure_todo_list_exists(
             result.error or f"Failed to create todo list: {list_id}"
         )
 
-    return result.graph
+    return result.graph_after
 
 # --- Add tasks for read_code_block tool ---
 
@@ -144,7 +144,7 @@ async def add_tasks_for_read_code_block(
             or "Failed to add source-review todo tasks"
         )
 
-    return result.graph
+    return result.graph_after
 
 # --- Add tasks after adding new code blocks into the workflow ---
 
@@ -189,7 +189,7 @@ async def add_task_for_add_code_block(
             or "Failed to add the code-block todo task"
         )
 
-    return result.graph
+    return result.graph_after
 
 
 # --- Add tasks after adding new units into the workflow ---
@@ -270,7 +270,7 @@ async def add_tasks_for_added_units(
             or "Failed to add todo tasks for added units"
         )
 
-    return result.graph
+    return result.graph_after
 
 
 # --- Add tasks for Run Workflow tool ---
@@ -326,7 +326,7 @@ async def add_tasks_for_run_workflow(
             or "Failed to add todo tasks for run_workflow"
         )
 
-    return result.graph
+    return result.graph_after
 
 
 
@@ -367,7 +367,7 @@ async def add_review_workflow_task_after_import(
             result.error or "Failed to add imported-workflow review task"
         )
 
-    return result.graph
+    return result.graph_after
 
 
 
@@ -672,7 +672,7 @@ async def add_tasks_for_unhandled_messages(
                 or "Failed to apply todo-list add edits"
             )
 
-        graph_after_add = result.graph
+        graph_after_add = result.graph_after
 
     if not edits_remove_batch:
         if deadline is None:
@@ -729,7 +729,7 @@ async def add_tasks_for_unhandled_messages(
             )
 
         return dedupe_graph_tasks_and_lists(
-            result.graph,
+            result.graph_after,
             todo_list_id=str(TG_TODO_LIST_ID),
         )
 
@@ -750,7 +750,7 @@ async def add_tasks_for_unhandled_messages(
         )
 
     graph_after_remove = dedupe_graph_tasks_and_lists(
-        result.graph,
+        result.graph_after,
         todo_list_id=str(TG_TODO_LIST_ID),
     )
 
@@ -817,7 +817,7 @@ async def add_tasks_for_unhandled_messages(
     )
 
     return dedupe_graph_tasks_and_lists(
-        result.graph,
+        result.graph_after,
         todo_list_id=str(TG_TODO_LIST_ID),
     )
 
@@ -965,4 +965,4 @@ async def augment_graph_with_client_tasks(
             or "Failed to apply todo tasks to the workflow using batch edits"
         )
 
-    return result.graph, supplements
+    return result.graph_after, supplements
