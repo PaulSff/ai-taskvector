@@ -9,12 +9,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from agents.tools.types import ParsedActions, ParserOutput
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
+    ApplyWorkflowEditsStatus,
     GraphEdit,
 )
 from core.schemas.primitives import (
@@ -24,6 +25,9 @@ from core.schemas.primitives import (
     is_string_keyed_dict,
 )
 from core.schemas.process_graph import ProcessGraph
+from core.schemas.process_graph_diff import GraphDiffPayload
+
+_GRAPH_DIFF_ADAPTER = TypeAdapter(GraphDiffPayload)
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +80,16 @@ async def get_runtime_for_prompts(
 
 
 async def refresh_last_graph_apply_result(
-    prev: AgentApplyWorkflowEditsResult | None,
+    prev: ApplyWorkflowEditsResult | None,
     apply_result: ApplyWorkflowEditsResult,
     *,
     supplement_summary: str = "",
-) -> AgentApplyWorkflowEditsResult:
-    previous_summary = prev.edits_summary.strip() if prev else ""
+) -> ApplyWorkflowEditsResult:
+    previous_summary = (
+        (prev.edits_summary or "").strip()
+        if prev is not None
+        else ""
+    )
     supplement = supplement_summary.strip()
 
     edits_summary = (
@@ -90,52 +98,39 @@ async def refresh_last_graph_apply_result(
         else previous_summary or supplement or "applied"
     )
 
-    return AgentApplyWorkflowEditsResult(
+    return ApplyWorkflowEditsResult(
         attempted=True,
-        apply_result=apply_result,
+        success=apply_result.success,
+        error=apply_result.error,
+        graph_after=apply_result.graph_after,
         edits_summary=edits_summary,
     )
 
+
 def normalize_last_apply_result(
     value: object,
-) -> AgentApplyWorkflowEditsResult | None:
-    if isinstance(value, AgentApplyWorkflowEditsResult):
+) -> ApplyWorkflowEditsResult | None:
+    if isinstance(value, ApplyWorkflowEditsResult):
         return value
 
-    if isinstance(value, ApplyWorkflowEditsResult):
-        return AgentApplyWorkflowEditsResult(
-            attempted=True,
-            apply_result=value,
-            edits_summary="",
-        )
-
     if isinstance(value, ProcessGraph):
-        return AgentApplyWorkflowEditsResult(
+        return ApplyWorkflowEditsResult(
             attempted=True,
-            apply_result=ApplyWorkflowEditsResult(
-                success=True,
-                graph=value,
-                error=None,
-            ),
+            success=True,
+            error=None,
+            graph_after=value,
             edits_summary="",
         )
 
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         return None
 
     try:
-        return AgentApplyWorkflowEditsResult.model_validate(value)
+        return ApplyWorkflowEditsResult.model_validate(value)
     except ValidationError:
-        try:
-            inner_result = ApplyWorkflowEditsResult.model_validate(value)
-        except ValidationError:
-            return None
+        return None
 
-        return AgentApplyWorkflowEditsResult(
-            attempted=True,
-            apply_result=inner_result,
-            edits_summary="",
-        )
+
 
 async def validate_graph_to_apply_inline(
     graph: ProcessGraph | None,
@@ -180,6 +175,9 @@ def get_data(data: Mapping[str, object], key: str) -> Data:
 
     return value if is_string_keyed_dict(value) else {}
 
+def get_bool(data: Mapping[str, object], key: str, default: bool = False) -> bool:
+    value = data.get(key)
+    return value if isinstance(value, bool) else default
 
 def get_optional_data(data: Mapping[str, object], key: str) -> Data | None:
     value = data.get(key)
@@ -438,3 +436,187 @@ def non_empty_diff(value: object) -> JsonValue | None:
         return value if value.strip() else None
 
     return None
+
+def get_workflow_edit_apply_result(
+    data: Data,
+    key: str,
+) -> AgentApplyWorkflowEditsResult:
+    # Prefer the direct value when present.
+    if key in data:
+        value = data.get(key)
+    else:
+        # Aggregate unit output:
+        # {"data": {"graph": ...}, "error": "..."}
+        aggregate_data = data.get("data")
+
+        if not isinstance(aggregate_data, Mapping):
+            logger.debug(
+                "Aggregated workflow edit apply result data is missing or invalid: "
+                "key=%r aggregate_data_type=%s",
+                key,
+                type(aggregate_data).__qualname__,
+            )
+            raise KeyError(f"{key} is missing from data")
+
+        value = aggregate_data.get(key)
+
+    logger.debug(
+        "Extracting workflow edit apply result: key=%r value_type=%s value=%r",
+        key,
+        type(value).__qualname__,
+        value,
+    )
+
+    if value is None:
+        logger.debug(
+            "Workflow edit apply result is missing: key=%r",
+            key,
+        )
+        raise KeyError(f"{key} is missing from data")
+
+    if isinstance(value, AgentApplyWorkflowEditsResult):
+        logger.debug(
+            "Workflow edit apply result already validated: key=%r",
+            key,
+        )
+        return value
+
+    if not isinstance(value, Mapping):
+        logger.debug(
+            "Workflow edit apply result has invalid type: key=%r type=%s",
+            key,
+            type(value).__qualname__,
+        )
+        raise TypeError(f"{key} must be a mapping")
+
+    try:
+        result = AgentApplyWorkflowEditsResult.model_validate(value)
+    except ValidationError as exc:
+        logger.debug(
+            "Workflow edit apply result validation failed: key=%r value=%r",
+            key,
+            value,
+            exc_info=True,
+        )
+        raise TypeError(
+            f"{key} must contain a valid AgentApplyWorkflowEditsResult"
+        ) from exc
+
+    logger.debug(
+        "Workflow edit apply result validated successfully: key=%r result=%r",
+        key,
+        result,
+    )
+
+    return result
+
+def get_apply_workflow_edits_status(
+    data: Data,
+    key: str,
+) -> ApplyWorkflowEditsStatus:
+    logger.debug("Reading apply workflow edits status from key=%r", key)
+
+    # Prefer the direct value.
+    if key in data:
+        value = data.get(key)
+    else:
+        # Aggregate unit output:
+        # {"data": {"status": ...}, "error": "..."}
+        aggregate_data = data.get("data")
+
+        if isinstance(aggregate_data, Mapping):
+            value = aggregate_data.get(key)
+        else:
+            value = None
+
+    if value is None:
+        logger.debug(
+            "No apply workflow edits status found for key=%r; "
+            "returning an unattempted status",
+            key,
+        )
+        return ApplyWorkflowEditsStatus(
+            attempted=False,
+            success=None,
+            error=None,
+            edits_summary=None,
+        )
+
+    if isinstance(value, ApplyWorkflowEditsStatus):
+        logger.debug(
+            "Apply workflow edits status for key=%r is already validated",
+            key,
+        )
+        return value
+
+    if not isinstance(value, Mapping):
+        logger.error(
+            "Invalid apply workflow edits status for key=%r: "
+            "expected a mapping, got %s",
+            key,
+            type(value).__name__,
+        )
+        raise TypeError(f"{key} must be a mapping")
+
+    try:
+        status = ApplyWorkflowEditsStatus.model_validate(value)
+    except ValidationError as exc:
+        logger.error(
+            "Invalid ApplyWorkflowEditsStatus data for key=%r: %s",
+            key,
+            exc,
+        )
+        raise TypeError(
+            f"{key} must contain a valid ApplyWorkflowEditsStatus"
+        ) from exc
+
+    logger.debug(
+        "Successfully validated apply workflow edits status for key=%r",
+        key,
+    )
+    return status
+
+def get_graph_diff_payload(
+    data: Data,
+    key: str,
+) -> GraphDiffPayload:
+    logger.debug("Reading graph diff payload from key=%r", key)
+
+    # Prefer the direct value.
+    if key in data:
+        value = data.get(key)
+    else:
+        # Aggregate unit output:
+        # {"data": {"graph_diff": ...}, "error": "..."}
+        aggregate_data = data.get("data")
+
+        if isinstance(aggregate_data, Mapping):
+            value = aggregate_data.get(key)
+        else:
+            value = None
+
+    if value is None:
+        logger.error(
+            "Graph diff payload is missing from data for key=%r",
+            key,
+        )
+        raise KeyError(f"{key} is missing from data")
+
+    try:
+        payload = _GRAPH_DIFF_ADAPTER.validate_python(value)
+    except ValidationError as exc:
+        logger.error(
+            "Invalid GraphDiffPayload for key=%r: %s",
+            key,
+            exc,
+        )
+        raise TypeError(
+            f"{key} must contain a valid GraphDiffPayload"
+        ) from exc
+
+    logger.debug(
+        "Successfully validated graph diff payload for key=%r",
+        key,
+    )
+
+    return payload
