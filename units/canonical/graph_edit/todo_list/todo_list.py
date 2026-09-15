@@ -18,7 +18,7 @@ from core.graph.todo_list import (
     todo_lists_to_list,
 )
 from core.schemas import TodoList
-from core.schemas.graph_edit_api import GraphEdit
+from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
 from core.schemas.primitives import JsonValue
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
@@ -333,41 +333,31 @@ def _step(
 
         if isinstance(raw_batch, list) and raw_batch:
             batch_items = cast(list[object], raw_batch)
-            edits: list[dict[str, JsonValue]] = []
+            parsed_edits: list[GraphEdit] = []
 
             for item in batch_items:
-                edit = _parse_graph_edit(item)
+                parsed_edits.append(_parse_graph_edit(item))
 
-                edit_dict = cast(
-                    dict[str, JsonValue],
-                    edit.model_dump(
-                        mode="json",
-                        by_alias=True,
-                        exclude_none=True,
-                    ),
-                )
-                edits.append(edit_dict)
+            batch = MultipleEditsSequential(edits=parsed_edits)
 
-            batch_result_raw = apply_workflow_edits(
-                {
-                    "todo_lists": todo_lists,
-                },
-                edits,
+            batch_result = apply_workflow_edits(
+                current,
+                batch,
                 allowed_actions=_ACTIONS,
             )
 
-            batch_result = _as_workflow_edit_result(batch_result_raw)
-
-            if not batch_result.get("success", False):
+            if not batch_result.success:
                 raise ValueError(
-                    batch_result.get("error")
+                    batch_result.error
                     or "Batch todo edit failed"
                 )
 
-            graph = batch_result.get("graph", {})
+            current = batch_result.graph_after
+            result = dict(current)
+
             todo_lists = cast(
                 list[JsonValue] | None,
-                graph.get("todo_lists"),
+                result.get("todo_lists"),
             )
 
         else:

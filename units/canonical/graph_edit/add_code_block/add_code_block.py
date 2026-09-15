@@ -1,8 +1,7 @@
 """Add-code-block edit: add code block. Params: code_block (id, source, language?)."""
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.canonical.graph_edit._apply import apply_edit
 from units.registry import UnitSpec, register_unit
 
@@ -11,11 +10,11 @@ EDIT_OUTPUT_PORTS = [("graph", "Any")]
 
 
 def _step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     edit = {"action": "add_code_block", "code_block": (params or {}).get("code_block")}
     return apply_edit(inputs, state, edit)
 

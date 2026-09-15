@@ -1,8 +1,7 @@
 """Add-comment edit: add comment. Params: info, commenter?."""
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.canonical.graph_edit._apply import apply_edit
 from units.registry import UnitSpec, register_unit
 
@@ -11,11 +10,11 @@ EDIT_OUTPUT_PORTS = [("graph", "Any")]
 
 
 def _step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     p = params or {}
     edit = {"action": "add_comment", "info": p.get("info"), "commenter": p.get("commenter")}
     return apply_edit(inputs, state, edit)
