@@ -12,6 +12,7 @@ from core.schemas.graph_edit_api import (
     GraphEditUnit,
     MultipleEditsSequential,
 )
+from core.schemas.process_graph import Comment
 from core.schemas.process_graph_diff import (
     GraphDiffFunction,
     GraphDiffPayload,
@@ -26,6 +27,12 @@ def _todo_lists_by_id(graph: ProcessGraph) -> dict[str, TodoList]:
     return {
         todo_list.id: todo_list
         for todo_list in graph.todo_lists
+    }
+
+def _comments_by_id(graph: ProcessGraph) -> dict[str, Comment]:
+    return {
+        comment.id: comment
+        for comment in (graph.comments or [])
     }
 
 def _tasks_by_id(todo_list: TodoList) -> dict[str, TodoTask]:
@@ -333,13 +340,46 @@ def merge_graph_actions_from_diff(
             payload=payload,
         )
 
-        for _comment_id in payload["comments_added"]:
-            actions.append(
-                GraphEdit(
-                    action="add_comment",
-                    info="",
+        current_comments = _comments_by_id(current)
+
+        for comment_id in payload["comments_added"]:
+            comment = current_comments.get(str(comment_id))
+
+            if comment is None:
+                logger.warning(
+                    "Skipping added comment %s: not found in current graph",
+                    comment_id,
                 )
-            )
+                continue
+
+            info = comment.info.strip()
+
+            if not info:
+                logger.warning(
+                    "Skipping added comment %s: empty info",
+                    comment_id,
+                )
+                continue
+
+            edit_data: dict[str, object] = {
+                "action": "add_comment",
+                "info": info,
+            }
+
+            # Include these only if GraphEdit supports the corresponding fields.
+            if comment.commenter:
+                edit_data["commenter"] = comment.commenter
+
+            if comment.created_at:
+                edit_data["created_at"] = comment.created_at
+
+            if comment.x is not None:
+                edit_data["x"] = comment.x
+
+            if comment.y is not None:
+                edit_data["y"] = comment.y
+
+            actions.append(GraphEdit.model_validate(edit_data))
 
     edit_sequence = MultipleEditsSequential(
         edits=actions,

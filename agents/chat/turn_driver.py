@@ -732,7 +732,7 @@ async def handle_turn(
         agent = role_id or "default"
 
         chat_session_state = {
-            "history": s.history,
+            "history": [message_for_persist(m) for m in s.history],
             "busy": s.busy,
             "has_sent_any": s.has_sent_any,
             "session_id": s.session_id,
