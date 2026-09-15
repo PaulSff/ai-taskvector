@@ -40,7 +40,7 @@ class TodoList(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _enforce_unique_task_ids(self) -> "TodoList":
+    def _enforce_unique_task_ids(self) -> TodoList:
         task_ids = [t.id for t in self.tasks]
         if len(task_ids) != len(set(task_ids)):
             raise ValueError(f"Duplicate TodoTask.id found in TodoList(id={self.id!r})")
