@@ -20,6 +20,7 @@ from agents.chat.role_turns.registry import get_role_chat_handler
 from agents.chat.session.state import AgentChatHistory, ChatSessionState
 from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 from core.normalizer.normalizer import graph_to_json_object
+from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
@@ -518,12 +519,12 @@ async def run_orchestrator_turn(
             "reply": display_content,
             "result_kind": result_ref[0].kind,
         },
-        "parsed_edits": result.edits,
+        "parsed_edits": to_json_value(result.edits),
         "apply": apply_meta,
         "graph": graph_json,
         "run_output": run_output,
         "follow_up_contexts": follow_up_contexts,
-        "last_apply_result": last_apply_result_ref[0],
+        "last_apply_result": to_json_value(last_apply_result_ref[0]),
         "session_language": session.session_language,
         "messenger": messenger,
         "llm_user_message": llm_user_message,
