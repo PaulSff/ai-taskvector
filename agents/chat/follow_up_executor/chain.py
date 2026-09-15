@@ -140,6 +140,22 @@ async def run_execution_follow_up_chain_async(
 
     response: AgentWorkflowResponse = resp
 
+    def update_action_context(
+        workflow_response: AgentWorkflowResponse,
+    ) -> None:
+        parser_output = (
+            workflow_response.merged_response.parser_output
+        )
+
+        ctx.action_context = (
+            parser_output
+            if parser_output is not None
+            else ParserOutput(
+                actions=ParsedActions(),
+                error=None,
+            )
+        )
+
     record_llm_prompt_view_if_present(
         response,
         ctx.record_llm_prompt_view,
@@ -529,6 +545,9 @@ async def run_execution_follow_up_chain_async(
                 _run_token=ctx.token,
                 workflow_path=ctx.agent_workflow_path,
             )
+
+        # update the action context with new actions
+        update_action_context(response)
 
         if ctx.on_workflow_response is not None:
             await ctx.on_workflow_response(
