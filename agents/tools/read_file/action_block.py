@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, field_validator
 
 from agents.tools.read_file import run_read_file_follow_up
-from agents.tools.registry import register_action_block, register_tool
+from agents.tools.registry import register_tool
 from agents.tools.types import ActionBlock, ParsedActions
 
 
