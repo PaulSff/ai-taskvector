@@ -25,6 +25,7 @@ from core.graph.todo_list import (
 from core.graph.todo_list import (
     remove_task as _todo_remove_task,
 )
+from core.schemas.process_graph import TodoList
 
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(
@@ -816,11 +817,11 @@ def _todo_mutator_summary_lines(
 def _simulate_todo_actions(
     items: list[dict[str, Any]],
 ) -> tuple[
-    dict[str, Any] | None,
+    TodoList | None,
     list[str],
     bool,
 ]:
-    todo_lists: list[dict[str, Any]] | None = None
+    todo_lists: list[TodoList] | None = None
     warnings: list[str] = []
     list_explicitly_removed = False
 
@@ -831,10 +832,19 @@ def _simulate_todo_actions(
             if act == "add_todo_list":
                 title = d.get("title")
                 list_id = d.get("list_id") or d.get("id")
+
                 todo_lists = _create_new_todo_list(
-                    todo_lists,
-                    title=str(title).strip() if title is not None and str(title).strip() else None,
-                    list_id=str(list_id).strip() if list_id is not None and str(list_id).strip() else None,
+                    todo_lists or [],
+                    title=(
+                        str(title).strip()
+                        if title is not None and str(title).strip()
+                        else None
+                    ),
+                    list_id=(
+                        str(list_id).strip()
+                        if list_id is not None and str(list_id).strip()
+                        else None
+                    ),
                 )
 
             elif act == "remove_todo_list":
@@ -851,7 +861,11 @@ def _simulate_todo_actions(
                     raise ValueError("add_task: no todo_list present")
 
                 tid = d.get("task_id")
-                task_id = str(tid).strip() if tid is not None and str(tid).strip() else None
+                task_id = (
+                    str(tid).strip()
+                    if tid is not None and str(tid).strip()
+                    else None
+                )
 
                 todo_lists[0] = _todo_add_task(
                     todo_lists[0],
@@ -868,7 +882,10 @@ def _simulate_todo_actions(
                 if not todo_lists:
                     raise ValueError("remove_task: no todo_list present")
 
-                todo_lists[0] = _todo_remove_task(todo_lists[0], str(tid).strip())
+                todo_lists[0] = _todo_remove_task(
+                    todo_lists[0],
+                    str(tid).strip(),
+                )
 
             elif act == "mark_completed":
                 tid = d.get("task_id")
@@ -880,8 +897,13 @@ def _simulate_todo_actions(
                     raise ValueError("mark_completed: no todo_list present")
 
                 completed = d.get("completed", True)
+
                 if isinstance(completed, str):
-                    completed = completed.strip().lower() in ("1", "true", "yes")
+                    completed = completed.strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                    }
 
                 todo_lists[0] = _todo_mark_completed(
                     todo_lists[0],
@@ -901,21 +923,19 @@ def _simulate_todo_actions(
     )
 
 
-
 def _build_todo_preview_controls(
-    todo_list: dict[str, Any] | None,
+    todo_list: TodoList | None,
     warnings: list[str],
     *,
     list_explicitly_removed: bool,
     bubble_width: int | None,
 ) -> list[ft.Control]:
-
     out: list[ft.Control] = []
 
-    for w in warnings:
+    for warning in warnings:
         out.append(
             ft.Text(
-                f"⚠ {w}",
+                f"⚠ {warning}",
                 size=10,
                 color=ft.Colors.with_opacity(
                     0.9,
@@ -929,38 +949,23 @@ def _build_todo_preview_controls(
 
     if todo_list is None:
         if list_explicitly_removed:
-            out.append(
-                ft.Text(
-                    "Todo list removed.",
-                    **_compact_meta_text_style(
-                        bubble_width=bubble_width,
-                    ),
-                )
-            )
-
+            message = "Todo list removed."
         elif warnings:
-            out.append(
-                ft.Text(
-                    "Todo list preview unavailable (fix errors above).",
-                    **_compact_meta_text_style(
-                        bubble_width=bubble_width,
-                    ),
-                )
-            )
-
+            message = "Todo list preview unavailable (fix errors above)."
         else:
-            out.append(
-                ft.Text(
-                    "No todo list.",
-                    **_compact_meta_text_style(
-                        bubble_width=bubble_width,
-                    ),
-                )
-            )
+            message = "No todo list."
 
+        out.append(
+            ft.Text(
+                message,
+                **_compact_meta_text_style(
+                    bubble_width=bubble_width,
+                ),
+            )
+        )
         return out
 
-    title = (todo_list.get("title") or "").strip()
+    title = (todo_list.title or "").strip()
 
     if title:
         out.append(
@@ -975,9 +980,7 @@ def _build_todo_preview_controls(
             )
         )
 
-    tasks_raw = todo_list.get("tasks") or []
-
-    tasks = [t for t in tasks_raw if isinstance(t, dict)]
+    tasks = todo_list.tasks
 
     if not tasks:
         out.append(
@@ -988,21 +991,23 @@ def _build_todo_preview_controls(
                 ),
             )
         )
-
         return out
 
-    for t in tasks:
-        text = (t.get("text") or "").strip() or "(empty task)"
-
-        completed = bool(t.get("completed"))
+    for task in tasks:
+        text = (task.text or "").strip() or "(empty task)"
+        completed = bool(task.completed)
 
         body_style = ft.TextStyle(
             size=12,
             color=ft.Colors.with_opacity(
                 0.85 if completed else 1.0,
-                (ft.Colors.GREY_400 if completed else ft.Colors.GREY_200),
+                ft.Colors.GREY_400 if completed else ft.Colors.GREY_200,
             ),
-            decoration=(ft.TextDecoration.LINE_THROUGH if completed else None),
+            decoration=(
+                ft.TextDecoration.LINE_THROUGH
+                if completed
+                else None
+            ),
         )
 
         out.append(
@@ -1017,7 +1022,9 @@ def _build_todo_preview_controls(
                         size=20,
                         color=ft.Colors.with_opacity(
                             0.95,
-                            (ft.Colors.GREEN_400 if completed else ft.Colors.GREY_500),
+                            ft.Colors.GREEN_400
+                            if completed
+                            else ft.Colors.GREY_500,
                         ),
                     ),
                     ft.Text(
@@ -1035,6 +1042,7 @@ def _build_todo_preview_controls(
         )
 
     return out
+
 
 
 def _query_action_summary_line(
