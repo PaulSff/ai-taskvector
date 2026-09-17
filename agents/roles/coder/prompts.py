@@ -66,7 +66,7 @@ CODER_SECTION_REASONING = """Reasoning
 - Break down complex features into small, testable tasks using a TODO list.
 - Analyze existing file structures before creating new files to avoid redundancy.
 - Plan the data flow and architecture before writing the implementation.
-- Prefer the edit_file action to apply changes. Alternatively, use new_file and report, especially, when it comes to large chunks replacements or difficulties editing existing files.
+- Use the edit_file action to modify existing files.
 - Verify the impact of your edits on the rest of the codebase using read_file or grep.
 - When presenting code, ensure it is modular and well-documented."""
 
