@@ -4,7 +4,7 @@
     "canonical",
     "office"
   ],
-  "keep_alive": true,
+  "keep_alive": false,
   "units": [
     {
       "id": "inject_action",

@@ -5,24 +5,66 @@ The ProcessAgent parses the LLM response and may produce parser_output["report"]
 with payload: { "output_format": "md" | "csv", "text": {...}, "file_name": "<my_report" }. Unit only uses text and output_format.
 This unit takes that payload, renders "report" to Markdown or CSV, and writes output_dir/report.md
 or output_dir/report.csv. No LLM call — the LLMAgent and ProcessAgent have already run.
+
+{
+  "action": "report",
+  "output_format": "md",
+  "file_name": "report_tool_test.md",
+  "output_dir": "/output",
+  "text": {
+    "title": "Report Tool Verification",
+    "summary": "Example report.",
+    "sections": []
+  }
+}
+
 """
 from __future__ import annotations
 
 import csv
 import io
+import logging
 from pathlib import Path
 from typing import Any
 
 from core.schemas.primitives import Data, Output
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
 REPORT_INPUT_PORTS = [("parser_output", "Any")]
 REPORT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
-# Defaults (used when parser_output["report"]["file_name"] is not provided)
-DEFAULT_REPORT_MD_FILENAME = "report.md"
-DEFAULT_REPORT_CSV_FILENAME = "report.csv"
+logger = setup_colored_logging(logging.DEBUG)
 
+
+def _unwrap_report_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+
+    # Direct report action.
+    if value.get("action") == "report":
+        return value
+
+    # Possible Inject output:
+    # {"template": {"action": "report", ...}}
+    template = value.get("template")
+    if isinstance(template, dict) and template.get("action") == "report":
+        return template
+
+    # Possible unit-output wrapper:
+    # {"data": {"action": "report", ...}}
+    data = value.get("data")
+    if isinstance(data, dict) and data.get("action") == "report":
+        return data
+
+    # Possible nested Inject wrapper:
+    # {"data": {"template": {"action": "report", ...}}}
+    if isinstance(data, dict):
+        template = data.get("template")
+        if isinstance(template, dict) and template.get("action") == "report":
+            return template
+
+    return None
 
 def _md_from_report(data: dict[str, Any]) -> str:
     """Render report JSON (title, summary, sections) to Markdown."""
@@ -90,70 +132,124 @@ def _report_step(
     state: Data,
     dt: float,
 ) -> Output:
-    """Read parser_output['report'], render report to MD/CSV, write to output_dir.
+    """Read, render, and write a report action."""
 
-    Parser (ProcessAgent) port 0 can be a list (edits only) or a dict (edits + report/read_file/etc.). Accept both.
-    """
-    out: Data = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
+    out: Data = {
+        "ok": False,
+        "output_path": "",
+        "error": None,
+        "report_preview": "",
+    }
+
     parser_output = inputs.get("parser_output")
 
-    if isinstance(parser_output, list):
-        # Parser returned edits list only (no side-channel dict) -> no report payload
-        parser_output = {}
-    elif not isinstance(parser_output, dict):
-        # Unexpected shape (e.g. None) — treat as no report this turn, don't surface error to user
-        return ({"data": out, "error": None}, state)
+    logger.debug(
+        "Report unit received parser_output=%r, type=%s",
+        parser_output,
+        type(parser_output).__name__,
+    )
 
-    payload = parser_output.get("report")
-    if not isinstance(payload, dict):
-        # No report this turn (e.g. parser output was edits-only list) — normal case, not an error
-        return ({"data": out, "error": None}, state)
+    payload = _unwrap_report_payload(parser_output)
+
+    if payload is None:
+        received_keys = (
+            list(parser_output.keys())
+            if isinstance(parser_output, dict)
+            else None
+        )
+
+        error = (
+            "Report input shape mismatch: expected a report action directly "
+            "or under data/template; "
+            f"received type={type(parser_output).__name__}, "
+            f"keys={received_keys}."
+        )
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
     report = payload.get("text")
+
     if not isinstance(report, dict):
-        out["error"] = "report payload must contain 'text' (JSON object)"
-        return ({"data": out, "error": out["error"]}, state)
+        error = (
+            "Report input shape mismatch: 'text' must be a JSON object, "
+            f"received {type(report).__name__}."
+        )
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
-    output_format = (payload.get("output_format") or "md").strip().lower()
+    output_format = payload.get("output_format")
+
+    if not isinstance(output_format, str):
+        error = (
+            "Report input shape mismatch: 'output_format' must be a string, "
+            f"received {type(output_format).__name__}."
+        )
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
+
+    output_format = output_format.strip().lower()
+
     if output_format not in ("md", "csv"):
-        output_format = "md"
+        error = (
+            "Invalid report output_format: expected 'md' or 'csv', "
+            f"received {output_format!r}."
+        )
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
-    payload_output_dir = payload.get("output_dir")  # payload is parser_output["report"]
-    output_dir = payload_output_dir if payload_output_dir else params.get("output_dir")
+    file_name = payload.get("file_name")
 
-    if not output_dir:
-        out["error"] = "unit param output_dir is required"
-        return ({"data": out, "error": out["error"]}, state)
+    if not isinstance(file_name, str) or not file_name.strip():
+        error = (
+            "Report input shape mismatch: 'file_name' must be a "
+            "non-empty string."
+        )
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
-    output_dir = Path(str(output_dir).strip()).expanduser().resolve()
+    chosen_filename = file_name.strip()
+
+    payload_output_dir = payload.get("output_dir")
+    configured_output_dir = (
+        payload_output_dir
+        if payload_output_dir
+        else params.get("output_dir")
+    )
+
+    if not configured_output_dir:
+        error = "unit param output_dir is required"
+        logger.error(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
+
+    output_dir = Path(
+        str(configured_output_dir).strip()
+    ).expanduser().resolve()
+
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        out["error"] = f"cannot create output_dir: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+    except OSError as exc:
+        error = f"cannot create output_dir {output_dir}: {exc}"
+        logger.exception(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
-    # Choose default filename based on format
-    default_filename = DEFAULT_REPORT_MD_FILENAME if output_format == "md" else DEFAULT_REPORT_CSV_FILENAME
-
-    # Respect file_name if provided; otherwise use default
-    file_name = payload.get("file_name")
-    if isinstance(file_name, str):
-        file_name = file_name.strip()
-    else:
-        file_name = ""
-
-    chosen_filename = file_name or default_filename
-
-    # Force extension consistency if user gives no extension or wrong extension
-    # (Optional but usually desired.) If you want to trust file_name entirely,
-    # remove this block.
     desired_suffix = ".md" if output_format == "md" else ".csv"
     chosen_path = Path(chosen_filename)
+
     if chosen_path.suffix.lower() != desired_suffix:
-        # Replace suffix
+        logger.debug(
+            "Adjusting report filename extension from %r to %r",
+            chosen_filename,
+            desired_suffix,
+        )
         chosen_filename = f"{chosen_path.stem}{desired_suffix}"
 
-    report_body: str
     if output_format == "md":
         report_body = _md_from_report(report)
     else:
@@ -164,13 +260,24 @@ def _report_step(
 
     try:
         report_path.write_text(report_body, encoding="utf-8")
-    except OSError as e:
-        out["error"] = f"cannot write report: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+    except OSError as exc:
+        error = f"cannot write report to {report_path}: {exc}"
+        logger.exception(error)
+        out["error"] = error
+        return ({"data": out, "error": error}, state)
 
     out["ok"] = True
     out["output_path"] = str(report_path)
-    out["report_preview"] = report_body[:500] + ("..." if len(report_body) > 500 else "")
+    out["report_preview"] = report_body[:500] + (
+        "..." if len(report_body) > 500 else ""
+    )
+
+    logger.info(
+        "File was written successfully: path=%s format=%s",
+        report_path,
+        output_format,
+    )
+
     return ({"data": out, "error": None}, state)
 
 

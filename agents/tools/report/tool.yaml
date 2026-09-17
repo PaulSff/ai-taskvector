@@ -1,3 +1,4 @@
 id: report
 parser_keys:
   - report
+workflow: report_workflow.json
