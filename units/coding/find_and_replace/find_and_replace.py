@@ -18,12 +18,14 @@ FindAndReplace Unit API:
 from __future__ import annotations
 
 import difflib
+import logging
 import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TypedDict, cast
 
 from core.schemas.primitives import Data, Output
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
 NEW_FILE_INPUT_PORTS = [("parser_output", "Any")]
@@ -31,6 +33,8 @@ NEW_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 DIFF_NEW_LINE_TERMINATOR = "\n"
 UNIFIED_DIFF_N_CONTEXT_LINES_AROUND = 3
+
+logger = setup_colored_logging(logging.DEBUG)
 
 
 class FindReplaceError(ValueError):
@@ -89,21 +93,24 @@ def _extract_target_file_and_content(
             "file.file_name must be a non-empty string"
         )
 
+    file_name = file_name.strip()
+
     output_dir_path = Path(output_dir).expanduser().resolve()
-    original_path = (output_dir_path / file_name.strip()).resolve()
+    original_path = (output_dir_path / file_name).resolve()
 
     # Prevent file_name values such as ../other_file.py from escaping output_dir.
-    file_name = file_obj.get("file_name")
-
-    if not isinstance(file_name, str) or not file_name.strip():
+    try:
+        original_path.relative_to(output_dir_path)
+    except ValueError as exc:
         raise FindReplaceError(
-            "file.file_name must be a non-empty string"
-        )
+            f"file path escapes output_dir: {file_name}"
+        ) from exc
 
     content = file_obj.get("content")
 
     if isinstance(content, str):
         original_text = content
+        source = "file.content"
     else:
         if not original_path.exists() or not original_path.is_file():
             raise FindReplaceError(
@@ -111,6 +118,14 @@ def _extract_target_file_and_content(
             )
 
         original_text = original_path.read_text(encoding="utf-8")
+        source = "file on disk"
+
+    logger.info(
+        "Find-and-replace failed: extracted target file content path=%s, source=%s, length=%d",
+        original_path,
+        source,
+        len(original_text),
+    )
 
     return original_path, original_text
 
@@ -268,7 +283,8 @@ def _find_match_offset(
 
     if line_num_ref is None:
         raise FindReplaceError(
-            f"replacements[{replacement_index}] find text is ambiguous ({len(matches)} matches); provide line_num_ref"
+            f"replacements[{replacement_index}] find text is ambiguous "
+            f"({len(matches)} matches); provide line_num_ref"
         )
 
     distances = [
@@ -289,10 +305,12 @@ def _find_match_offset(
 
     if len(closest_matches) != 1:
         raise FindReplaceError(
-            f"replacements[{replacement_index}] find text remains ambiguous near line_num_ref={line_num_ref}"
+            f"replacements[{replacement_index}] find text remains ambiguous "
+            f"near line_num_ref={line_num_ref}"
         )
 
-    return closest_matches[0], len(matches)
+    start_offset = closest_matches[0]
+    return start_offset, len(matches)
 
 
 class Replacement(TypedDict):
@@ -632,6 +650,14 @@ def _find_and_replace_step(
             "audit": audit,
         }
 
+        logger.info(
+            "Find-and-replace succeeded: file=%s replacements=%d changed=%s patch_characters=%d",
+            original_path,
+            len(audit),
+            original_text != updated_text,
+            len(patch),
+        )
+
         return (
             {
                 "data": {
@@ -657,12 +683,30 @@ def _find_and_replace_step(
         )
 
         output_dir = ""
+        file_name = ""
 
         if typed_parser_output is not None:
             output_dir_value = typed_parser_output.get("output_dir", "")
 
             if isinstance(output_dir_value, str):
                 output_dir = output_dir_value
+
+            file_value = typed_parser_output.get("file")
+
+            if isinstance(file_value, dict):
+                file_name_value = file_value.get("file_name")
+
+                if isinstance(file_name_value, str):
+                    file_name = file_name_value
+
+        logger.warning(
+            "Find-and-replace failed: stage=%s output_dir=%r "
+            "file_name=%r error=%s",
+            stage,
+            output_dir,
+            file_name,
+            error_message,
+        )
 
         return (
             {
