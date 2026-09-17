@@ -121,7 +121,7 @@ def _extract_target_file_and_content(
         source = "file on disk"
 
     logger.info(
-        "Find-and-replace failed: extracted target file content path=%s, source=%s, length=%d",
+        "Find-and-replace: extracted target file content path=%s, source=%s, length=%d",
         original_path,
         source,
         len(original_text),
