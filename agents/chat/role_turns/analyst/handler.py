@@ -31,6 +31,21 @@ if context.on_workflow_response is not None:
     await context.on_workflow_response(
         response,
     )
+
+The flow is:
+
+initial workflow
+  └─ on_workflow_response(response)
+
+  └─ parser_output_follow_up_chain(response)
+       └─ run_execution_follow_up_chain_async(...)
+            └─ possibly executes tool actions
+
+  └─ final post-execution follow-up chain
+       └─ run_post_execution_follow_up_chain_async(...)
+            └─ parser_output_follow_up_chain(post_response)
+                 └─ run_execution_follow_up_chain_async(...)
+
 """
 
 from __future__ import annotations
@@ -732,21 +747,17 @@ class AnalystChatHandler:
             light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
-        # Check if the follow-up chain is not broken before proceeding
-        # with final summary rounds
-        if not parser_follow_up_broke:
-            await run_post_execution_follow_up_chain_async(
-                final_ctx,
-                result=result,
-                content_holder=final_content_holder,
-                parser_chain_runner=parser_output_follow_up_chain,
-                flags=PostEditFlags(
-                    had_import_workflow=had_import_workflow,
-                    had_todo=had_todo,
-                    had_add_comment=had_add_comment,
-                ),
-            )
-
+        await run_post_execution_follow_up_chain_async(
+            final_ctx,
+            result=result,
+            content_holder=final_content_holder,
+            parser_chain_runner=parser_output_follow_up_chain,
+            flags=PostEditFlags(
+                had_import_workflow=had_import_workflow,
+                had_todo=had_todo,
+                had_add_comment=had_add_comment,
+            ),
+        )
 
         content = final_content_holder[0]
         result.content_for_display = content

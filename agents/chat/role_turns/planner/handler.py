@@ -735,21 +735,17 @@ class PlannerChatHandler:
             light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
-        # Check if the follow-up chain is not broken before proceeding
-        # with final summary rounds
-        if not parser_follow_up_broke:
-            await run_post_execution_follow_up_chain_async(
-                final_ctx,
-                result=result,
-                content_holder=final_content_holder,
-                parser_chain_runner=parser_output_follow_up_chain,
-                flags=PostEditFlags(
-                    had_import_workflow=had_import_workflow,
-                    had_todo=had_todo,
-                    had_add_comment=had_add_comment,
-                ),
-            )
-
+        await run_post_execution_follow_up_chain_async(
+            final_ctx,
+            result=result,
+            content_holder=final_content_holder,
+            parser_chain_runner=parser_output_follow_up_chain,
+            flags=PostEditFlags(
+                had_import_workflow=had_import_workflow,
+                had_todo=had_todo,
+                had_add_comment=had_add_comment,
+            ),
+        )
 
         content = final_content_holder[0]
         result.content_for_display = content

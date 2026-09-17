@@ -875,11 +875,40 @@ async def run_post_execution_follow_up_chain_async(
                         f"{type(raw_parser_output).__name__}"
                     )
 
-                if parsed_actions.has_tool_action("no_action"):
+                # Stop immediately if LLM asks for a clarification.
+                if workflow_response_is_question(post_response):
                     await _checkpoint(
-                        f"break_no_action_parser_action:{post_round}"
+                        f"break_question_stop_auto_rounds:{post_round}"
                     )
                     break
+
+                tool_actions = (
+                    parsed_actions.tool_actions or {}
+                )
+
+                actionable_tool_actions = {
+                    action_name: actions
+                    for action_name, actions in tool_actions.items()
+                    if action_name != "no_action"
+                }
+
+                has_edits = bool(parsed_actions.edits)
+                has_actionable_tool_actions = bool(
+                    actionable_tool_actions
+                )
+
+                if not has_edits and not has_actionable_tool_actions:
+                    await _checkpoint(
+                        f"break_no_parser_actions:{post_round}"
+                    )
+                    break
+
+                await _checkpoint(
+                    f"post_parser_actions:{post_round}:"
+                    f"edits={len(parsed_actions.edits)}:"
+                    f"tool_actions={len(actionable_tool_actions)}"
+                )
+
 
                 record_llm_prompt_view_if_present(
                     post_response,
@@ -967,18 +996,6 @@ async def run_post_execution_follow_up_chain_async(
                         await _checkpoint(
                             f"appended_agent_message:{post_round}"
                         )
-
-                await _checkpoint(
-                    "before_workflow_response_question_check:"
-                    f"{post_round}"
-                )
-
-                # Stop automatic rounds if LLM asks a question.
-                if workflow_response_is_question(post_response):
-                    await _checkpoint(
-                        f"break_question_stop_auto_rounds:{post_round}"
-                    )
-                    break
 
                 post_result = merged_response.result
 
