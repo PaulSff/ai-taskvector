@@ -7,8 +7,7 @@ Caller no longer injects units_library manually.
 """
 from __future__ import annotations
 
-from typing import cast
-
+from core.normalizer.runtime_detector import GraphInput
 from units.canonical.units_library.library_builder import (
     collect_source_paths_for_unit_types,
     format_units_library_for_prompt,
@@ -34,20 +33,18 @@ def _units_library_step(
         emit_catalog = bool(emit_catalog)
 
     graph_summary_value = inputs.get("graph_summary")
-    if isinstance(graph_summary_value, dict):
-        graph_summary = cast(dict[str, object], graph_summary_value)
-    else:
-        graph_summary = {}
 
     if not emit_catalog:
         return ({"data": "", "source_paths": []}, state)
 
-    link_types_value = params.get("implementation_links_for_types")
+    # Initialize as GraphInput to satisfy type checker
+    graph_summary: GraphInput = {}
+    if isinstance(graph_summary_value, dict):
+        for k, v in graph_summary_value.items():
+            graph_summary[k] = v
 
-    if isinstance(link_types_value, list):
-        link_types = cast(list[str], link_types_value)
-    else:
-        link_types = None
+    link_types_value = params.get("implementation_links_for_types")
+    link_types = link_types_value if isinstance(link_types_value, list) else None
 
     data = format_units_library_for_prompt(
         graph_summary,

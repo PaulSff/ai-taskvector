@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import cast
+
+from core.normalizer.runtime_detector import GraphInput, is_external_runtime
+from core.schemas.process_graph import ProcessGraph
 
 
 def _repo_root() -> Path:
@@ -207,7 +209,7 @@ def _unit_included_for_library(
 
 
 def collect_unit_type_entries(
-    graph_summary_dict: dict[str, object],
+    graph_summary_dict: GraphInput,
     *,
     restrict_to_graph_environments: bool = True,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -219,18 +221,24 @@ def collect_unit_type_entries(
     When False (Add Node dialog), all registered environment units are included.
     """
     from core.graph.graph_edits import coding_is_allowed
-    from core.normalizer.runtime_detector import is_external_runtime
     from units.registry import UNIT_REGISTRY, get_unit_spec
 
     _ensure_units_registered_for_library()
+
     coding_allowed = coding_is_allowed()
     runtime_external = is_external_runtime(graph_summary_dict)
-    env_list = graph_summary_dict.get("environments")
+
+    if isinstance(graph_summary_dict, ProcessGraph):
+        env_list = graph_summary_dict.environments
+    elif isinstance(graph_summary_dict, dict):
+        env_list = graph_summary_dict.get("environments")
+    else:
+        env_list = None
 
     env_set: set[str] = set()
 
     if isinstance(env_list, list):
-        for environment in cast(list[object], env_list):
+        for environment in env_list:
             if environment:
                 env_set.add(str(environment).strip().lower())
 
@@ -240,14 +248,19 @@ def collect_unit_type_entries(
     unit_entries: list[tuple[str, str]] = []
     pipeline_entries: list[tuple[str, str]] = []
 
-    for type_name, spec in sorted(UNIT_REGISTRY.items(), key=lambda x: x[0].lower()):
+    for type_name, spec in sorted(
+        UNIT_REGISTRY.items(),
+        key=lambda item: item[0].lower(),
+    ):
         tags = spec.environment_tags or []
-        tag_set = {t.strip().lower() for t in tags if t}
+        tag_set = {tag.strip().lower() for tag in tags if tag}
+
         scope = getattr(spec, "runtime_scope", None)
         is_pipeline = getattr(spec, "pipeline", False)
 
         if runtime_external and scope == "canonical":
             continue
+
         if not runtime_external and scope == "external":
             continue
 
@@ -267,16 +280,16 @@ def collect_unit_type_entries(
         target = pipeline_entries if is_pipeline else unit_entries
         target.append((type_name, desc))
 
-    if coding_allowed and "function" not in {t for t, _ in unit_entries}:
+    if coding_allowed and "function" not in {type_name for type_name, _ in unit_entries}:
         spec = get_unit_spec("function")
-        desc = (spec.description or "function") if spec else "function"
-        unit_entries.append(("function", desc))
+        desc = spec.description if spec else "function"
+        unit_entries.append(("function", desc or "function"))
 
     return unit_entries, pipeline_entries
 
 
 def format_units_library_for_prompt(
-    graph_summary_dict: dict[str, object],
+    graph_summary_dict: GraphInput,
     *,
     implementation_links_for_types: list[str] | set[str] | frozenset[str] | None = None,
 ) -> str:
@@ -316,12 +329,17 @@ def format_units_library_for_prompt(
             return _format_library_line(type_name, desc, spec)
         return f"{type_name} : {desc}"
 
-    env_list = graph_summary_dict.get("environments")
+    if isinstance(graph_summary_dict, ProcessGraph):
+        env_list = graph_summary_dict.environments
+    elif isinstance(graph_summary_dict, dict):
+        env_list = graph_summary_dict.get("environments")
+    else:
+        env_list = None
 
     env_set: set[str] = set()
 
     if isinstance(env_list, list):
-        for environment in cast(list[object], env_list):
+        for environment in env_list:
             if environment:
                 env_set.add(str(environment).strip().lower())
 
