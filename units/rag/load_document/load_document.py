@@ -519,7 +519,10 @@ def _load_document_step(
     if not path.is_file():
         return {**_EMPTY_OUTPUT, "error": f"file not found: {path}"}, state
 
+    suffix = path.suffix.lower()
+
     tables_out: list[dict[str, Any]] = []
+
     # Pre-declare so the type checker sees them as always-bound
     body_text: str = ""
     markdown: str = ""
@@ -532,7 +535,7 @@ def _load_document_step(
     key_value_items: list[dict[str, Any]] = []
     page_count: float = 0.0
 
-    if path.suffix.lower() in _SPREADSHEET_SUFFIXES:
+    if suffix in _SPREADSHEET_SUFFIXES:
         # ─────────────────────────────────────────────────────────────────────
         # Spreadsheet path: pandas for values, openpyxl for formula strings
         # (.xlsx only — .xls has no formula API).
@@ -597,9 +600,21 @@ def _load_document_step(
             # e.g., unsupported file format, bad arguments, unexpected df shape
             return {**_EMPTY_OUTPUT, "error": f"spreadsheet parsing error: {e}"}, state
 
+    elif suffix in {".md", ".markdown", ".mdown", ".mkdn"}:
+        # Preserve source Markdown without a Docling parse/export round-trip.
+        try:
+            markdown = path.read_text(encoding="utf-8")
+            body_text = markdown
+            page_count = 1.0
+        except (UnicodeDecodeError, OSError) as e:
+            return {
+                **_EMPTY_OUTPUT,
+                "error": f"markdown parsing error: {e}",
+            }, state
+
     else:
         # ─────────────────────────────────────────────────────────────────────
-        # Docling path: PDF, DOCX, HTML, Markdown, etc.
+        # Docling path: PDF, DOCX, HTML, etc.
         # ─────────────────────────────────────────────────────────────────────
         try:
             converter = _make_converter(params)
