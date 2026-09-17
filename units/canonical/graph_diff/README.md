@@ -1,12 +1,12 @@
 # GraphDiff unit
 
-Canonical unit that **computes a compact diff** between two graphs (prev vs current) and outputs a changelog string.
+Canonical unit that **computes a compact diff** between two graphs (prev vs current) and outputs a `GraphDiffPayload`.
 
 - **Inputs**
   - `prev_graph` (Any) — Graph before changes (dict or ProcessGraph). If missing, diff is empty.
   - `current_graph` (Any) — Graph after changes. If missing, diff is empty.
 - **Output**
-  - `diff` (str) — Human-readable changelog: added/removed units, added/removed connections (e.g. "added foo (Bar); connected a->b").
+  - `diff` (GraphDiffPayload) — Structured changelog containing added/removed units and connections.
 
 Used in the agent workflow so the runner injects only graphs; the workflow produces `recent_changes_block` via this unit instead of an inject.
 
