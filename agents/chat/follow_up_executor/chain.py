@@ -8,6 +8,7 @@ Orchestrates tool follow-ups in catalog order (registered tool runners), then re
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from copy import deepcopy
 from dataclasses import replace
@@ -61,15 +62,18 @@ from agents.tools.read_file.follow_ups import (
 )
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import ParsedActions, ParserOutput
+from config.settings import get_coding_is_allowed, get_contribution_is_allowed
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
 )
 from core.schemas.primitives import is_string_keyed_dict
-from config.settings import get_coding_is_allowed, get_contribution_is_allowed
+from services.logging import setup_colored_logging
 
 from .tool_follow_ups_runner import run_role_ordered_follow_ups
+
+logger = setup_colored_logging(logging.DEBUG)
 
 # ─────────────────────────────────────────────────────────────────────────────────
 #  PHASE 1: Execution follow_up rounds
@@ -98,6 +102,16 @@ async def run_execution_follow_up_chain_async(
 
     def _hint() -> str:
         return ctx.wf_language_hint[0]
+
+    async def _log_exit(reason: str, **extra: object) -> None:
+        logger.warning(
+            "[parser_follow_up_chain] exiting: reason=%s "
+            "turn_id=%s agent=%s extra=%s",
+            reason,
+            ctx.turn_id,
+            ctx.agent_label,
+            extra,
+        )
 
     async def _checkpoint(name: str) -> None:
         print(
@@ -167,7 +181,13 @@ async def run_execution_follow_up_chain_async(
 
     if workflow_response_is_question(response):
         await _checkpoint("return_question_no_chain")
+        await _log_exit(
+            "question",
+            location="before_chain",
+            round_index=None,
+        )
         return response
+
 
     for i in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{i}")
@@ -178,13 +198,26 @@ async def run_execution_follow_up_chain_async(
             await _checkpoint(
                 f"break_no_action_context:{i}"
             )
+            await _log_exit(
+                "no_action",
+                location="loop",
+                round_index=i,
+                reason_detail="missing_action_context",
+            )
             break
 
         if not po.actions.edits and not po.actions.tool_actions:
             await _checkpoint(
                 f"break_no_parser_actions:{i}"
             )
+            await _log_exit(
+                "no_action",
+                location="loop",
+                round_index=i,
+                reason_detail="empty_parser_actions",
+            )
             break
+
 
         purple = "\033[94m"
         reset = "\033[0m"
@@ -577,6 +610,11 @@ async def run_execution_follow_up_chain_async(
         if workflow_response_is_question(response):
             await _checkpoint(
                 f"break_question_after_stream:{i}"
+            )
+            await _log_exit(
+                "question",
+                location="after_stream",
+                round_index=i,
             )
             break
 
