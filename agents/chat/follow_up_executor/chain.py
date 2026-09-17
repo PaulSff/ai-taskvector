@@ -67,7 +67,7 @@ from core.schemas.graph_edit_api import (
     ApplyWorkflowEditsResult,
 )
 from core.schemas.primitives import is_string_keyed_dict
-from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
+from config.settings import get_coding_is_allowed, get_contribution_is_allowed
 
 from .tool_follow_ups_runner import run_role_ordered_follow_ups
 

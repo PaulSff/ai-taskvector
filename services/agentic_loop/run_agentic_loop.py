@@ -11,7 +11,7 @@ from agents.chat.context.todo_list_manager import (
 from agents.chat.turn_driver import handle_turn
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from core.schemas import ProcessGraph, TodoTask
-from gui.components.settings import (
+from config.settings import (
     get_todo_task_deadline_s,
 )
 from gui.hooks.on_tasks_expired import handle_tasks_expired_hook

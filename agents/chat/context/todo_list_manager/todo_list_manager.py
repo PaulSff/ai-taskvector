@@ -4,17 +4,17 @@ import logging
 
 from pydantic import ValidationError
 
-from core.graph.batch_edits import apply_workflow_edits
-from core.schemas import ProcessGraph, TodoTask
-from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
-from core.schemas.primitives import safe_int
-from gui.components.settings import (
+from config.settings import (
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
     TG_TODO_LIST_ID,
     TG_TODO_LIST_TITLE,
     get_telegram_conversations_dir,
 )
+from core.graph.batch_edits import apply_workflow_edits
+from core.schemas import ProcessGraph, TodoTask
+from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
+from core.schemas.primitives import safe_int
 from messengers_integrations.messenger_state import HistoryMessage
 
 from .helpers import (

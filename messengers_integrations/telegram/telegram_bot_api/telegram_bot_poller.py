@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
-from gui.components.settings import (
+from config.settings import (
     get_telegram_bot_poller_lock_file_path,
     get_telegram_conversations_dir,
 )

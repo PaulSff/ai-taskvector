@@ -8,7 +8,7 @@ still comes from app settings.
 from __future__ import annotations
 
 from core.schemas.primitives import Data, WorkflowInputs
-from gui.components.settings import (
+from config.settings import (
     get_create_filename_prompt_path,
     get_create_filename_workflow_path,
     get_workflow_designer_llm_generation_options,

@@ -60,7 +60,7 @@ from core.schemas.graph_edit_api import (
     ApplyWorkflowEditsResult,
 )
 from core.schemas.primitives import Data, JsonObject
-from gui.components.settings import (
+from config.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegation_is_allowed,
     get_chat_history_dir,

@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from gui.components.settings.paths import RAG_SUBDIR
+from config.settings.paths import RAG_SUBDIR
 
 
 def roles_yaml_paths_sorted(roles_root: Path) -> list[Path]:

@@ -1,0 +1,82 @@
+{
+  "environment_type": "office",
+  "environments": [
+    "canonical",
+    "office"
+  ],
+  "keep_alive": true,
+  "units": [
+    {
+      "id": "inject_action",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "generate_file",
+      "type": "Report",
+      "controllable": false,
+      "params": {
+        "output_dir": "mydata/reports"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_action",
+      "to": "generate_file",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Report tool workflow"
+  },
+  "comments": null,
+  "todo_lists": []
+}

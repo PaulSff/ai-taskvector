@@ -20,7 +20,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import (
+from config.settings import (
     REPO_ROOT,
     get_workflow_project_name,
     get_workflow_save_path_template,

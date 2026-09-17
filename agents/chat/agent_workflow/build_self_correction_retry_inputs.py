@@ -39,7 +39,7 @@ def build_self_correction_retry_inputs(
     )
 
     # keep the existing behavior; this function used to import get_contribution_is_allowed
-    from gui.components.settings import get_contribution_is_allowed
+    from config.settings import get_contribution_is_allowed
 
     _contrib = get_contribution_is_allowed() if contribution_is_allowed is None else contribution_is_allowed
 

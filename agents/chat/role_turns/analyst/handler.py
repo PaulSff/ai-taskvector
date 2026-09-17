@@ -90,7 +90,7 @@ from core.schemas.primitives import (
     ModelDumpable,
     WorkflowInputs,
 )
-from gui.components.settings import get_workflow_designer_max_follow_ups
+from config.settings import get_workflow_designer_max_follow_ups
 from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging
 

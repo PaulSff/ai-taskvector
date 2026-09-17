@@ -36,7 +36,7 @@ def prompt_llm_params_strip_delegate_tool_line_if_auto_on(
 
     Otherwise return None.
     """
-    from gui.components.settings import get_auto_delegation_is_allowed
+    from config.settings import get_auto_delegation_is_allowed
 
     if not get_auto_delegation_is_allowed():
         return None

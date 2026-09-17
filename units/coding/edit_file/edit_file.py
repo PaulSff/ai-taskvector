@@ -8,6 +8,7 @@ from typing import TypedDict, cast
 
 from unidiff.patch import PatchSet
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 EDIT_FILE_INPUT_PORTS = [("parser_output", "Any")]
@@ -383,11 +384,11 @@ def _format_context_error(e: PatchApplyError) -> str:
 
 
 def _edit_file_step(
-    params: dict[str, object],  # pyright: ignore[reportUnusedParameter]
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,  # pyright: ignore[reportUnusedParameter]
+    inputs: Data,
+    state: Data,
     dt: float,  # pyright: ignore[reportUnusedParameter]
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     # Define the output shape:
     out_obj = EditFileOutput()
 

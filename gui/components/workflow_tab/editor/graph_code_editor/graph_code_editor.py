@@ -431,7 +431,7 @@ def build_graph_code_view(
                 on_graph_saved(new_graph)
 
                 from agents.chat.utils import save_workflow_version
-                from gui.components.settings import (
+                from config.settings import (
                     get_workflow_project_name,
                     get_workflow_save_path_template,
                 )

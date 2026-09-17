@@ -35,7 +35,7 @@ from core.schemas.primitives import (
     is_model_dumpable,
     is_string,
 )
-from gui.components.settings import (
+from config.settings import (
     _AGENTS_WORKFLOWS_DIR,
     _CORE_WORKFLOWS_DIR,
     _UNITS_LIBRARY_PATHS_SINGLE,

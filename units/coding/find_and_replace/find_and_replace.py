@@ -23,6 +23,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TypedDict, cast
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 NEW_FILE_INPUT_PORTS = [("parser_output", "Any")]
@@ -558,13 +559,13 @@ def _build_error_with_context(
 
 
 def _find_and_replace_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,  # pyright: ignore[reportUnusedParameter]
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     parser_output = inputs.get("parser_output")
-    typed_parser_output: dict[str, object] | None = None
+    typed_parser_output: Data | None = None
     stage = "init"
 
     try:

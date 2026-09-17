@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from gui.components.settings import (
+from config.settings import (
     DEFAULT_OLLAMA_HOST,
     REPO_ROOT,
     STOP_TIMEOUT_S,
@@ -58,7 +58,7 @@ atexit.register(_stop_ollama_on_exit)
 def _get_ollama_executable() -> str:
     """Resolve ollama binary: from settings path, or 'ollama' (PATH)."""
     try:
-        from gui.components.settings import KEY_OLLAMA_EXECUTABLE_PATH, load_settings
+        from config.settings import KEY_OLLAMA_EXECUTABLE_PATH, load_settings
 
         path = (load_settings().get(KEY_OLLAMA_EXECUTABLE_PATH) or "").strip()
         if path:
@@ -129,7 +129,7 @@ def maybe_start_ollama() -> tuple[bool, str]:
     Returns (started_ok, message).
     """
     try:
-        from gui.components.settings import KEY_START_OLLAMA_WITH_APP, load_settings
+        from config.settings import KEY_START_OLLAMA_WITH_APP, load_settings
         if not load_settings().get(KEY_START_OLLAMA_WITH_APP):
             return True, ""
     except (ImportError, ModuleNotFoundError, KeyError, AttributeError, OSError):

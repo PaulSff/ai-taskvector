@@ -24,7 +24,7 @@ from core.schemas.agent_node import (
 )
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig, TrainingConfig
-from gui.components.settings import (
+from config.settings import (
     get_best_model_path,
     get_training_config_path,
     save_settings,

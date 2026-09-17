@@ -16,7 +16,7 @@ from core.schemas.primitives import (
     WorkflowOutputs,
     is_json_object,
 )
-from gui.components.settings import (
+from config.settings import (
     get_tools_workflows_job_pub_endpoint,
     get_tools_workflows_max_concurrent_calls,
     get_tools_workflows_response_endpoint,

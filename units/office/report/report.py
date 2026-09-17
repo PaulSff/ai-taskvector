@@ -13,6 +13,7 @@ import io
 from pathlib import Path
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 REPORT_INPUT_PORTS = [("parser_output", "Any")]
@@ -84,16 +85,16 @@ def _unique_path(output_dir: Path, desired_path: Path) -> Path:
 
 
 def _report_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Read parser_output['report'], render report to MD/CSV, write to output_dir.
 
     Parser (ProcessAgent) port 0 can be a list (edits only) or a dict (edits + report/read_file/etc.). Accept both.
     """
-    out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
+    out: Data = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
     parser_output = inputs.get("parser_output")
 
     if isinstance(parser_output, list):

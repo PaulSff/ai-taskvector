@@ -8,7 +8,7 @@ from typing import Any
 import flet as ft
 
 from gui.components.progress_overlay import build_progress_overlay
-from gui.components.settings import (
+from config.settings import (
     get_turn_driver_response_endpoint,
     get_turn_driver_update_endpoint,
 )

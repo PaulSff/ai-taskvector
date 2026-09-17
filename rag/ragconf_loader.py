@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from gui.components.settings import get_rag_config_path
+from config.settings import get_rag_config_path
 
 
 def ensure_ragconf_exists() -> Path:

@@ -9,7 +9,7 @@ import threading
 from collections import defaultdict
 from typing import Any
 
-from gui.components.settings import get_telegram_bot_token
+from config.settings import get_telegram_bot_token
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
     default_conf,
     get_zmq_sub_endpoint,

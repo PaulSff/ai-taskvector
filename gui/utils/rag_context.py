@@ -60,7 +60,7 @@ def _run_rag_context_query_workflow(
         return None
 
     try:
-        from gui.components.settings import (
+        from config.settings import (
             get_rag_context_workflow_path,
             get_rag_format_max_chars,
             get_rag_format_snippet_max,
@@ -169,7 +169,7 @@ def get_rag_context_by_path(
     tool_id = (rag_format_tool or "read_file").strip() or "read_file"
 
     try:
-        from gui.components.settings import get_rag_context_workflow_path
+        from config.settings import get_rag_context_workflow_path
         from runtime.run import run_workflow
         from units.app_settings_param import resolve_param_ref
     except ImportError:

@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from agents.chat.utils import save_workflow_version
 from core.schemas.process_graph import ProcessGraph
 from gui.components.console import build_workflow_run_console
-from gui.components.settings import (
+from config.settings import (
     NEW_FLOW_TEMPLATE_PATH,
     get_workflow_project_name,
     get_workflow_save_path_template,

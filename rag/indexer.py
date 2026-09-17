@@ -61,7 +61,7 @@ def _repo_root() -> Path:
 def default_rag_embedding_model() -> str:
     """Default embedding model: from settings when available."""
     try:
-        from gui.components.settings import get_rag_embedding_model
+        from config.settings import get_rag_embedding_model
 
         return get_rag_embedding_model()
     except ImportError:

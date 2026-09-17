@@ -16,7 +16,7 @@ from core.schemas.primitives import (
     WorkflowInputs,
     require_json_object_from_object,
 )
-from gui.components.settings import (
+from config.settings import (
     get_turn_driver_job_pub_endpoint,
     get_turn_driver_max_concurrent_calls,
     get_turn_driver_response_endpoint,

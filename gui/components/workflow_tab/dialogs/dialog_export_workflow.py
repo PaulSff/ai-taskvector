@@ -15,7 +15,7 @@ from typing import cast
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import REPO_ROOT
+from config.settings import REPO_ROOT
 from gui.utils.notifications import show_toast
 from services.workflows.core_workflows import (
     run_export_workflow,

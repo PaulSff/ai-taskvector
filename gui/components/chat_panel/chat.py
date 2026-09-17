@@ -43,6 +43,10 @@ from agents.roles import (
     get_role,
     list_chat_dropdown_role_ids,
 )
+from config.settings import (
+    get_chat_history_dir,
+    get_chat_stream_ui_interval_ms,
+)
 from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
 from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
 from gui.components.chat_panel.ui.graph_references import GraphReferencesController
@@ -55,10 +59,6 @@ from gui.components.chat_panel.ui.message_renderer import (
 from gui.components.chat_panel.ui.recent_chats_menu import RecentChatsMenu
 from gui.components.chat_panel.ui.status_bar import StatusBarController
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
-from gui.components.settings import (
-    get_chat_history_dir,
-    get_chat_stream_ui_interval_ms,
-)
 from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.hooks import on_apply_hook
 from gui.utils import safe_page_update, safe_update

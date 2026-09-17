@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import (
+from config.settings import (
     _AGENTS_WORKFLOWS_DIR,
     _CORE_WORKFLOWS_DIR,
     _UNITS_LIBRARY_PATHS_SINGLE,

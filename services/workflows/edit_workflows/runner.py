@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from config.settings import _EDIT_WORKFLOWS_DIR
 from core.schemas.primitives import (
     Data,
     JsonObject,
@@ -17,7 +18,6 @@ from core.schemas.primitives import (
     require_json_object_from_object,
 )
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import _EDIT_WORKFLOWS_DIR
 from runtime.run import run_workflow
 from services.workflows.core_workflows import (
     run_apply_edits_inline,

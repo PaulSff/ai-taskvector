@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.primitives import JsonValue, WorkflowInputs
-from gui.components.settings import (
+from config.settings import (
     AUTO_IMPORT_WORKFLOW_PATH,
     NEW_FLOW_TEMPLATE_PATH,
     get_workflow_project_name,

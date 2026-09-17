@@ -43,7 +43,7 @@ import signal
 from typing import TypeGuard
 
 from core.schemas import TodoTask
-from gui.components.settings import get_telegram_enabled_option
+from config.settings import get_telegram_enabled_option
 from messengers_integrations import MessengerChatUpdate
 from services.agentic_loop import cfg_helpers as cfg
 from services.logging import setup_colored_logging

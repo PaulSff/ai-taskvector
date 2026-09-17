@@ -14,7 +14,7 @@ def open_leave_comment_dialog(
 ) -> None:
     """Open modal dialog: multiline comment → ``add_comment`` edit workflow → autosave + ``on_saved``."""
     from agents.chat.utils import save_workflow_version
-    from gui.components.settings import (
+    from config.settings import (
         get_workflow_project_name,
         get_workflow_save_path_template,
     )

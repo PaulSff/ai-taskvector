@@ -162,7 +162,7 @@ def assert_no_duplicate_connections(
 def default_workflow_designer_prompt_path() -> str:
     """Return Workflow Designer prompt path from app settings when available, else default."""
     try:
-        from gui.components.settings import get_workflow_designer_prompt_path
+        from config.settings import get_workflow_designer_prompt_path
 
         return str(get_workflow_designer_prompt_path())
     except (ImportError, AttributeError):

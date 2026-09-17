@@ -17,7 +17,7 @@ from core.schemas.primitives import (
     is_json_object,
 )
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import (
+from config.settings import (
     AUTO_IMPORT_WORKFLOW_PATH,
 )
 from gui.utils.file_picker import register_file_picker
@@ -123,7 +123,7 @@ def open_import_workflow_dialog(
     on_imported: Callable[[ProcessGraph], None],
 ) -> None:
     from agents.chat.utils import save_workflow_version
-    from gui.components.settings import (
+    from config.settings import (
         get_workflow_project_name,
         get_workflow_save_path_template,
     )

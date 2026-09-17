@@ -8,10 +8,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.utils.notifications import show_toast
-from gui.utils.role_settings_discovery import discover_role_llm_ui_entries
-
-from .constants import (
+from config.settings.constants import (
     DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     DEFAULT_CODING_IS_ALLOWED,
@@ -54,7 +51,7 @@ from .constants import (
     MIN_WORKFLOW_UNDO_MAX_DEPTH,
     SETTINGS_FILENAME,
 )
-from .getters import (
+from config.settings.getters import (
     _default_chat_history_dir,
     _default_project_name,
     _default_workflow_save_path_template,
@@ -62,9 +59,11 @@ from .getters import (
     get_workflow_undo_max_depth,
     list_llm_providers,
 )
-from .paths import REPO_ROOT
-from .persistence import load_settings, save_settings
-from .role_yaml import _role_llm_str
+from config.settings.paths import REPO_ROOT
+from config.settings.persistence import load_settings, save_settings
+from config.settings.role_yaml import _role_llm_str
+from gui.utils.notifications import show_toast
+from gui.utils.role_settings_discovery import discover_role_llm_ui_entries
 
 
 def build_settings_tab(

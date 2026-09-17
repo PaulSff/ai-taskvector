@@ -71,7 +71,7 @@ def _clone_role_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    from gui.components.settings import get_contribution_is_allowed
+    from config.settings import get_contribution_is_allowed
 
     data = inputs.get("data")
 

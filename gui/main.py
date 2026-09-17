@@ -25,17 +25,7 @@ from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.utils.save_workflow import (
     save_workflow_version,
 )
-from core.schemas.primitives import Data
-from core.schemas.process_graph import ProcessGraph
-from gui.components.chat_panel.chat import (
-    CHAT_GRAPH_DRAG_GROUP,
-    build_agents_chat_panel,
-)
-from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
-from gui.components.progress_overlay import build_progress_overlay
-from gui.components.rag_tab import build_rag_tab
-from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
-from gui.components.settings import (
+from config.settings import (
     COLLAPSED_PANEL_WIDTH,
     LEFT_PANEL_DEFAULT,
     LEFT_PANEL_MAX,
@@ -46,7 +36,6 @@ from gui.components.settings import (
     RIGHT_PANEL_MAX,
     RIGHT_PANEL_MIN,
     UNITS_DIR,
-    build_settings_tab,
     get_left_panel_is_visible,
     get_left_panel_width,
     get_mydata_dir,
@@ -61,6 +50,17 @@ from gui.components.settings import (
     get_workflow_save_dir,
     save_settings,
 )
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph
+from gui.components.chat_panel.chat import (
+    CHAT_GRAPH_DRAG_GROUP,
+    build_agents_chat_panel,
+)
+from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
+from gui.components.progress_overlay import build_progress_overlay
+from gui.components.rag_tab import build_rag_tab
+from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
+from gui.components.settings_tab import build_settings_tab
 from gui.components.training_tab import build_training_tab
 from gui.components.workflow_tab import build_workflow_tab
 from gui.hooks import on_apply_hook, on_turn_status_hook

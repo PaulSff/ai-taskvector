@@ -8,7 +8,7 @@ import flet as ft
 from flet import Event, IconButton, OutlinedButton
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
-from gui.components.settings import get_rag_index_dir
+from config.settings import get_rag_index_dir
 from gui.utils.rag_context import get_rag_context, get_rag_context_by_path
 
 from .dialog_upload_file import build_rag_upload_file_dialog

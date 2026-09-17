@@ -7,7 +7,7 @@ from typing import cast
 
 import flet as ft
 
-from gui.components.settings import get_mydata_dir
+from config.settings import get_mydata_dir
 from gui.utils.file_picker import register_file_picker
 
 from .helpers import (

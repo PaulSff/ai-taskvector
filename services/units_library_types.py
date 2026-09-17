@@ -16,7 +16,7 @@ from core.schemas.primitives import (
     is_json_object,
     require_json_object_from_object,
 )
-from gui.components.settings import UNITS_LIBRARY_WORKFLOW_PATH
+from config.settings import UNITS_LIBRARY_WORKFLOW_PATH
 
 
 def _parse_units_library_text(

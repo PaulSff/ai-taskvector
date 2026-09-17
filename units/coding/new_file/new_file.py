@@ -41,6 +41,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 NEW_FILE_INPUT_PORTS = [("parser_output", "Any")]
@@ -117,12 +118,12 @@ def _extract_file_payload_and_output_dir(
 
 
 def _generic_file_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float
-) -> tuple[dict[str, object], dict[str, object]]:
-    out: dict[str, object] = {
+) -> Output:
+    out: Data = {
         "ok": False,
         "output_path": "",
         "error": None,

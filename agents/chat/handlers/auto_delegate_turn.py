@@ -8,7 +8,7 @@ from typing import cast
 from agents.roles.registry import DISPATCHER_ROLE_ID
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from core.schemas.primitives import Data
-from gui.components.settings import (
+from config.settings import (
     get_auto_delegation_is_allowed,
 )
 from runtime.run import run_workflow

@@ -192,7 +192,6 @@ from .paths import (
     UNITS_LIBRARY_WORKFLOW_PATH,
 )
 from .persistence import load_settings, save_settings
-from .settings_tab import build_settings_tab
 
 __all__ = [
     "AGENTIC_LOOP_EXECUTION_TIMEOUT_S",
@@ -311,7 +310,6 @@ __all__ = [
     "_MESSENGERS_WORKFLOWS_DIR",
     "_SERVICES_DIR",
     "_UNITS_LIBRARY_PATHS_SINGLE",
-    "build_settings_tab",
     "get_agentic_loop_execution_timeout_s",
     "get_agents_workflows_job_pub_endpoint",
     "get_agents_workflows_max_concurrent_calls",

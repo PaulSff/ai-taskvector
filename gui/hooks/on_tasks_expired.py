@@ -22,7 +22,7 @@ from agents.chat.context.todo_list_manager import (
 )
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from core.schemas import ProcessGraph, TodoTask
-from gui.components.settings import (
+from config.settings import (
     TG_TODO_LIST_ID,
     get_todo_task_deadline_s,
 )

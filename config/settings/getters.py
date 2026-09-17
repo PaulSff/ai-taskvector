@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from agents.roles.registry import get_role
 from core.schemas.primitives import Data
 
 from .constants import (
@@ -541,6 +540,7 @@ def get_llm_provider_config(
     If no API key is found in the workflow-unit overrides, the general
     ``ollama_api_key`` setting is used as a fallback.
     """
+    from agents.roles.registry import get_role
     role = get_role(agent.strip())
     data = load_settings()
 

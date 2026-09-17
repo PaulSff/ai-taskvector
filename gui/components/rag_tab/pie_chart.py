@@ -7,7 +7,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.components.settings import get_mydata_dir
+from config.settings import get_mydata_dir
 from rag.mydata_file_manager_ops import build_mydata_storage_report
 
 _PIE_PLACEHOLDER_SRC = (

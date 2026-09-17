@@ -9,13 +9,14 @@ from typing import Any
 
 from pydantic import ValidationError
 
-# Application types/settings — required. Do not hardcode defaults here.
-from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import (
+from config.settings import (
     REPO_ROOT,
     get_workflow_project_name,
     get_workflow_save_path_template,
 )
+
+# Application types/settings — required. Do not hardcode defaults here.
+from core.schemas.process_graph import ProcessGraph
 from units.registry import UnitSpec, register_unit
 
 PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"

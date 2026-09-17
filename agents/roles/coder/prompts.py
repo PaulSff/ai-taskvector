@@ -66,8 +66,8 @@ CODER_SECTION_REASONING = """Reasoning
 - Break down complex features into small, testable tasks using a TODO list.
 - Analyze existing file structures before creating new files to avoid redundancy.
 - Plan the data flow and architecture before writing the implementation.
-- Use edit_file acton to apply the changes.
-- Verify the impact of edits on the rest of the codebase using read_file or grep.
+- Prefer the edit_file action to apply changes. Alternatively, use new_file and report, especially, when it comes to large chunks replacements or difficulties editing existing files.
+- Verify the impact of your edits on the rest of the codebase using read_file or grep.
 - When presenting code, ensure it is modular and well-documented."""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.

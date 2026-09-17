@@ -10,7 +10,7 @@ import flet as ft
 from flet import Event, IconButton, ListTile, TextButton
 
 from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
-from gui.components.settings import get_mydata_dir
+from config.settings import get_mydata_dir
 from gui.utils.notifications import show_toast
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,

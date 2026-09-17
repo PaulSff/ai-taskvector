@@ -17,7 +17,7 @@ from core.schemas.primitives import (
     WorkflowInputs,
     WorkflowOutputs,
 )
-from gui.components.settings import (
+from config.settings import (
     get_agents_workflows_job_pub_endpoint,
     get_agents_workflows_max_concurrent_calls,
     get_agents_workflows_response_endpoint,

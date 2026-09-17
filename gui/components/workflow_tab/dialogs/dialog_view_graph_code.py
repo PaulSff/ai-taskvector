@@ -393,7 +393,7 @@ def open_view_graph_code_dialog(
             return
         try:
             from agents.chat.utils import save_workflow_version
-            from gui.components.settings import (
+            from config.settings import (
                 get_workflow_project_name,
                 get_workflow_save_path_template,
             )
@@ -684,7 +684,7 @@ def open_view_graph_code_dialog(
             on_graph_saved(new_graph)
 
             from agents.chat.utils import save_workflow_version
-            from gui.components.settings import (
+            from config.settings import (
                 get_workflow_project_name,
                 get_workflow_save_path_template,
             )

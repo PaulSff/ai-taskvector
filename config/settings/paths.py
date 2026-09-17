@@ -7,10 +7,8 @@ from pathlib import Path
 from .constants import SETTINGS_FILENAME
 
 _PKG_DIR = Path(__file__).resolve().parent
-_COMPONENTS_DIR = _PKG_DIR.parent
-_GUI_DIR = _COMPONENTS_DIR.parent
-REPO_ROOT = _GUI_DIR.parent
-CONFIG_DIR = REPO_ROOT / "config"
+CONFIG_DIR = _PKG_DIR.parent
+REPO_ROOT = CONFIG_DIR.parent
 SETTINGS_PATH = CONFIG_DIR / SETTINGS_FILENAME
 _ROLES_YAML_ROOT = REPO_ROOT / "agents" / "roles"
 UNITS_DIR = REPO_ROOT / "units"

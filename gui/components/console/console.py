@@ -9,7 +9,7 @@ import flet as ft
 
 from core.normalizer import to_process_graph
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
+from config.settings import DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
 from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging

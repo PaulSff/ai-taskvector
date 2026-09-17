@@ -13,7 +13,7 @@ from agents.chat.handlers.prompt_delegate_tool_visibility import (
 from agents.roles import RL_COACH_ROLE_ID
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from core.schemas.primitives import Data, WorkflowInputs
-from gui.components.settings import (
+from config.settings import (
     REPO_ROOT,
     get_best_model_path,
     get_rag_format_max_chars,

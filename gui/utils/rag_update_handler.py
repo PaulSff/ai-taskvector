@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from gui.components.settings import RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
+from config.settings import RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]

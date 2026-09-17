@@ -111,7 +111,7 @@ from core.schemas.primitives import (
     WorkflowInputs,
 )
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import (
+from config.settings import (
     DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS,
     DEFAULT_RUN_CONSOLE_JOB_PUB_ENDPOINT,
     DEFAULT_RUN_CONSOLE_RESULT_SUB_ENDPOINT,

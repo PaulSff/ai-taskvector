@@ -12,7 +12,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.components.settings import (
+from config.settings import (
     get_mydata_dir,
     get_rag_embedding_model,
     get_rag_index_dir,

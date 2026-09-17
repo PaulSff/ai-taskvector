@@ -41,7 +41,7 @@ RAG_SEARCH_OUTPUT_PORTS = [
 def _default_embedding_model() -> str:
     """Resolve default embedding model from app settings."""
     try:
-        from gui.components.settings import get_rag_embedding_model
+        from config.settings import get_rag_embedding_model
 
         return get_rag_embedding_model()
     except ImportError:
