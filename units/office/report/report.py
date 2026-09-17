@@ -143,12 +143,6 @@ def _report_step(
 
     parser_output = inputs.get("parser_output")
 
-    logger.debug(
-        "Report unit received parser_output=%r, type=%s",
-        parser_output,
-        type(parser_output).__name__,
-    )
-
     payload = _unwrap_report_payload(parser_output)
 
     if payload is None:
