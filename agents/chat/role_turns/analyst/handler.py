@@ -78,6 +78,7 @@ from agents.roles.registry import is_role_light_graph_mode_enabled
 from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.types import ParsedActions, ParserOutput
+from config.settings import get_workflow_designer_max_follow_ups
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     COMMENT_ACTIONS,
@@ -90,7 +91,6 @@ from core.schemas.primitives import (
     ModelDumpable,
     WorkflowInputs,
 )
-from config.settings import get_workflow_designer_max_follow_ups
 from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging
 
@@ -148,6 +148,8 @@ class AnalystChatHandler:
         apply_result: ApplyWorkflowEditsResult | None = None
         apply_meta: dict = {}
         follow_up_contexts_this_turn: list[str] = []
+        parser_follow_up_broke = False
+
 
         # A successful turn clears an error left by a previous execution.
         turn_ctx.error_ref[0] = None
@@ -390,6 +392,8 @@ class AnalystChatHandler:
         async def parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
+            nonlocal parser_follow_up_broke
+
             parser_output = resp.merged_response.parser_output
 
             if parser_output is None:
@@ -426,7 +430,7 @@ class AnalystChatHandler:
                 light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
-            return await run_execution_follow_up_chain_async(
+            chained_response = await run_execution_follow_up_chain_async(
                 parser_ctx,
                 resp,
                 flags=PostEditFlags(
@@ -435,6 +439,14 @@ class AnalystChatHandler:
                     had_add_comment=had_add_comment,
                 ),
             )
+
+            # We'll break the follow-up chain as long as the follow-up execution
+            # did break for some reason, e.g. there is a clarification required,
+            # LLM declared the jub is finished, etc.
+            if chained_response is None:
+                parser_follow_up_broke = True
+
+            return chained_response
 
         try:
             last_user_content: str | None = None
@@ -720,17 +732,21 @@ class AnalystChatHandler:
             light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
-        await run_post_execution_follow_up_chain_async(
-            final_ctx,
-            result=result,
-            content_holder=final_content_holder,
-            parser_chain_runner=parser_output_follow_up_chain,
-            flags=PostEditFlags(
-                had_import_workflow=had_import_workflow,
-                had_todo=had_todo,
-                had_add_comment=had_add_comment,
-            ),
-        )
+        # Check if the follow-up chain is not broken before proceeding
+        # with final summary rounds
+        if not parser_follow_up_broke:
+            await run_post_execution_follow_up_chain_async(
+                final_ctx,
+                result=result,
+                content_holder=final_content_holder,
+                parser_chain_runner=parser_output_follow_up_chain,
+                flags=PostEditFlags(
+                    had_import_workflow=had_import_workflow,
+                    had_todo=had_todo,
+                    had_add_comment=had_add_comment,
+                ),
+            )
+
 
         content = final_content_holder[0]
         result.content_for_display = content

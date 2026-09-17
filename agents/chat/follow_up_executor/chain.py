@@ -103,8 +103,11 @@ async def run_execution_follow_up_chain_async(
     def _hint() -> str:
         return ctx.wf_language_hint[0]
 
-    async def _log_exit(reason: str, **extra: object) -> None:
-        logger.warning(
+    async def _log_exit(
+        reason: str,
+        **extra: object,
+    ) -> None:
+        logger.info(
             "[parser_follow_up_chain] exiting: reason=%s "
             "turn_id=%s agent=%s extra=%s",
             reason,
@@ -188,7 +191,6 @@ async def run_execution_follow_up_chain_async(
         )
         return response
 
-
     for i in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{i}")
 
@@ -206,7 +208,22 @@ async def run_execution_follow_up_chain_async(
             )
             break
 
-        if not po.actions.edits and not po.actions.tool_actions:
+        # We'll break the loop when a single "no_action" action was emitted.
+        # However, the set like this will continue:
+        # {
+        #    "no_action": [...],
+        #    "read_file": [...],
+        # }
+
+        tool_actions = po.actions.tool_actions or {}
+
+        actionable_tool_actions = {
+            action_name: actions
+            for action_name, actions in tool_actions.items()
+            if action_name != "no_action"
+        }
+
+        if not po.actions.edits and not actionable_tool_actions:
             await _checkpoint(
                 f"break_no_parser_actions:{i}"
             )
@@ -214,10 +231,9 @@ async def run_execution_follow_up_chain_async(
                 "no_action",
                 location="loop",
                 round_index=i,
-                reason_detail="empty_parser_actions",
+                reason_detail="no_edits_or_actionable_tool_actions",
             )
             break
-
 
         purple = "\033[94m"
         reset = "\033[0m"
@@ -226,7 +242,7 @@ async def run_execution_follow_up_chain_async(
             f"{purple}[parser_follow_up_chain] "
             f"LLM actions: "
             f"edits={len(po.actions.edits)}, "
-            f"tool_actions={len(po.actions.tool_actions)}"
+            f"tool_actions={len(actionable_tool_actions)}"
             f"{reset}",
             flush=True,
         )
@@ -258,7 +274,6 @@ async def run_execution_follow_up_chain_async(
         await _checkpoint(
             f"after_ordered_followups:{i}"
         )
-
 
         context_chunks = acc.context_chunks
         any_empty_tool = acc.any_empty_tool
@@ -607,6 +622,8 @@ async def run_execution_follow_up_chain_async(
             )
         )
 
+        # We'll break the loop if there is a question from LLM discovered,
+        # meeaning, some clarification is needed to continue
         if workflow_response_is_question(response):
             await _checkpoint(
                 f"break_question_after_stream:{i}"

@@ -1,19 +1,43 @@
-# ApplyEdits unit
+# ApplyEdits Unit
 
-Canonical unit that **applies a list of graph edits** to the current graph and outputs a result plus apply status.
+The ApplyEdits unit is a core process component responsible for applying structural modifications (edits) to a workflow graph. It acts as the execution engine for parsed actions, ensuring that changes to units, connections, and metadata are validated and applied atomically.
 
-- **Inputs**
-  - `graph` (Any) — Current process graph (dict or object with `model_dump`). If missing, treated as empty `{units: [], connections: []}`.
-  - `edits` (Any) — List of edit payloads (e.g. from ProcessAgent), or a dict with an `"edits"` key. Only edits whose `action` is a graph-edit action are applied; others are skipped so other units (e.g. RagSearch) can consume them.
-- **Outputs**
-  - `result` (Any) — Dict with `kind` (`"no_edits"` | `"applied"` | `"apply_failed"`), `content_for_display`, `graph` (updated graph on success), `edits`, and `last_apply_result` (includes `graph_after` as an LLM-friendly summary).
-  - `status` (Any) — Apply result: `attempted`, `success`, `error`, and optionally `edits_summary`.
-  - `graph` (Any) — Updated graph after applying edits (or unchanged if no edits / apply failed). Used by downstream units e.g. GraphDiff for `current_graph`.
 
-Used in the agent workflow: **graph** from upstream (e.g. Inject), **edits** from ProcessAgent → **ApplyEdits** → `result` and `status`.
+## Functionality
 
-The unit has no parameters; `import_workflow` edits are resolved from file/URL inside `core.graph.batch_edits` (no RAG catalog).
+The unit takes a current graph state and a set of requested edits, validates them against the `GraphEdit` schema, and applies them sequentially. It supports a wide range of operations including adding/removing units, connecting/disconnecting ports, replacing the entire graph, and managing TODO lists and comments.
 
-## Implementation
 
-The unit delegates to `core.graph.batch_edits.apply_workflow_edits()` for applying edits (including import resolution and runtime policy checks) and to `core.graph.summary.graph_summary()` for the `graph_after` summary. It has no dependency on `agents`; it is standalone within `core.graph` and the unit layer.
+## Input Ports
+
+- `graph` (ProcessGraph): The current state of the workflow graph to be modified.
+- `actions` (ParsedActions): The set of edits to apply. Can be a `ParsedActions` object, a JSON array of edits, or an object containing an 'edits' key.
+- `graph_origin` (str): Optional metadata used to tag the origin of imported workflows.
+
+
+## Output Ports
+
+- `result` (JsonObject): Detailed execution result, including the final graph and a summary of changes.
+- `status` (JsonObject): A status object indicating if the application was attempted, if it succeeded, and any error messages.
+- `graph` (ProcessGraph): The resulting graph after edits have been applied.
+- `error` (str): A string representation of any error encountered during extraction, validation, or application.
+
+
+## Key Logic & Safety
+
+1. **Extraction**: Flexible input handling allows the unit to process various action formats.
+2. **Validation**: Uses Pydantic (`GraphEdit.model_validate`) to ensure edits are structurally sound before application.
+3. **Restriction**: Supports an `allowed_actions` parameter via `params` to restrict the unit to a specific subset of permitted operations, enhancing security and stability.
+4. **Normalization**: Converts the input graph to a `ProcessGraph` for internal manipulation and back to a JSON object for output.
+
+
+## Edit Types Supported
+
+The unit handles various actions including:
+- `add_unit`, `remove_unit`, `replace_unit`
+- `connect`, `disconnect`
+- `set_params`
+- `replace_graph`
+- `add_comment`, `remove_comment`
+- `add_todo_list`, `add_task`, `mark_completed`, etc.
+- `import_workflow`
