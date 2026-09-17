@@ -33,8 +33,8 @@ def merge_preserved_apply_failure_into_response(
 
     merged_response = replace(
         response_merge,
-        result=dict(preserved_merge.result),
-        status=dict(preserved_merge.status),
+        result=preserved_merge.result,
+        status=preserved_merge.status,
         workflow_errors=merged_errors,
     )
 
