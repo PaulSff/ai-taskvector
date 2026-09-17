@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Mapping
 
 from agents.chat.context.follow_up_context import ExecutionFollowUpContext
@@ -17,7 +18,9 @@ from agents.tools.types import (
 )
 from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.primitives import JsonValue, WorkflowOutputs
+from services.logging import setup_colored_logging
 
+logger = setup_colored_logging(logging.DEBUG)
 
 def _empty_read_file_contribution(
     language_hint: LanguageHintGetter,
@@ -56,7 +59,7 @@ def _text_from_inner_outputs(
         text = tables_to_text.get("text")
         if isinstance(text, str) and text.strip():
             bits.append(
-                "--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n"
+                "--- Tables ---\n"
                 + text.strip()
             )
 
