@@ -1,9 +1,10 @@
-"""get_chats follow-up: fetch chat list via TelegramClient workflow."""
+"""get_chats follow-up: fetch unread chats via TelegramClient workflow."""
 
 from __future__ import annotations
 
-from json import dumps
-from typing import Any
+from collections.abc import Mapping
+
+from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from agents.chat.agent_workflow import (
     GET_CHATS_WORKFLOW_PATH,
@@ -15,48 +16,97 @@ from agents.tools.get_chats.follow_ups import (
     GET_CHATS_FOLLOW_UP_PREFIX,
     GET_CHATS_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
-from core.schemas.primitives import Data
+from agents.tools.types import (
+    FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
+)
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
 
-def _format_telegram_result(tg_out: Data) -> str:
-    err = tg_out.get("error")
-    if isinstance(err, dict):
-        msg = err.get("error") or err.get("message")
-        if msg:
-            return f"Error: {msg}"
+def _empty_get_chats_contribution(
+    hint: LanguageHintGetter,
+) -> FollowUpContribution:
+    language = hint()
 
-    if isinstance(err, str) and err.strip():
-        return f"Error: {err.strip()}"
+    chunk = (
+        GET_CHATS_FOLLOW_UP_PREFIX
+        + TOOL_EMPTY_RESULT_LINE
+        + GET_CHATS_FOLLOW_UP_SUFFIX.format(
+            language=language,
+            session_language=language,
+        )
+    )
+
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=True,
+    )
+
+
+def _format_telegram_result(tg_out: object) -> str:
+    if not isinstance(tg_out, Mapping):
+        return ""
+
+    error = tg_out.get("error")
+
+    if isinstance(error, Mapping):
+        message = error.get("error") or error.get("message")
+        if message:
+            return f"Error: {message}"
+
+    if isinstance(error, str) and error.strip():
+        return f"Error: {error.strip()}"
 
     status = tg_out.get("status")
-    if isinstance(status, dict):
-        st = status.get("status")
-        if st:
-            return f"Status: {st}"
+
+    if isinstance(status, Mapping):
+        status_value = status.get("status")
+        if status_value:
+            return f"Status: {status_value}"
 
     update = tg_out.get("update")
+
     if update is None:
         return ""
 
     payload = update
-    if isinstance(update, dict) and update.get("type") == "update":
+
+    if isinstance(update, Mapping) and update.get("type") == "update":
         payload = update.get("update", update)
 
     try:
-        body = dumps(payload, indent=2, ensure_ascii=False, default=str)
-    except (TypeError, ValueError, OverflowError) as e:
-        # These are the typical failure modes for json serialization / formatting
-        body = f"{payload!r}\n(Note: serialization failed: {e})"
-    except BaseException:
-        # Let unexpected/system exceptions propagate
-        raise
+        import json
+
+        body = json.dumps(
+            payload,
+            indent=2,
+            ensure_ascii=False,
+            default=str,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        body = f"{payload!r}\n(Note: serialization failed: {exc})"
 
     if len(body) > 8000:
         body = body[:8000] + "\n... (truncated)"
+
     return body
+
+
+def _format_workflow_error(errs: object) -> str:
+    if not errs:
+        return "unknown workflow error"
+
+    try:
+        first_error = errs[0]  # type: ignore[index]
+    except (IndexError, TypeError):
+        return str(errs)[:120]
+
+    if isinstance(first_error, (tuple, list)) and len(first_error) > 1:
+        return str(first_error[1])[:120]
+
+    return str(first_error)[:120]
 
 
 async def run_get_chats_follow_up(
@@ -65,71 +115,124 @@ async def run_get_chats_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    action = po.get("get_unread") or po.get("get_chats")
-    if not action:
-        return FollowUpContribution(context_chunks=[], any_empty_tool=False)
+    # Keep this import local to avoid the action-block/follow-up import cycle.
+    from agents.tools.get_chats.action_block import GetUnreadActionBlock
 
     try:
         ctx.set_inline_status("Fetching chats…")
     except (AttributeError, TypeError):
         pass
 
-    lang = language_hint()
+    hint = language_hint
 
     try:
-        """
-        One workflow run per element; each element is:
-        { "action": "get_unread", "messenger": "telegram" }
-        """
-        actions = action if isinstance(action, list) else [action]
-        context_chunks: list[str] = []
-        any_empty = True
+        get_unread_actions = po.actions.get_tool_actions("get_unread")
 
-        for a in actions:
-            out, errs = await run_workflow_with_errors(
-                GET_CHATS_WORKFLOW_PATH,
-                initial_inputs={"inject_get_unread": {"data": a}},
-                format="dict",
-                execution_timeout_s=EXECUTION_TIMEOUT_S,
+        if not get_unread_actions:
+            raise ValueError(
+                "Get-chats follow-up was requested, but no "
+                "get_unread action was found"
             )
-            if errs and ctx.is_current_run(ctx.token):
-                await ctx.toast(f"Get chats error: {errs[0][1][:120]}")
 
-            res = _format_telegram_result(out.get("tg_get_unread") or {})
-            if res.strip():
-                context_chunks.append(
-                    GET_CHATS_FOLLOW_UP_PREFIX
-                    + res
-                    + GET_CHATS_FOLLOW_UP_SUFFIX.format(
-                        language=lang,
-                        session_language=lang,
-                    )
-                )
-                any_empty = False
-            else:
-                context_chunks.append(
-                    GET_CHATS_FOLLOW_UP_PREFIX
-                    + TOOL_EMPTY_RESULT_LINE
-                    + GET_CHATS_FOLLOW_UP_SUFFIX.format(
-                        language=lang,
-                        session_language=lang,
-                    )
-                )
+        if len(get_unread_actions) != 1:
+            raise ValueError(
+                "Get-chats follow-up expected exactly one get_unread action, "
+                f"got {len(get_unread_actions)}"
+            )
 
-        return FollowUpContribution(
-            context_chunks=context_chunks, any_empty_tool=any_empty
+        raw_action = get_unread_actions[0]
+
+        # Validate and normalize parser output using the authoritative schema.
+        try:
+            action = GetUnreadActionBlock.model_validate(raw_action)
+        except ValidationError as exc:
+            try:
+                if ctx.is_current_run(ctx.token):
+                    await ctx.toast(
+                        "Invalid get_unread action: "
+                        f"{str(exc)[:120]}"
+                    )
+            except (AttributeError, TypeError):
+                pass
+
+            raise
+
+        # Convert the complete normalized action into workflow-compatible JSON.
+        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+            action.model_dump(mode="json")
         )
 
-    except (IndexError, TypeError):
+        initial_inputs = {
+            "inject_get_unread": {
+                "template": payload,
+            }
+        }
+
+        out, errs = await run_workflow_with_errors(
+            GET_CHATS_WORKFLOW_PATH,
+            initial_inputs=initial_inputs,
+            format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
+        )
+
+        if errs:
+            error_text = _format_workflow_error(errs)
+
+            try:
+                if ctx.is_current_run(ctx.token):
+                    await ctx.toast(f"Get chats error: {error_text}")
+            except (AttributeError, TypeError):
+                pass
+
+        tg_output: object = {}
+
+        if isinstance(out, Mapping):
+            tg_output = out.get("tg_get_unread") or {}
+
+        result = _format_telegram_result(tg_output)
+
+        if not result.strip():
+            return _empty_get_chats_contribution(hint)
+
+        language = hint()
+
         chunk = (
             GET_CHATS_FOLLOW_UP_PREFIX
-            + TOOL_EMPTY_RESULT_LINE
+            + result
             + GET_CHATS_FOLLOW_UP_SUFFIX.format(
-                language=lang,
-                session_language=lang,
+                language=language,
+                session_language=language,
             )
         )
-        return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
+
+        return FollowUpContribution(
+            context_chunks=[chunk],
+            any_empty_tool=False,
+        )
+
+    except TimeoutError:
+        try:
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast("Get chats operation timed out")
+        except (AttributeError, TypeError):
+            pass
+
+        return _empty_get_chats_contribution(hint)
+
+    except ValidationError:
+        raise
+
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        try:
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast(
+                    "Get chats workflow crashed: "
+                    f"{type(exc).__name__}: {str(exc)[:120]}"
+                )
+        except (AttributeError, TypeError):
+            pass
+
+        raise
 
 
 __all__ = ["run_get_chats_follow_up"]

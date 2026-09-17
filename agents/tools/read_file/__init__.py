@@ -109,7 +109,7 @@ def _run_read_file_workflow_for_path(path: str) -> str:
         workflow_path,
         initial_inputs={
             "inject_path": {
-                "data": path,
+                "template": path,
             }
         },
         format="dict",

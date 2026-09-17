@@ -15,10 +15,10 @@ from agents.tools.read_current_workflow.follow_ups import (
     READ_CURRENT_WORKFLOW_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
+from config.settings import get_coding_is_allowed
 from core.graph.summary import graph_summary
 from core.schemas import ProcessGraph
 from core.schemas.primitives import Data
-from gui.components.settings import get_coding_is_allowed
 
 
 def _graph_to_dict(graph_ref: list[ProcessGraph]) -> Data:

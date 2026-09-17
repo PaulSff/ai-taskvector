@@ -1,13 +1,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
 from agents.tools.registry import register_tool
 from agents.tools.report import run_report_follow_up
 from agents.tools.types import ActionBlock, ParsedActions
+from core.schemas.primitives import Data
 
 
 class ReportActionBlock(
@@ -16,7 +17,7 @@ class ReportActionBlock(
     """Generate a structured report and save it as a file."""
 
     output_format: Literal["md", "csv"]
-    text: dict[str, Any]
+    text: Data
     file_name: str
     output_dir: str | None = None
 

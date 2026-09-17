@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from pydantic import JsonValue, TypeAdapter, ValidationError
+
 from agents.chat.agent_workflow import (
     GREP_WORKFLOW_PATH,
     run_workflow_with_errors,
@@ -10,9 +14,74 @@ from agents.tools.grep.follow_ups import (
     GREP_FOLLOW_UP_PREFIX,
     GREP_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
+from agents.tools.types import (
+    FollowUpContribution,
+    LanguageHintGetter,
+    ParserOutput,
+)
 
 EXECUTION_TIMEOUT_S: float = 60.0
+
+
+def _empty_grep_contribution(
+    hint: LanguageHintGetter,
+) -> FollowUpContribution:
+    language = hint()
+
+    chunk = (
+        GREP_FOLLOW_UP_PREFIX
+        + TOOL_EMPTY_RESULT_LINE
+        + GREP_FOLLOW_UP_SUFFIX.format(
+            language=language,
+            session_language=language,
+        )
+    )
+
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=True,
+    )
+
+
+def _format_workflow_error(errs: object) -> str:
+    if not errs:
+        return "unknown workflow error"
+
+    try:
+        first_error = errs[0]  # type: ignore[index]
+    except (IndexError, TypeError):
+        return str(errs)[:120]
+
+    if isinstance(first_error, (tuple, list)) and len(first_error) > 1:
+        return str(first_error[1])[:120]
+
+    return str(first_error)[:120]
+
+
+def _format_grep_result(grep_output: object) -> str:
+    if not isinstance(grep_output, Mapping):
+        return ""
+
+    output = grep_output.get("out")
+    error = grep_output.get("error")
+
+    result = ""
+
+    if output is not None:
+        result = str(output).strip()
+
+    if isinstance(error, Mapping):
+        error = error.get("error") or error.get("message")
+
+    if error is not None and str(error).strip():
+        error_text = str(error).strip()
+        result = (
+            f"{result}\nError: {error_text}".strip()
+            if result
+            else f"Error: {error_text}"
+        )
+
+    return result
 
 
 async def run_grep_follow_up(
@@ -21,21 +90,59 @@ async def run_grep_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
+    # Keep this import local to avoid the action-block/follow-up import cycle.
+    from agents.tools.grep.action_block import GrepActionBlock
+
     try:
         setter = getattr(ctx, "set_inline_status", None)
         if callable(setter):
             setter("Using grep…")
-    except (TypeError, RuntimeError):
+    except (AttributeError, TypeError, RuntimeError):
         pass
 
     hint = language_hint
-    chunk_ws: str | None = None
 
     try:
-        action_obj = po["grep"]  # required:
-        # { "action": "grep", "grep": { "pattern": ..., "source": ... } }
+        grep_actions = po.actions.get_tool_actions("grep")
 
-        initial_inputs = {"inject_payload": {"data": action_obj}}
+        if not grep_actions:
+            raise ValueError(
+                "Grep follow-up was requested, but no grep action was found"
+            )
+
+        if len(grep_actions) != 1:
+            raise ValueError(
+                "Grep follow-up expected exactly one grep action, "
+                f"got {len(grep_actions)}"
+            )
+
+        raw_action = grep_actions[0]
+
+        # Validate and normalize parser output using the authoritative schema.
+        try:
+            action = GrepActionBlock.model_validate(raw_action)
+        except ValidationError as exc:
+            try:
+                if ctx.is_current_run(ctx.token):
+                    await ctx.toast(
+                        "Invalid grep action: "
+                        f"{str(exc)[:120]}"
+                    )
+            except (AttributeError, TypeError):
+                pass
+
+            raise
+
+        # Pass the complete normalized action to the workflow.
+        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+            action.model_dump(mode="json")
+        )
+
+        initial_inputs = {
+            "inject_payload": {
+                "template": payload,
+            }
+        }
 
         out, errs = await run_workflow_with_errors(
             GREP_WORKFLOW_PATH,
@@ -46,69 +153,63 @@ async def run_grep_follow_up(
         )
 
         if errs:
+            error_text = _format_workflow_error(errs)
+
             try:
-                await ctx.toast(f"Grep error: {errs[0][1][:120]}")
-            except (AttributeError, TypeError, IndexError):
+                if ctx.is_current_run(ctx.token):
+                    await ctx.toast(f"Grep error: {error_text}")
+            except (AttributeError, TypeError):
                 pass
 
-        # Grep result extraction
-        grep_out = (out or {}).get("grep") or {}
-        grep_output = grep_out.get("out")
-        grep_error_port = grep_out.get("error") or ""
+        grep_output: object = {}
 
-        # Normalize result to string body
-        res = ""
-        if grep_output is None:
-            res = ""
-        else:
-            res = str(grep_output).strip()
+        if isinstance(out, Mapping):
+            grep_output = out.get("grep") or {}
 
-        if grep_error_port and grep_error_port.strip():
-            if res:
-                res = f"{res}\nError: {grep_error_port}".strip()
-            else:
-                res = f"Error: {grep_error_port}".strip()
+        result = _format_grep_result(grep_output)
 
-        if res.strip():
-            chunk_ws = (
-                GREP_FOLLOW_UP_PREFIX
-                + res
-                + GREP_FOLLOW_UP_SUFFIX.format(
-                    language=hint(),
-                    session_language=hint(),
-                )
+        if not result.strip():
+            return _empty_grep_contribution(hint)
+
+        language = hint()
+
+        chunk = (
+            GREP_FOLLOW_UP_PREFIX
+            + result
+            + GREP_FOLLOW_UP_SUFFIX.format(
+                language=language,
+                session_language=language,
             )
-
-    except (KeyError, TypeError, ValueError) as e:
-        print(
-            "grep_follow_up: crashed",
-            {"type": type(e).__name__, "message": str(e)[:300]},
         )
+
+        return FollowUpContribution(
+            context_chunks=[chunk],
+            any_empty_tool=False,
+        )
+
+    except TimeoutError:
         try:
-            await ctx.toast(
-                f"Grep workflow crashed: {type(e).__name__}: {str(e)[:120]}"
-            )
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast("Grep operation timed out")
         except (AttributeError, TypeError):
             pass
 
-    if not chunk_ws:
-        chunk_ws = (
-            GREP_FOLLOW_UP_PREFIX
-            + TOOL_EMPTY_RESULT_LINE
-            + GREP_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
-            )
-        )
-        return FollowUpContribution(
-            context_chunks=[chunk_ws],
-            any_empty_tool=True,
-        )
+        return _empty_grep_contribution(hint)
 
-    return FollowUpContribution(
-        context_chunks=[chunk_ws],
-        any_empty_tool=False,
-    )
+    except ValidationError:
+        raise
+
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        try:
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast(
+                    "Grep workflow crashed: "
+                    f"{type(exc).__name__}: {str(exc)[:120]}"
+                )
+        except (AttributeError, TypeError):
+            pass
+
+        raise
 
 
 __all__ = ["run_grep_follow_up"]

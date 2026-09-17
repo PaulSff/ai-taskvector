@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents.tools.edit_file import run_edit_file_follow_up
 from agents.tools.registry import register_tool
@@ -49,15 +49,33 @@ class EditFileReplacement(BaseModel):
 
 
 class EditFileTarget(BaseModel):
-    """The file being edited and its replacement operations."""
+    """The file being edited and its replacement operations.
+
+    The prompt-defined input format is:
+
+        {
+            "file_name": "example.py",
+            "replacement_1": {
+                "line_num_ref": 126,
+                "find": "old text",
+                "replace_with": "new text"
+            },
+            "replacement_2": {
+                "line_num_ref": 140,
+                "find": "other old text",
+                "replace_with": "other new text"
+            }
+        }
+
+    Replacement fields are dynamic and must be named replacement_*.
+    """
 
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
         strict=True,
     )
 
     file_name: str
-    replacements: dict[str, EditFileReplacement]
 
     @field_validator("file_name")
     @classmethod
@@ -69,16 +87,58 @@ class EditFileTarget(BaseModel):
 
         return value
 
-    @field_validator("replacements")
+    @model_validator(mode="before")
     @classmethod
-    def validate_replacements(
-        cls,
-        value: dict[str, EditFileReplacement],
-    ) -> dict[str, EditFileReplacement]:
-        if not value:
-            raise ValueError("replacements must not be empty")
+    def validate_replacement_values(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
 
-        return value
+        normalized = dict(value)
+
+        for name, replacement in normalized.items():
+            if name.startswith("replacement_"):
+                normalized[name] = EditFileReplacement.model_validate(
+                    replacement
+                )
+
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_dynamic_replacements(self) -> EditFileTarget:
+        extra_fields = self.model_extra or {}
+
+        replacement_names = [
+            name
+            for name in extra_fields
+            if name.startswith("replacement_")
+        ]
+
+        if not replacement_names:
+            raise ValueError(
+                "file must contain at least one replacement_* field"
+            )
+
+        unexpected_fields = [
+            name
+            for name in extra_fields
+            if not name.startswith("replacement_")
+        ]
+
+        if unexpected_fields:
+            raise ValueError(
+                "unexpected file field(s): "
+                + ", ".join(sorted(unexpected_fields))
+            )
+
+        for name in replacement_names:
+            replacement = extra_fields[name]
+
+            if not isinstance(replacement, EditFileReplacement):
+                raise TypeError(
+                    f"{name} must be an EditFileReplacement object"
+                )
+
+        return self
 
 
 class EditFileParserOutput(BaseModel):
@@ -151,7 +211,6 @@ def register_edit_file_tool() -> None:
     )
 
 
-
 def get_edit_file_outputs(
     actions: ParsedActions,
 ) -> list[EditFileParserOutput]:
@@ -159,5 +218,6 @@ def get_edit_file_outputs(
         EditFileParserOutput.model_validate(raw_action)
         for raw_action in actions.get_tool_actions("edit_file")
     ]
+
 
 register_edit_file_tool()

@@ -146,7 +146,7 @@ async def run_browse_follow_up(
                 BROWSER_WORKFLOW_PATH,
                 initial_inputs={
                     "inject_url": {
-                        "data": url,
+                        "template": url,
                     }
                 },
                 format="dict",

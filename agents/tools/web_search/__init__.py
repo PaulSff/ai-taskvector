@@ -139,7 +139,7 @@ async def run_web_search_follow_up(
 
         initial_inputs: WorkflowInputs = {
             "inject_query": {
-                "data": query,
+                "template": query,
             }
         }
 
