@@ -163,7 +163,7 @@ class AnalystChatHandler:
         apply_result: ApplyWorkflowEditsResult | None = None
         apply_meta: dict = {}
         follow_up_contexts_this_turn: list[str] = []
-        parser_follow_up_broke = False
+        skip_post_execution_follow_ups = False
 
 
         # A successful turn clears an error left by a previous execution.
@@ -408,7 +408,7 @@ class AnalystChatHandler:
         async def parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
         ) -> AgentWorkflowResponse | None:
-            nonlocal parser_follow_up_broke
+            nonlocal skip_post_execution_follow_ups
 
             parser_output = resp.merged_response.parser_output
 
@@ -446,7 +446,7 @@ class AnalystChatHandler:
                 light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
             )
 
-            chained_response = await run_execution_follow_up_chain_async(
+            follow_up_result = await run_execution_follow_up_chain_async(
                 parser_ctx,
                 resp,
                 flags=PostEditFlags(
@@ -455,14 +455,16 @@ class AnalystChatHandler:
                     had_add_comment=had_add_comment,
                 ),
             )
+            # If the user cancelled the turn,
+            # we will skip the post-follow up rounds
+            if follow_up_result is None:
+                skip_post_execution_follow_ups = True
+                return None
+            # If the LLM asked for clarification of declared no further actions,
+            # we will skip the post-follow up rounds as well
+            skip_post_execution_follow_ups = follow_up_result.stop_post_follow_ups
 
-            # We'll break the follow-up chain as long as the follow-up execution
-            # did break for some reason, e.g. there is a clarification required,
-            # LLM declared the jub is finished, etc.
-            if chained_response is None:
-                parser_follow_up_broke = True
-
-            return chained_response
+            return follow_up_result.response
 
         try:
             last_user_content: str | None = None
@@ -748,17 +750,20 @@ class AnalystChatHandler:
             light_graph_mode=_IS_LIGHT_GRAPH_MODE_ENABLED,
         )
 
-        await run_post_execution_follow_up_chain_async(
-            final_ctx,
-            result=result,
-            content_holder=final_content_holder,
-            parser_chain_runner=parser_output_follow_up_chain,
-            flags=PostEditFlags(
-                had_import_workflow=had_import_workflow,
-                had_todo=had_todo,
-                had_add_comment=had_add_comment,
-            ),
-        )
+        # Skip the post-apply follow-ups if the Execution rounds exited:
+        # e.g. there is a clarification required, LLM declared the jub is finished, etc.
+        if not skip_post_execution_follow_ups:
+            await run_post_execution_follow_up_chain_async(
+                final_ctx,
+                result=result,
+                content_holder=final_content_holder,
+                parser_chain_runner=parser_output_follow_up_chain,
+                flags=PostEditFlags(
+                    had_import_workflow=had_import_workflow,
+                    had_todo=had_todo,
+                    had_add_comment=had_add_comment,
+                ),
+            )
 
         content = final_content_holder[0]
         result.content_for_display = content

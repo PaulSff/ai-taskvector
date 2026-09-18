@@ -33,6 +33,7 @@ from agents.chat.context.context_signals import (
 )
 from agents.chat.context.follow_up_context import (
     ExecutionFollowUpContext,
+    ExecutionFollowUpResult,
     ParserChainRunner,
     PostEditFlags,
     PostExecutionFollowUpContext,
@@ -83,7 +84,7 @@ async def run_execution_follow_up_chain_async(
     ctx: ExecutionFollowUpContext,
     resp: AgentWorkflowResponse,
      flags: PostEditFlags | None = None,
-) -> AgentWorkflowResponse | None:
+) -> ExecutionFollowUpResult | None:
     """
     Async version: If parser_output requests tools, fetch context and re-run
     agent_workflow.
@@ -173,23 +174,60 @@ async def run_execution_follow_up_chain_async(
             )
         )
 
+    def has_actionable_actions() -> bool:
+        po = ctx.action_context
+
+        if po is None:
+            return False
+
+        tool_actions = po.actions.tool_actions or {}
+
+        actionable_tool_actions = {
+            action_name: actions
+            for action_name, actions in tool_actions.items()
+            if action_name != "no_action"
+        }
+
+        return bool(
+            po.actions.edits
+            or actionable_tool_actions
+        )
+
     record_llm_prompt_view_if_present(
         response,
         ctx.record_llm_prompt_view,
     )
 
+    # Initialize action_context for the initial workflow response.
+    update_action_context(response)
+
     preserved_apply_failure = get_apply_failure(response)
 
     await _checkpoint("after_primer")
 
-    if workflow_response_is_question(response):
+    if (
+        workflow_response_is_question(response)
+        and not has_actionable_actions()
+    ):
         await _checkpoint("return_question_no_chain")
         await _log_exit(
             "question",
             location="before_chain",
             round_index=None,
         )
-        return response
+        return ExecutionFollowUpResult(
+            response=response,
+            stop_post_follow_ups=True,
+        )
+
+    if workflow_response_is_question(response):
+        await _checkpoint("continue_question_with_actions")
+        await _log_exit(
+            "question_with_actions",
+            location="before_chain",
+            round_index=None,
+        )
+
 
     for i in range(ctx.max_rounds):
         await _checkpoint(f"loop_start:{i}")
@@ -206,9 +244,12 @@ async def run_execution_follow_up_chain_async(
                 round_index=i,
                 reason_detail="missing_action_context",
             )
-            break
+            return ExecutionFollowUpResult(
+                    response=response,
+                    stop_post_follow_ups=True,
+                )
 
-        # We'll break the loop when a single "no_action" action was emitted.
+        # We'll stop the loop when a single "no_action" action was emitted.
         # However, the set like this will continue:
         # {
         #    "no_action": [...],
@@ -222,7 +263,7 @@ async def run_execution_follow_up_chain_async(
             for action_name, actions in tool_actions.items()
             if action_name != "no_action"
         }
-
+        # Stop the follow-up chain if no actionable tools calls/edits are detected
         if not po.actions.edits and not actionable_tool_actions:
             await _checkpoint(
                 f"break_no_parser_actions:{i}"
@@ -233,7 +274,10 @@ async def run_execution_follow_up_chain_async(
                 round_index=i,
                 reason_detail="no_edits_or_actionable_tool_actions",
             )
-            break
+            return ExecutionFollowUpResult(
+                    response=response,
+                    stop_post_follow_ups=True,
+                )
 
         purple = "\033[94m"
         reset = "\033[0m"
@@ -409,7 +453,10 @@ async def run_execution_follow_up_chain_async(
             await _checkpoint(
                 f"break_no_follow_up_context:{i}"
             )
-            break
+            return ExecutionFollowUpResult(
+                    response=response,
+                    stop_post_follow_ups=True,
+                )
 
         ctx.follow_up_contexts.append(follow_up_context)
 
@@ -624,9 +671,11 @@ async def run_execution_follow_up_chain_async(
             )
         )
 
-        # We'll break the loop if there is a question from LLM discovered,
-        # meeaning, some clarification is needed to continue
-        if workflow_response_is_question(response):
+        # A question stops the chain only when it contains no actionable work.
+        if (
+            workflow_response_is_question(response)
+            and not has_actionable_actions()
+        ):
             await _checkpoint(
                 f"break_question_after_stream:{i}"
             )
@@ -635,7 +684,20 @@ async def run_execution_follow_up_chain_async(
                 location="after_stream",
                 round_index=i,
             )
-            break
+            return ExecutionFollowUpResult(
+                response=response,
+                stop_post_follow_ups=True,
+            )
+
+        if workflow_response_is_question(response):
+            await _checkpoint(
+                f"continue_question_with_actions:{i}"
+            )
+            await _log_exit(
+                "question_with_actions",
+                location="after_stream",
+                round_index=i,
+            )
 
         new_apply_failure = get_apply_failure(response)
 
@@ -672,8 +734,10 @@ async def run_execution_follow_up_chain_async(
         "return_final_response"
     )
 
-    return response
-
+    return ExecutionFollowUpResult(
+        response=response,
+        stop_post_follow_ups=False,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────────

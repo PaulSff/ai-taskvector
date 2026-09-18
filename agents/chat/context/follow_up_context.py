@@ -106,6 +106,11 @@ class ExecutionFollowUpContext:
             kw_only=True,
         )
 
+@dataclass
+class ExecutionFollowUpResult:
+    response: AgentWorkflowResponse
+    stop_post_follow_ups: bool
+
 
 @dataclass
 class WDFollowUpAcc:
