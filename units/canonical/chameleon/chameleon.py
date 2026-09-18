@@ -14,9 +14,11 @@ that are synchronous will keep working. Streaming via params["_stream_callback"]
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from collections.abc import Coroutine
+from typing import TypeGuard, TypeVar
 
-from runtime.executor import GraphStreamCallback
+from core.schemas.primitives import Data, Output
+from runtime.executor import GraphStreamCallback, ObservationInfo
 from units.registry import UnitSpec, get_unit_spec, register_unit
 
 CHAMELEON_INPUT_PORTS = [("actions", "Any"), ("data", "Any")]
@@ -26,8 +28,11 @@ CHAMELEON_OUTPUT_PORTS = [
     ("error", "str"),
 ]
 
+T = TypeVar("T")
 
-def _normalize_actions(raw: Any) -> list[Any]:
+ChamelionBackgroundCoro = Coroutine[object, object, T]
+
+def _normalize_actions(raw: object) -> list[object]:
     if raw is None:
         return []
     if isinstance(raw, list):
@@ -39,27 +44,32 @@ def _normalize_actions(raw: Any) -> list[Any]:
     return []
 
 
-def _running_error_summary(results: list[dict[str, Any]]) -> str | None:
+def _running_error_summary(results: list[Data]) -> str | None:
     errs = [str(e) for e in (r.get("error") for r in results) if e]
     if not errs:
         return None
     return "; ".join(errs[:5]) + ("; …" if len(errs) > 5 else "")
 
+def _is_graph_stream_callback(
+    value: object,
+) -> TypeGuard[GraphStreamCallback]:
+    return callable(value)
 
 def _emit_chameleon_stream(
     stream_outputs: bool,
-    stream_cb: GraphStreamCallback,
+    stream_cb: GraphStreamCallback | None,
     *,
     step_index: int,
     total: int,
-    results: list[dict[str, Any]],
-    last_outputs: dict[str, Any],
+    results: list[Data],
+    last_outputs: Data,
 ) -> None:
-    if not stream_outputs or not callable(stream_cb):
+    if not stream_outputs or stream_cb is None:
         return
+
     from runtime.stream_ui_signals import chameleon_stream_chunk
 
-    payload: dict[str, Any] = {
+    payload: Data = {
         "chameleon_stream": True,
         "done": total <= 0 or step_index >= total - 1,
         "index": step_index,
@@ -69,6 +79,7 @@ def _emit_chameleon_stream(
         "last": dict(last_outputs),
         "error": _running_error_summary(results),
     }
+
     try:
         stream_cb(chameleon_stream_chunk(payload))
     except (TypeError, RuntimeError):
@@ -76,7 +87,7 @@ def _emit_chameleon_stream(
 
 
 def _get_background_loop_from_params(
-    params: dict[str, Any],
+    params: Data,
 ) -> asyncio.AbstractEventLoop | None:
     """Resolve a background event loop from common injected params:
     prefer params['_executor']._loop, else params['_executor_loop'] or params['_background_loop'].
@@ -93,72 +104,104 @@ def _get_background_loop_from_params(
 
 
 def _schedule_on_background_loop(
-    coro: Any, background_loop: asyncio.AbstractEventLoop
-) -> Any:
+    coro: ChamelionBackgroundCoro, background_loop: asyncio.AbstractEventLoop
+) -> ObservationInfo:
     """Schedule coroutine on background_loop and block until done using run_coroutine_threadsafe."""
     fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
     return fut.result()
 
 
 async def _maybe_run_child_async_step(
-    spec: UnitSpec, params: dict[str, Any], inputs: dict[str, Any], loop_dt: float
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Call spec.step_fn (sync or async). Normalize return to (outputs_dict, state_dict).
+    spec: UnitSpec,
+    params: Data,
+    inputs: Data,
+    loop_dt: float,
+) -> Output:
+    """Call spec.step_fn (sync or async).
 
-    Raises whatever the underlying step_fn raises.
+    Normalize the return value to ``(outputs_dict, state_dict)``.
+    Raises whatever the underlying step function raises.
     """
     step_fn = getattr(spec, "step_fn", None)
+
     if not callable(step_fn):
         raise TypeError("spec.step_fn is not callable")
 
-    # Each child gets its own empty state dict (same semantics as original)
-    child_state: dict[str, Any] = {}
+    # Each child gets its own empty state dict.
+    child_state: Data = {}
 
-    try:
-        res = step_fn(params, inputs, child_state, loop_dt)
-        if asyncio.iscoroutine(res):
-            res = await res
-    except (ValueError, RuntimeError):
-        raise
+    res = step_fn(params, inputs, child_state, loop_dt)
 
-    # Normalize results: accept dict or (dict, dict)
+    if asyncio.iscoroutine(res):
+        res = await res
+
+    # Normalize results: accept dict or (dict, dict).
     if isinstance(res, dict):
         return res, child_state
-    if isinstance(res, (list, tuple)) and len(res) >= 1 and isinstance(res[0], dict):
+
+    if (
+        isinstance(res, (list, tuple))
+        and len(res) >= 1
+        and isinstance(res[0], dict)
+    ):
         out = res[0]
-        st = res[1] if len(res) > 1 and isinstance(res[1], dict) else child_state
+        st = (
+            res[1]
+            if len(res) > 1 and isinstance(res[1], dict)
+            else child_state
+        )
         return out, st
 
-    # Fallback: return empty outputs and the child_state
+    # Fallback: return empty outputs and the child state.
     return {}, child_state
 
 
 def _chameleon_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     raw = inputs.get("actions")
+
     if raw is None:
         raw = inputs.get("data")
+
     actions = _normalize_actions(raw)
     stream_outputs = bool(params.get("stream_outputs"))
-    sc = params.get("_stream_callback")
+
+    raw_callback = params.get("_stream_callback")
+
+    if _is_graph_stream_callback(raw_callback):
+        sc: GraphStreamCallback | None = raw_callback
+    else:
+        sc = None
 
     if not actions and raw is not None and not isinstance(raw, (list, dict)):
         return (
             {
                 "data": [],
                 "last": {},
-                "error": "Chameleon: actions must be a list or dict with key 'actions'",
+                "error": (
+                    "Chameleon: actions must be a list or dict "
+                    "with key 'actions'"
+                ),
             },
             state,
         )
 
-    loop_dt = float(params.get("loop_dt", dt if dt else 0.1) or 0.1)
-    results: list[dict[str, Any]] = []
-    last_outputs: dict[str, Any] = {}
+    loop_dt_value = params.get("loop_dt", dt if dt else 0.1)
+
+    if (
+        isinstance(loop_dt_value, (int, float))
+        and not isinstance(loop_dt_value, bool)
+    ):
+        loop_dt = float(loop_dt_value or 0.1)
+    else:
+        loop_dt = dt if dt else 0.1
+
+    results: list[Data] = []
+    last_outputs: Data = {}
     n = len(actions)
 
     if n == 0:
@@ -170,15 +213,25 @@ def _chameleon_step(
             results=results,
             last_outputs=last_outputs,
         )
-        return {"data": [], "last": {}, "error": None}, state
+
+        return {
+            "data": [],
+            "last": {},
+            "error": None,
+        }, state
 
     background_loop = _get_background_loop_from_params(params)
 
     for step_index, item in enumerate(actions):
         if not isinstance(item, dict):
             results.append(
-                {"type": None, "outputs": {}, "error": "item must be a dict"}
+                {
+                    "type": None,
+                    "outputs": {},
+                    "error": "item must be a dict",
+                }
             )
+
             _emit_chameleon_stream(
                 stream_outputs,
                 sc,
@@ -189,9 +242,18 @@ def _chameleon_step(
             )
             continue
 
-        utype = str(item.get("type") or "").strip()
+        raw_type = item.get("type")
+        utype = str(raw_type or "").strip()
+
         if not utype:
-            results.append({"type": "", "outputs": {}, "error": "missing type"})
+            results.append(
+                {
+                    "type": "",
+                    "outputs": {},
+                    "error": "missing type",
+                }
+            )
+
             _emit_chameleon_stream(
                 stream_outputs,
                 sc,
@@ -210,6 +272,7 @@ def _chameleon_step(
                     "error": "nested Chameleon is not allowed",
                 }
             )
+
             _emit_chameleon_stream(
                 stream_outputs,
                 sc,
@@ -221,10 +284,16 @@ def _chameleon_step(
             continue
 
         spec = get_unit_spec(utype)
+
         if spec is None:
             results.append(
-                {"type": utype, "outputs": {}, "error": "unknown type or no step_fn"}
+                {
+                    "type": utype,
+                    "outputs": {},
+                    "error": "unknown type or no step_fn",
+                }
             )
+
             _emit_chameleon_stream(
                 stream_outputs,
                 sc,
@@ -240,9 +309,12 @@ def _chameleon_step(
                 {
                     "type": utype,
                     "outputs": {},
-                    "error": "code_block_driven types are not supported here",
-                },
+                    "error": (
+                        "code_block_driven types are not supported here"
+                    ),
+                }
             )
+
             _emit_chameleon_stream(
                 stream_outputs,
                 sc,
@@ -253,13 +325,27 @@ def _chameleon_step(
             )
             continue
 
-        child_params = dict(item.get("params") or {})
-        child_inputs = dict(item.get("inputs") or {})
-        if callable(sc):
+        raw_params = item.get("params")
+        raw_inputs = item.get("inputs")
+
+        child_params: Data = (
+            dict(raw_params)
+            if isinstance(raw_params, dict)
+            else {}
+        )
+
+        child_inputs: Data = (
+            dict(raw_inputs)
+            if isinstance(raw_inputs, dict)
+            else {}
+        )
+
+        if sc is not None:
             child_params["_stream_callback"] = sc
 
         try:
             step_fn = getattr(spec, "step_fn", None)
+
             if not callable(step_fn):
                 results.append(
                     {
@@ -268,6 +354,7 @@ def _chameleon_step(
                         "error": "unknown type or no step_fn",
                     }
                 )
+
                 _emit_chameleon_stream(
                     stream_outputs,
                     sc,
@@ -280,34 +367,65 @@ def _chameleon_step(
 
             if isinstance(background_loop, asyncio.AbstractEventLoop):
 
-                async def _call_step(fn, cparams, cinputs, cdt):
-                    child_state: dict[str, Any] = {}
-                    res = fn(cparams, cinputs, child_state, cdt)
-                    if asyncio.iscoroutine(res):
-                        res = await res
-                    if isinstance(res, dict):
-                        return res
+                async def _call_step(
+                    fn: object,
+                    child_params_value: Data,
+                    child_inputs_value: Data,
+                    child_dt: float,
+                ) -> Data:
+                    if not callable(fn):
+                        return {}
+
+                    child_state: Data = {}
+                    result = fn(
+                        child_params_value,
+                        child_inputs_value,
+                        child_state,
+                        child_dt,
+                    )
+
+                    if asyncio.iscoroutine(result):
+                        result = await result
+
+                    if isinstance(result, dict):
+                        return result
+
                     if (
-                        isinstance(res, (list, tuple))
-                        and len(res) >= 1
-                        and isinstance(res[0], dict)
+                        isinstance(result, (list, tuple))
+                        and len(result) >= 1
+                        and isinstance(result[0], dict)
                     ):
-                        return res[0]
+                        return result[0]
+
                     return {}
 
                 try:
                     outputs = _schedule_on_background_loop(
-                        _call_step(step_fn, child_params, child_inputs, loop_dt),
+                        _call_step(
+                            step_fn,
+                            child_params,
+                            child_inputs,
+                            loop_dt,
+                        ),
                         background_loop,
                     )
-                except (TypeError, ValueError, RuntimeError, OSError) as e:
+
+                except (
+                    TypeError,
+                    ValueError,
+                    RuntimeError,
+                    OSError,
+                ) as error:
                     results.append(
                         {
                             "type": utype,
                             "outputs": {},
-                            "error": f"{type(e).__name__}: {e}",
+                            "error": (
+                                f"{type(error).__name__}: {error}"
+                            ),
                         }
                     )
+
                     _emit_chameleon_stream(
                         stream_outputs,
                         sc,
@@ -317,28 +435,54 @@ def _chameleon_step(
                         last_outputs=last_outputs,
                     )
                     continue
+
             else:
-                child_state: dict[str, Any] = {}
-                res = step_fn(child_params, child_inputs, child_state, loop_dt)
-                if asyncio.iscoroutine(res):
+                child_state: Data = {}
+
+                result = step_fn(
+                    child_params,
+                    child_inputs,
+                    child_state,
+                    loop_dt,
+                )
+
+                if asyncio.iscoroutine(result):
                     try:
-                        running_loop = None
+                        running_loop: asyncio.AbstractEventLoop | None = None
+
                         try:
                             running_loop = asyncio.get_running_loop()
                         except RuntimeError:
                             running_loop = None
 
-                        if running_loop and running_loop.is_running():
-                            outputs = asyncio.run_coroutine_threadsafe(res, running_loop).result()
+                        if (
+                            running_loop is not None
+                            and running_loop.is_running()
+                        ):
+                            outputs = (
+                                asyncio.run_coroutine_threadsafe(
+                                    result,
+                                    running_loop,
+                                ).result()
+                            )
                         else:
-                            outputs = asyncio.get_event_loop().run_until_complete(res)
+                            outputs = (
+                                asyncio.get_event_loop()
+                                .run_until_complete(result)
+                            )
 
-                    except (RuntimeError, TypeError, ValueError) as e:
+                    except (
+                        RuntimeError,
+                        TypeError,
+                        ValueError,
+                    ) as error:
                         results.append(
                             {
                                 "type": utype,
                                 "outputs": {},
-                                "error": f"{type(e).__name__}: {e}",
+                                "error": (
+                                    f"{type(error).__name__}: {error}"
+                                ),
                             }
                         )
 
@@ -352,7 +496,7 @@ def _chameleon_step(
                         )
                         continue
                 else:
-                    outputs = res
+                    outputs = result
 
                 if (
                     isinstance(outputs, (list, tuple))
@@ -360,13 +504,40 @@ def _chameleon_step(
                     and isinstance(outputs[0], dict)
                 ):
                     outputs = outputs[0]
-                outputs = outputs if isinstance(outputs, dict) else {}
 
-            results.append({"type": utype, "outputs": outputs, "error": None})
-            last_outputs = outputs
-        except (RuntimeError, TypeError, ValueError) as e:
+                if isinstance(outputs, dict):
+                    normalized_outputs: Data = outputs
+                else:
+                    normalized_outputs = {}
+
+                outputs = normalized_outputs
+
+            if isinstance(outputs, dict):
+                final_outputs: Data = outputs
+            else:
+                final_outputs = {}
+
             results.append(
-                {"type": utype, "outputs": {}, "error": f"{type(e).__name__}: {e}"}
+                {
+                    "type": utype,
+                    "outputs": final_outputs,
+                    "error": None,
+                }
+            )
+
+            last_outputs = final_outputs
+
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            results.append(
+                {
+                    "type": utype,
+                    "outputs": {},
+                    "error": f"{type(error).__name__}: {error}",
+                }
             )
 
         _emit_chameleon_stream(
@@ -379,7 +550,13 @@ def _chameleon_step(
         )
 
     summary = _running_error_summary(results)
-    return {"data": results, "last": last_outputs, "error": summary}, state
+
+    return {
+        "data": results,
+        "last": last_outputs,
+        "error": summary,
+    }, state
+
 
 
 def register_chameleon() -> None:

@@ -5,8 +5,7 @@ do not provide "data" (so the Inject "injects" the template as default).
 """
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 # Optional "template" port: wire Template → Inject so Inject outputs template when no initial_inputs.
@@ -15,11 +14,11 @@ INJECT_OUTPUT_PORTS = [("data", "Any")]
 
 
 def _inject_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     # Prefer initial_inputs["data"]; else use connected "template" (from Template unit); else full payload.
     payload = dict(inputs) if inputs else {}
     out = payload.get("data", payload.get("template", payload))

@@ -7,8 +7,7 @@ No input ports; no initial_inputs required.
 """
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 TEMPLATE_INPUT_PORTS: list[tuple[str, str]] = []
@@ -16,11 +15,11 @@ TEMPLATE_OUTPUT_PORTS = [("data", "Any")]
 
 
 def _template_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Output params['data'] on port 'data'. Use for debug/static values."""
     out = params.get("data")
     return ({"data": out}, state)

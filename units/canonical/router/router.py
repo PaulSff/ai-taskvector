@@ -9,8 +9,8 @@ Typical use: branch ``read_file`` / path suffix (e.g. ``.xlsx``) before differen
 from __future__ import annotations
 
 import re
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 ROUTER_MAX_BRANCHES = 16
@@ -26,22 +26,24 @@ ROUTER_OUTPUT_PORTS: list[tuple[str, str]] = [
 _ALLOWED_PORTS = frozenset(p for p, _ in ROUTER_OUTPUT_PORTS)
 
 
-def _get_field(data: Any, field: str) -> Any:
-    """Walk ``field`` with dot segments on dicts; missing → None."""
+def _get_field(data: object, field: str) -> object | None:
     if not field:
         return data
-    cur: Any = data
-    for part in str(field).strip().split("."):
+
+    cur: object = data
+
+    for part in field.strip().split("."):
         if not part:
             continue
+
         if isinstance(cur, dict):
             cur = cur.get(part)
         else:
             return None
+
     return cur
 
-
-def _match_one_rule(value: Any, rule: dict[str, Any]) -> bool:
+def _match_one_rule(value: object, rule: Data) -> bool:
     if rule.get("exists") is True:
         return value is not None
 
@@ -54,43 +56,58 @@ def _match_one_rule(value: Any, rule: dict[str, Any]) -> bool:
         ).strip()
 
     if "gt" in rule:
-        try:
-            return value is not None and value > rule["gt"]
-        except (TypeError, ValueError):
-            return False
+        threshold = rule.get("gt")
+
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and isinstance(threshold, (int, float))
+            and not isinstance(threshold, bool)
+        ):
+            return value > threshold
+
+        return False
 
     if "gte" in rule:
-        try:
-            return value is not None and value >= rule["gte"]
-        except (TypeError, ValueError):
-            return False
+        threshold = rule.get("gte")
+
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and isinstance(threshold, (int, float))
+            and not isinstance(threshold, bool)
+        ):
+            return value >= threshold
+
+        return False
 
     if "ends_with" in rule:
-        s = str(value or "")
-        suf = str(rule.get("ends_with") or "")
-        return s.lower().endswith(suf.lower()) if suf else False
+        suffix = str(rule.get("ends_with") or "")
+        text = str(value or "")
+
+        return bool(suffix) and text.lower().endswith(suffix.lower())
 
     if "starts_with" in rule:
-        s = str(value or "")
-        pre = str(rule.get("starts_with") or "")
-        return s.lower().startswith(pre.lower()) if pre else False
+        prefix = str(rule.get("starts_with") or "")
+        text = str(value or "")
+
+        return bool(prefix) and text.lower().startswith(prefix.lower())
 
     if "contains" in rule:
         needle = str(rule.get("contains") or "")
-        return (
-            needle.lower() in str(value or "").lower()
-            if needle
-            else False
-        )
+        text = str(value or "")
+
+        return bool(needle) and needle.lower() in text.lower()
 
     if "regex" in rule:
-        pat = str(rule.get("regex") or "")
-        if not pat:
+        pattern = str(rule.get("regex") or "")
+
+        if not pattern:
             return False
 
         try:
             return re.search(
-                pat,
+                pattern,
                 str(value or ""),
                 flags=re.DOTALL,
             ) is not None
@@ -100,61 +117,83 @@ def _match_one_rule(value: Any, rule: dict[str, Any]) -> bool:
     return False
 
 
-def _match_rule(data: Any, rule: dict[str, Any]) -> bool:
+def _match_rule(data: object, rule: Data) -> bool:
     # Check whether at least one item in an array matches the nested rule.
     if "any_item" in rule:
-        config = rule["any_item"]
+        config = rule.get("any_item")
 
         if not isinstance(config, dict):
             return False
 
-        items = _get_field(data, config.get("field", ""))
+        field = config.get("field", "")
+
+        if not isinstance(field, str):
+            return False
+
+        items = _get_field(data, field)
 
         if not isinstance(items, list):
             return False
 
         nested_rule = config.get("rule")
+
         if not isinstance(nested_rule, dict):
             return False
 
         return any(_match_rule(item, nested_rule) for item in items)
 
-    field = str(rule.get("field") or "").strip()
+    raw_field = rule.get("field", "")
+
+    if raw_field is None:
+        field = ""
+    elif isinstance(raw_field, str):
+        field = raw_field.strip()
+    else:
+        field = str(raw_field).strip()
 
     if not field:
         value = data
     else:
+        if not isinstance(data, dict):
+            return _match_one_rule(None, rule)
+
         value = _get_field(data, field)
 
     return _match_one_rule(value, rule)
 
 
-def _match_all(data: Any, rules: list[Any]) -> bool:
+
+def _match_all(data: object, rules: list[object]) -> bool:
     if not rules:
         return True
-    for r in rules:
-        if not isinstance(r, dict):
+
+    for rule in rules:
+        if not isinstance(rule, dict):
             return False
-        if not _match_rule(data, r):
+
+        if not _match_rule(data, rule):
             return False
+
     return True
 
 
-def _match_any(data: Any, rules: list[Any]) -> bool:
+def _match_any(data: object, rules: list[object]) -> bool:
     if not rules:
         return False
-    for r in rules:
-        if isinstance(r, dict) and _match_rule(data, r):
+
+    for rule in rules:
+        if isinstance(rule, dict) and _match_rule(data, rule):
             return True
+
     return False
 
 
 def _router_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     data = inputs.get("data")
 
     routes = params.get("routes")
@@ -162,9 +201,9 @@ def _router_step(
         routes = []
 
     default_port: str | None = None
-    default_route: dict[str, Any] | None = None
+    default_route: Data | None = None
 
-    ordered: list[tuple[str, dict[str, Any]]] = []
+    ordered: list[tuple[str, Data]] = []
 
     for raw in routes:
         if not isinstance(raw, dict):
@@ -184,7 +223,7 @@ def _router_step(
         ordered.append((port, raw))
 
     chosen: str | None = None
-    chosen_route: dict[str, Any] | None = None
+    chosen_route: Data | None = None
 
     # Evaluate conditional routes in declaration order.
     for port, raw in ordered:
@@ -219,7 +258,7 @@ def _router_step(
         isinstance(chosen_route, dict)
         and "parser_output" in chosen_route
     ):
-        output_data: Any = chosen_route["parser_output"]
+        output_data = chosen_route["parser_output"]
     else:
         output_data = data
 

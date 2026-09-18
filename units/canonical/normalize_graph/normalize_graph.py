@@ -11,7 +11,9 @@ from __future__ import annotations
 from typing import cast
 
 from core.schemas.primitives import (
+    Data,
     FormatProcess,
+    Output,
     RawProcessInput,
     is_json_document,
     is_json_object,
@@ -45,11 +47,11 @@ def _validated_raw_process_input(
 
 
 def _normalize_graph_step(
-    params: dict[str, object],
-    inputs: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> Output:
     graph = inputs.get("graph")
     fmt_raw = params.get("format") or "dict"
 

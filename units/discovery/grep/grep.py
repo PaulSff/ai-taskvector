@@ -18,6 +18,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 from typing import Any
 
+from runtime.executor import BackgroundCoro
 from units.registry import UnitSpec, register_unit
 
 GREP_INPUT_PORTS = [
@@ -87,7 +88,7 @@ def _python_grep_sync(
 
 
 def _schedule_on_background_loop(
-    coro: Any, background_loop: asyncio.AbstractEventLoop, timeout: float
+    coro: BackgroundCoro, background_loop: asyncio.AbstractEventLoop, timeout: float
 ) -> Any:
     if (
         not isinstance(background_loop, asyncio.AbstractEventLoop)
@@ -221,7 +222,7 @@ def _grep_step(
         return None
 
     def _schedule_on_background_loop(
-        coro: Any, background_loop: asyncio.AbstractEventLoop, timeout_s: float
+        coro: BackgroundCoro, background_loop: asyncio.AbstractEventLoop, timeout_s: float
     ) -> Any:
         if (
             not isinstance(background_loop, asyncio.AbstractEventLoop)
