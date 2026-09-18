@@ -1,9 +1,11 @@
 """
-Browse follow-up: list a directory via the list_dir workflow.
+List_dir tool runner: list one or more directories concurrently via the
+list_dir workflow.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -31,7 +33,7 @@ EXECUTION_TIMEOUT_S: float = 30.0
 def _empty_list_dir_contribution(
     hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    language = hint()
+    language = (hint() or "English").strip() or "English"
 
     chunk = (
         LIST_DIR_FOLLOW_UP_PREFIX
@@ -71,19 +73,60 @@ def _extract_list_dir_result(output: object) -> tuple[str, str]:
     raw_data = output.get("data")
     raw_error = output.get("error")
 
-    data = ""
+    data = str(raw_data).strip() if raw_data is not None else ""
     error = ""
 
-    if raw_data is not None:
-        data = str(raw_data).strip()
-
     if isinstance(raw_error, Mapping):
-        raw_error = raw_error.get("error") or raw_error.get("message")
+        if "error" in raw_error:
+            raw_error = raw_error["error"]
+        elif "message" in raw_error:
+            raw_error = raw_error["message"]
 
     if raw_error is not None:
         error = str(raw_error).strip()
 
     return data, error
+
+
+async def _run_one_list_dir(
+    action: object,
+) -> tuple[str, str | None]:
+    """Run one normalized list_dir action."""
+
+    payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+        action.model_dump(mode="json")  # type: ignore[union-attr]
+    )
+
+    out, errs = await run_workflow_with_errors(
+        LIST_DIR_WORKFLOW_PATH,
+        initial_inputs={
+            "inject_payload": {
+                "data": payload,
+            }
+        },
+        format="dict",
+        execution_timeout_s=EXECUTION_TIMEOUT_S,
+    )
+
+    workflow_error = _format_workflow_error(errs) if errs else None
+
+    list_dir_output: object = {}
+
+    if isinstance(out, Mapping):
+        list_dir_output = out.get("list_dir") or {}
+
+    list_dir_data, list_dir_error = _extract_list_dir_result(
+        list_dir_output
+    )
+
+    # Preserve the original behavior: an explicit workflow error takes
+    # precedence over normal directory-listing data.
+    result = list_dir_error or list_dir_data
+
+    if result:
+        return result, None
+
+    return "", workflow_error or list_dir_error
 
 
 async def run_list_dir_follow_up(
@@ -96,111 +139,106 @@ async def run_list_dir_follow_up(
     from agents.tools.list_dir.action_block import ListDirActionBlock
 
     try:
-        ctx.set_inline_status("Inspecting the folder…")
+        ctx.set_inline_status("Inspecting folders…")
     except (AttributeError, TypeError):
         pass
 
-    hint = language_hint
-
     try:
-        list_dir_actions = po.actions.get_tool_actions("list_dir")
+        raw_actions = po.actions.get_tool_actions("list_dir")
 
-        if not list_dir_actions:
+        if not raw_actions:
             raise ValueError(
                 "List-dir follow-up was requested, but no "
                 "list_dir action was found"
             )
 
-        if len(list_dir_actions) != 1:
-            raise ValueError(
-                "List-dir follow-up expected exactly one list_dir action, "
-                f"got {len(list_dir_actions)}"
-            )
+        # Validate every action before starting any workflow.
+        actions = []
 
-        raw_action = list_dir_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = ListDirActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
+        for raw_action in raw_actions:
             try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid list_dir action: "
-                        f"{str(exc)[:120]}"
+                actions.append(
+                    ListDirActionBlock.model_validate(raw_action)
+                )
+            except ValidationError as exc:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "Invalid list_dir action: "
+                            f"{str(exc)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                raise
+
+        # gather preserves action order while executing workflows concurrently.
+        results = await asyncio.gather(
+            *(_run_one_list_dir(action) for action in actions),
+            return_exceptions=True,
+        )
+
+        language = (language_hint() or "English").strip() or "English"
+        context_chunks: list[str] = []
+        had_empty_result = False
+
+        for result in results:
+            if isinstance(result, BaseException):
+                had_empty_result = True
+
+                if isinstance(result, TimeoutError):
+                    message = "List dir operation timed out"
+                else:
+                    message = (
+                        "List dir workflow crashed: "
+                        f"{type(result).__name__}: "
+                        f"{str(result)[:120]}"
                     )
-            except (AttributeError, TypeError):
-                pass
 
-            raise
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(message)
+                except (AttributeError, TypeError):
+                    pass
 
-        # Pass the complete normalized action to the workflow.
-        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
-            action.model_dump(mode="json")
-        )
+                continue
 
-        initial_inputs = {
-            "inject_payload": {
-                "data": payload,
-            }
-        }
+            result_text, error_text = result
 
-        out, errs = await run_workflow_with_errors(
-            LIST_DIR_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
+            if error_text and not result_text:
+                had_empty_result = True
 
-        if errs:
-            error_text = _format_workflow_error(errs)
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"List dir error: {error_text[:160]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"List dir error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+                continue
 
-        list_dir_output: object = {}
+            if not result_text:
+                had_empty_result = True
+                continue
 
-        if isinstance(out, Mapping):
-            list_dir_output = out.get("list_dir") or {}
-
-        list_dir_data, list_dir_error = _extract_list_dir_result(
-            list_dir_output
-        )
-
-        # Prefer an explicit error returned by the workflow.
-        result = list_dir_error or list_dir_data
-
-        if not result:
-            return _empty_list_dir_contribution(hint)
-
-        language = hint()
-
-        chunk = (
-            LIST_DIR_FOLLOW_UP_PREFIX
-            + result
-            + LIST_DIR_FOLLOW_UP_SUFFIX.format(
-                language=language,
-                session_language=language,
+            context_chunks.append(
+                LIST_DIR_FOLLOW_UP_PREFIX
+                + result_text
+                + LIST_DIR_FOLLOW_UP_SUFFIX.format(
+                    language=language,
+                    session_language=language,
+                )
             )
-        )
+
+        if not context_chunks:
+            return _empty_list_dir_contribution(language_hint)
 
         return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=False,
+            context_chunks=context_chunks,
+            any_empty_tool=had_empty_result,
             extra={FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP: True},
         )
-
-    except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("List dir operation timed out")
-        except (AttributeError, TypeError):
-            pass
-
-        return _empty_list_dir_contribution(hint)
 
     except ValidationError:
         raise

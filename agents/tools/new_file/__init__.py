@@ -1,9 +1,11 @@
 """
-browse follow-up: create new file via new_file workflow.
+browse follow-up: create one or more new files concurrently via the
+new_file workflow.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -30,7 +32,7 @@ EXECUTION_TIMEOUT_S: float = 30.0
 def _empty_new_file_contribution(
     hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    language = hint()
+    language = (hint() or "English").strip() or "English"
 
     chunk = (
         NEW_FILE_FOLLOW_UP_PREFIX
@@ -69,11 +71,8 @@ def _extract_new_file_result(output: object) -> tuple[str, str]:
     raw_data = output.get("data")
     raw_error = output.get("error")
 
-    data = ""
+    data = str(raw_data).strip() if raw_data is not None else ""
     error = ""
-
-    if raw_data is not None:
-        data = str(raw_data).strip()
 
     if isinstance(raw_error, Mapping):
         if "error" in raw_error:
@@ -87,6 +86,52 @@ def _extract_new_file_result(output: object) -> tuple[str, str]:
     return data, error
 
 
+async def _run_one_new_file(
+    action: object,
+) -> tuple[str, str | None]:
+    """
+    Execute one normalized new_file action.
+
+    Returns:
+        (result_text, error_message)
+
+    An empty result means the action did not produce usable follow-up text.
+    """
+    payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+        action.model_dump(mode="json")  # type: ignore[union-attr]
+    )
+
+    out, errs = await run_workflow_with_errors(
+        NEW_FILE_WORKFLOW_PATH,
+        initial_inputs={
+            "inject_payload": {
+                "template": payload,
+            }
+        },
+        format="dict",
+        execution_timeout_s=EXECUTION_TIMEOUT_S,
+    )
+
+    workflow_error = _format_workflow_error(errs) if errs else None
+
+    new_file_output: object = {}
+    if isinstance(out, Mapping):
+        new_file_output = out.get("generate_new_file") or {}
+
+    new_file_data, new_file_error = _extract_new_file_result(
+        new_file_output
+    )
+
+    # Prefer an explicit workflow result error. Otherwise retain the
+    # workflow-runner error for notification if the output is empty.
+    result = new_file_error or new_file_data
+
+    if result:
+        return result, None
+
+    return "", workflow_error or new_file_error
+
+
 async def run_new_file_follow_up(
     ctx: ExecutionFollowUpContext,
     po: ParserOutput,
@@ -97,110 +142,106 @@ async def run_new_file_follow_up(
     from agents.tools.new_file.action_block import NewFileActionBlock
 
     try:
-        ctx.set_inline_status("Creating new file…")
+        ctx.set_inline_status("Creating files…")
     except (AttributeError, TypeError):
         pass
 
-    hint = language_hint
-
     try:
-        new_file_actions = po.actions.get_tool_actions("new_file")
+        raw_actions = po.actions.get_tool_actions("new_file")
 
-        if not new_file_actions:
+        if not raw_actions:
             raise ValueError(
                 "New-file follow-up was requested, but no "
                 "new_file action was found"
             )
 
-        if len(new_file_actions) != 1:
-            raise ValueError(
-                "New-file follow-up expected exactly one new_file action, "
-                f"got {len(new_file_actions)}"
-            )
+        # Validate every action before starting any workflow. This prevents
+        # some files from being created if a later action is malformed.
+        actions = []
 
-        raw_action = new_file_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = NewFileActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
+        for raw_action in raw_actions:
             try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid new_file action: "
-                        f"{str(exc)[:120]}"
+                actions.append(
+                    NewFileActionBlock.model_validate(raw_action)
+                )
+            except ValidationError as exc:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "Invalid new_file action: "
+                            f"{str(exc)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                raise
+
+        # run_workflow_with_errors is async, so gather can execute all
+        # workflow calls concurrently without blocking the event loop.
+        results = await asyncio.gather(
+            *(_run_one_new_file(action) for action in actions),
+            return_exceptions=True,
+        )
+
+        language = (language_hint() or "English").strip() or "English"
+        context_chunks: list[str] = []
+        had_empty_result = False
+
+        for result in results:
+            if isinstance(result, BaseException):
+                had_empty_result = True
+
+                if isinstance(result, TimeoutError):
+                    message = "New file operation timed out"
+                else:
+                    message = (
+                        "New file workflow crashed: "
+                        f"{type(result).__name__}: {str(result)[:120]}"
                     )
-            except (AttributeError, TypeError):
-                pass
 
-            raise
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(message)
+                except (AttributeError, TypeError):
+                    pass
 
-        # Pass the complete normalized action to the workflow.
-        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
-            action.model_dump(mode="json")
-        )
+                continue
 
-        initial_inputs = {
-            "inject_payload": {
-                "template": payload,
-            }
-        }
+            result_text, error_text = result
 
-        out, errs = await run_workflow_with_errors(
-            NEW_FILE_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
+            if error_text and not result_text:
+                had_empty_result = True
 
-        if errs:
-            error_text = _format_workflow_error(errs)
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"New file error: {error_text[:160]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"New file error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+                continue
 
-        new_file_output: object = {}
+            if not result_text:
+                had_empty_result = True
+                continue
 
-        if isinstance(out, Mapping):
-            new_file_output = out.get("generate_new_file") or {}
-
-        new_file_data, new_file_error = _extract_new_file_result(
-            new_file_output
-        )
-
-        # Prefer an explicit error returned by the workflow.
-        result = new_file_error or new_file_data
-
-        if not result:
-            return _empty_new_file_contribution(hint)
-
-        language = hint()
-
-        chunk = (
-            NEW_FILE_FOLLOW_UP_PREFIX
-            + result
-            + NEW_FILE_FOLLOW_UP_SUFFIX.format(
-                language=language,
-                session_language=language,
+            context_chunks.append(
+                NEW_FILE_FOLLOW_UP_PREFIX
+                + result_text
+                + NEW_FILE_FOLLOW_UP_SUFFIX.format(
+                    language=language,
+                    session_language=language,
+                )
             )
-        )
+
+        if not context_chunks:
+            return _empty_new_file_contribution(language_hint)
 
         return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=False,
+            context_chunks=context_chunks,
+            any_empty_tool=had_empty_result,
         )
-
-    except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("New file operation timed out")
-        except (AttributeError, TypeError):
-            pass
-
-        return _empty_new_file_contribution(hint)
 
     except ValidationError:
         raise

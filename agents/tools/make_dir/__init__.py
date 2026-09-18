@@ -1,9 +1,11 @@
 """
-make_dir follow-up: create a directory via the make_dir workflow.
+make_dir follow-up: create one or more directories concurrently via the
+make_dir workflow.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -30,7 +32,7 @@ EXECUTION_TIMEOUT_S: float = 30.0
 def _empty_make_dir_contribution(
     hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    language = hint()
+    language = (hint() or "English").strip() or "English"
 
     chunk = (
         MAKE_DIR_FOLLOW_UP_PREFIX
@@ -69,19 +71,59 @@ def _extract_make_dir_result(output: object) -> tuple[str, str]:
     raw_data = output.get("data")
     raw_error = output.get("error")
 
-    data = ""
+    data = str(raw_data).strip() if raw_data is not None else ""
     error = ""
 
-    if raw_data is not None:
-        data = str(raw_data).strip()
-
     if isinstance(raw_error, Mapping):
-        raw_error = raw_error.get("error") or raw_error.get("message")
+        if "error" in raw_error:
+            raw_error = raw_error["error"]
+        elif "message" in raw_error:
+            raw_error = raw_error["message"]
 
     if raw_error is not None:
         error = str(raw_error).strip()
 
     return data, error
+
+
+async def _run_one_make_dir(
+    action: object,
+) -> tuple[str, str | None]:
+    """Run one normalized make_dir action."""
+
+    payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+        action.model_dump(mode="json")  # type: ignore[union-attr]
+    )
+
+    out, errs = await run_workflow_with_errors(
+        MAKE_DIR_WORKFLOW_PATH,
+        initial_inputs={
+            "inject_payload": {
+                "template": payload,
+            }
+        },
+        format="dict",
+        execution_timeout_s=EXECUTION_TIMEOUT_S,
+    )
+
+    workflow_error = _format_workflow_error(errs) if errs else None
+
+    make_dir_output: object = {}
+
+    if isinstance(out, Mapping):
+        make_dir_output = out.get("make_dir") or {}
+
+    make_dir_data, make_dir_error = _extract_make_dir_result(
+        make_dir_output
+    )
+
+    # Prefer an explicit error returned by the workflow.
+    result = make_dir_error or make_dir_data
+
+    if result:
+        return result, None
+
+    return "", workflow_error or make_dir_error
 
 
 async def run_make_dir_follow_up(
@@ -94,110 +136,108 @@ async def run_make_dir_follow_up(
     from agents.tools.make_dir.action_block import MakeDirActionBlock
 
     try:
-        ctx.set_inline_status("Creating new folder…")
+        ctx.set_inline_status("Creating folders…")
     except (AttributeError, TypeError):
         pass
 
-    hint = language_hint
-
     try:
-        make_dir_actions = po.actions.get_tool_actions("make_dir")
+        raw_actions = po.actions.get_tool_actions("make_dir")
 
-        if not make_dir_actions:
+        if not raw_actions:
             raise ValueError(
                 "Make-dir follow-up was requested, but no "
                 "make_dir action was found"
             )
 
-        if len(make_dir_actions) != 1:
-            raise ValueError(
-                "Make-dir follow-up expected exactly one make_dir action, "
-                f"got {len(make_dir_actions)}"
-            )
+        # Validate every action before executing any workflow. This avoids
+        # partial execution when a later action is malformed.
+        actions = []
 
-        raw_action = make_dir_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = MakeDirActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
+        for raw_action in raw_actions:
             try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid make_dir action: "
-                        f"{str(exc)[:120]}"
+                actions.append(
+                    MakeDirActionBlock.model_validate(raw_action)
+                )
+            except ValidationError as exc:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "Invalid make_dir action: "
+                            f"{str(exc)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                raise
+
+        # run_workflow_with_errors is async, so all directory workflows can
+        # execute concurrently. gather preserves the input action order.
+        results = await asyncio.gather(
+            *(_run_one_make_dir(action) for action in actions),
+            return_exceptions=True,
+        )
+
+        language = (language_hint() or "English").strip() or "English"
+        context_chunks: list[str] = []
+        had_empty_result = False
+
+        for result in results:
+            # gather(return_exceptions=True) may return any BaseException.
+            if isinstance(result, BaseException):
+                had_empty_result = True
+
+                if isinstance(result, TimeoutError):
+                    message = "Make dir operation timed out"
+                else:
+                    message = (
+                        "Make dir workflow crashed: "
+                        f"{type(result).__name__}: "
+                        f"{str(result)[:120]}"
                     )
-            except (AttributeError, TypeError):
-                pass
 
-            raise
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(message)
+                except (AttributeError, TypeError):
+                    pass
 
-        # Pass the complete normalized action to the workflow.
-        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
-            action.model_dump(mode="json")
-        )
+                continue
 
-        initial_inputs = {
-            "inject_payload": {
-                "template": payload,
-            }
-        }
+            result_text, error_text = result
 
-        out, errs = await run_workflow_with_errors(
-            MAKE_DIR_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
+            if error_text and not result_text:
+                had_empty_result = True
 
-        if errs:
-            error_text = _format_workflow_error(errs)
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"Make dir error: {error_text[:160]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Make dir error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+                continue
 
-        make_dir_output: object = {}
+            if not result_text:
+                had_empty_result = True
+                continue
 
-        if isinstance(out, Mapping):
-            make_dir_output = out.get("make_dir") or {}
-
-        make_dir_data, make_dir_error = _extract_make_dir_result(
-            make_dir_output
-        )
-
-        # Prefer an explicit error returned by the workflow.
-        result = make_dir_error or make_dir_data
-
-        if not result:
-            return _empty_make_dir_contribution(hint)
-
-        language = hint()
-
-        chunk = (
-            MAKE_DIR_FOLLOW_UP_PREFIX
-            + result
-            + MAKE_DIR_FOLLOW_UP_SUFFIX.format(
-                language=language,
-                session_language=language,
+            context_chunks.append(
+                MAKE_DIR_FOLLOW_UP_PREFIX
+                + result_text
+                + MAKE_DIR_FOLLOW_UP_SUFFIX.format(
+                    language=language,
+                    session_language=language,
+                )
             )
-        )
+
+        if not context_chunks:
+            return _empty_make_dir_contribution(language_hint)
 
         return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=False,
+            context_chunks=context_chunks,
+            any_empty_tool=had_empty_result,
         )
-
-    except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("Make dir operation timed out")
-        except (AttributeError, TypeError):
-            pass
-
-        return _empty_make_dir_contribution(hint)
 
     except ValidationError:
         raise

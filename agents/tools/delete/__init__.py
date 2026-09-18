@@ -1,9 +1,11 @@
 """
-Delete follow-up: delete a file or folder via the delete workflow.
+Delete tool runner: delete one or more files or folders concurrently via the
+delete workflow.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 
 from pydantic import ValidationError
@@ -21,25 +23,21 @@ EXECUTION_TIMEOUT_S: float = 30.0
 def _empty_delete_contribution(
     hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    # Lazy imports avoid the initialization cycle:
-    #
-    # delete.__init__
-    #   -> action_block
-    #   -> follow_ups
-    #   -> agent_workflow
-    #   -> delete package
+    # Lazy imports avoid the initialization cycle.
     from agents.tools.delete.follow_ups import (
         DELETE_FOLLOW_UP_PREFIX,
         DELETE_FOLLOW_UP_SUFFIX,
     )
     from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 
+    language = (hint() or "English").strip() or "English"
+
     chunk = (
         DELETE_FOLLOW_UP_PREFIX
         + TOOL_EMPTY_RESULT_LINE
         + DELETE_FOLLOW_UP_SUFFIX.format(
-            language=hint(),
-            session_language=hint(),
+            language=language,
+            session_language=language,
         )
     )
 
@@ -50,18 +48,6 @@ def _empty_delete_contribution(
 
 
 def _extract_delete_result(out: object) -> tuple[str, str]:
-    """
-    Extract the delete workflow result.
-
-    Expected workflow shape:
-
-        {
-            "delete": {
-                "data": "...",
-                "error": "..."
-            }
-        }
-    """
     if not isinstance(out, Mapping):
         return "", ""
 
@@ -107,133 +93,174 @@ def _format_workflow_error(errs: object) -> str:
     return str(first_error)[:120]
 
 
+async def _run_one_delete(
+    path: str,
+) -> tuple[str, str | None]:
+    """Run one delete workflow for a validated path."""
+
+    from agents.chat.agent_workflow import (
+        DELETE_WORKFLOW_PATH,
+        run_workflow_with_errors,
+    )
+    from core.schemas.primitives import WorkflowInputs
+
+    initial_inputs: WorkflowInputs = {
+        "inject_payload": {
+            "template": path,
+        }
+    }
+
+    out, errs = await run_workflow_with_errors(
+        DELETE_WORKFLOW_PATH,
+        initial_inputs=initial_inputs,
+        format="dict",
+        execution_timeout_s=EXECUTION_TIMEOUT_S,
+    )
+
+    workflow_error = _format_workflow_error(errs) if errs else None
+
+    delete_data, delete_error = _extract_delete_result(out)
+
+    # Preserve the original behavior: the explicit workflow error takes
+    # precedence over normal workflow data.
+    result = delete_error or delete_data
+
+    if result:
+        return result, None
+
+    return "", workflow_error or delete_error
+
+
 async def run_delete_file_follow_up(
     ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    # Application imports remain local to avoid the action-block import cycle.
-    from agents.chat.agent_workflow import (
-        DELETE_WORKFLOW_PATH,
-        run_workflow_with_errors,
-    )
+    # Application imports remain local to avoid import cycles.
     from agents.tools.delete.action_block import DeleteActionBlock
     from agents.tools.delete.follow_ups import (
         DELETE_FOLLOW_UP_PREFIX,
         DELETE_FOLLOW_UP_SUFFIX,
     )
-    from core.schemas.primitives import WorkflowInputs
 
     try:
         ctx.set_inline_status("Deleting items…")
     except (AttributeError, TypeError):
         pass
 
-    hint = language_hint
-
     try:
-        delete_actions = po.actions.get_tool_actions("delete")
+        raw_actions = po.actions.get_tool_actions("delete")
 
-        if not delete_actions:
+        if not raw_actions:
             raise ValueError(
                 "Delete follow-up was requested, but no delete action was found"
             )
 
-        if len(delete_actions) != 1:
-            raise ValueError(
-                "Delete follow-up expected exactly one delete action, got "
-                f"{len(delete_actions)}"
-            )
+        # Validate every action before deleting anything. This prevents a
+        # malformed later action from causing only partial validation.
+        paths: list[str] = []
 
-        raw_action = delete_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = DeleteActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
-            raise ValueError(
-                "Invalid delete action block: "
-                f"errors={exc.errors()!r}"
-            ) from exc
-
-        path = action.path.strip()
-
-        if not path:
-            raise ValueError("Delete action path must not be empty")
-
-        print(
-            "[run_delete_file_follow_up] "
-            f"validated action path={path!r}",
-            flush=True,
-        )
-
-        initial_inputs: WorkflowInputs = {
-            "inject_payload": {
-                "template": path,
-            }
-        }
-
-        out, errs = await run_workflow_with_errors(
-            DELETE_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
-
-        if errs:
-            error_text = _format_workflow_error(errs)
-
+        for raw_action in raw_actions:
             try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Delete file error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+                action = DeleteActionBlock.model_validate(raw_action)
+            except ValidationError as exc:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "Invalid delete action: "
+                            f"{str(exc)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
 
-        delete_data, delete_error = _extract_delete_result(out)
+                raise
 
-        # Prefer the explicit error port from the workflow output.
-        result = delete_error or delete_data
+            path = action.path.strip()
 
-        if not result:
-            return _empty_delete_contribution(hint)
+            if not path:
+                raise ValueError("Delete action path must not be empty")
 
-        chunk = (
-            DELETE_FOLLOW_UP_PREFIX
-            + result
-            + DELETE_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
-            )
+            paths.append(path)
+
+        # Delete workflows are async, so they can run concurrently. Results
+        # remain aligned with paths because gather preserves input ordering.
+        results = await asyncio.gather(
+            *(_run_one_delete(path) for path in paths),
+            return_exceptions=True,
         )
+
+        language = (language_hint() or "English").strip() or "English"
+        context_chunks: list[str] = []
+        had_empty_result = False
+
+        for result in results:
+            if isinstance(result, BaseException):
+                had_empty_result = True
+
+                if isinstance(result, TimeoutError):
+                    message = "Delete operation timed out"
+                else:
+                    message = (
+                        "Delete workflow crashed: "
+                        f"{type(result).__name__}: "
+                        f"{str(result)[:120]}"
+                    )
+
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(message)
+                except (AttributeError, TypeError):
+                    pass
+
+                continue
+
+            result_text, error_text = result
+
+            if error_text and not result_text:
+                had_empty_result = True
+
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"Delete file error: {error_text[:160]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                continue
+
+            if not result_text:
+                had_empty_result = True
+                continue
+
+            context_chunks.append(
+                DELETE_FOLLOW_UP_PREFIX
+                + result_text
+                + DELETE_FOLLOW_UP_SUFFIX.format(
+                    language=language,
+                    session_language=language,
+                )
+            )
+
+        if not context_chunks:
+            return _empty_delete_contribution(language_hint)
 
         return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=False,
+            context_chunks=context_chunks,
+            any_empty_tool=had_empty_result,
         )
 
-    except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("Delete operation timed out")
-        except (AttributeError, TypeError):
-            pass
-
-        return _empty_delete_contribution(hint)
-
-    except ValidationError as exc:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast(
-                    "Invalid delete action: "
-                    f"{str(exc)[:120]}"
-                )
-        except (AttributeError, TypeError):
-            pass
-
+    except ValidationError:
         raise
 
-    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+    except (
+        AttributeError,
+        TypeError,
+        KeyError,
+        ValueError,
+        IndexError,
+    ) as exc:
         try:
             if ctx.is_current_run(ctx.token):
                 await ctx.toast(
