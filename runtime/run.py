@@ -32,7 +32,7 @@ from services.zmq import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
 
 from .control_queue_protocol import ControlQueue
-from .tools_bootstrap import ensure_all_tools_registration
+from .tools_bootstrap import ensure_tools_registration
 
 logger = setup_colored_logging(logging.INFO)
 
@@ -122,7 +122,7 @@ def run_workflow(
     ensure_full_unit_registry()
     # register tools for the given role_id, if provided
     if role_id is not None:
-        ensure_all_tools_registration(role_id=role_id)
+        ensure_tools_registration(role_id=role_id)
 
     if (workflow_path is None) == (workflow_graph is None):
         raise ValueError("Provide exactly one of workflow_path or workflow_graph")

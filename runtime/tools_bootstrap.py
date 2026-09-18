@@ -6,7 +6,7 @@ import importlib
 _TOOLS_ROOT_PACKAGE = "agents.tools"
 
 
-def ensure_all_tools_registration(
+def ensure_tools_registration(
     *,
     role_id: str | None = None,
 ) -> int:
