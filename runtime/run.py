@@ -93,46 +93,36 @@ def run_workflow(
     zmq_publisher: ZmqPublisher | None = None,
     send_job_message: bool = False,
     control_queue: ControlQueue | None = None,
+    role_id: str | None = None,
 ) -> WorkflowOutputs:
     """
-    Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
+    Load and execute a workflow.
 
     Args:
         workflow_path: Path to workflow JSON or YAML.
-        workflow_graph: In-memory workflow graph dict.
-        initial_inputs: Optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
-        unit_param_overrides: Optional { unit_id: { param_name: value } } to merge into each unit's params.
-        format: Optional format hint ('dict'|'yaml'|'node_red'|...); inferred from suffix if None.
-        execution_timeout_s: If set, abort the run after this many seconds (timeout then drop). Prevents
-            hanging when a unit (e.g. LLM, RAG) never responds. Raises WorkflowTimeoutError on timeout.
-        stream_callback: Optional callable(str). When the graph runs an LLMAgent unit, each streamed
-            token chunk is passed here (called from executor thread; schedule UI updates on main thread).
-            Also passed to RunWorkflow and Chameleon; Chameleon with ``stream_outputs`` true emits
-            prefixed JSON step chunks (see ``runtime.stream_ui_signals.chameleon_stream_chunk``).
-        run_id: Optional externally supplied run id used for ZMQ messages.
-        zmq_publisher: Optional ZMQ publisher. If set, token chunks and the final result/error are published.
+        workflow_graph: In-memory workflow graph.
+        initial_inputs: Optional inputs for units with no upstream.
+        unit_param_overrides: Optional parameters merged into unit params.
+        format: Optional workflow format hint.
+        execution_timeout_s: Maximum execution time in seconds.
+        keep_alive: Whether to continue waiting for wakeup events.
+        stream_callback: Callback for streamed LLM output chunks.
+        update_callback: Callback for keep-alive graph updates.
+        run_id: Optional externally supplied run ID.
+        zmq_publisher: Optional ZMQ publisher.
+        send_job_message: Whether to send a job message.
+        control_queue: Optional control queue.
+        role_id: Optional role identifier. When provided, only tools declared
+            by that role are registered. When omitted, all tools are
+            registered.
 
     Returns:
-        { unit_id: { port_name: value, ... }, ... } for every unit in the graph.
-
-    In keep-alive mode, GraphExecutor performs the initial execution, waits
-    for wakeup events, reruns affected downstream nodes, publishes updates,
-    and returns the latest outputs when stopped or timed out.
-
-    The execution flow becomes:
-
-    execute()
-      ├─ initial step
-      ├─ return immediately if keep_alive=False
-      └─ wait if keep_alive=True
-           ├─ DelayLoop timer fires
-           ├─ graph_wakeup_callback queues event
-           ├─ wakeup consumer reruns downstream graph
-           ├─ update_callback receives new outputs
-           └─ execute() returns on stop or timeout
+        Workflow outputs keyed by unit ID.
     """
     ensure_full_unit_registry()
-    ensure_all_tools_registration()
+    # register tools for the given role_id, if provided
+    if role_id is not None:
+        ensure_all_tools_registration(role_id=role_id)
 
     if (workflow_path is None) == (workflow_graph is None):
         raise ValueError("Provide exactly one of workflow_path or workflow_graph")

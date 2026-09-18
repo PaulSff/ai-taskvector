@@ -390,6 +390,7 @@ class PlannerChatHandler:
                 _WORKFLOW_EXECUTION_TIMEOUT,
                 _run_token=turn_ctx.token,
                 workflow_path=_AGENT_WORKFLOW_PATH,
+                role_id=_AGENT_ROLE_ID,
             )
 
         async def parser_output_follow_up_chain(

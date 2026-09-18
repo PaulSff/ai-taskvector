@@ -67,8 +67,8 @@ def orchestration_workflow_path() -> Path:
 
 
 __all__ = [
-    "register_chat_orchestrator",
-    "orchestration_workflow_path",
     "CHAT_ORCHESTRATOR_INPUT_PORTS",
     "CHAT_ORCHESTRATOR_OUTPUT_PORTS",
+    "orchestration_workflow_path",
+    "register_chat_orchestrator",
 ]

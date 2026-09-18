@@ -105,6 +105,7 @@ class WorkflowRunner(Protocol):
         *,
         stream_callback: GraphStreamCallback | None = None,
         workflow_path: str | Path | None = None,
+        role_id: str,
     ) -> Awaitable[AgentWorkflowResponse]:
         ...
 
@@ -119,5 +120,6 @@ class WorkflowStreamingRunner(Protocol):
         *,
         _run_token: object | None = None,
         workflow_path: str | Path | None = None,
+        role_id: str,
     ) -> AgentWorkflowResponse:
         ...

@@ -53,13 +53,6 @@ from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
 from agents.roles.registry import DISPATCHER_ROLE_ID
 from agents.roles.workflow_path import get_role_chat_workflow_path
-from core.normalizer.normalizer import (
-    get_process_graph_from_any,
-)
-from core.schemas.graph_edit_api import (
-    ApplyWorkflowEditsResult,
-)
-from core.schemas.primitives import Data, JsonObject
 from config.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegation_is_allowed,
@@ -74,6 +67,13 @@ from config.settings import (
     get_rag_index_dir,
     get_training_config_path,
 )
+from core.normalizer.normalizer import (
+    get_process_graph_from_any,
+)
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+)
+from core.schemas.primitives import Data, JsonObject
 from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.utils import new_id, now_ts
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
@@ -111,8 +111,6 @@ def _append_message_to_session(
     except (OSError, TypeError, ValueError):
         pass
     return msg
-
-
 
 # Assuming these are imported from your project
 # from gui.utils import slugify_filename, unique_path, to_snapshot, build_chat_payload, write_chat_payload
@@ -759,7 +757,6 @@ async def handle_turn(
             "contribution_is_allowed": get_contribution_is_allowed(),
             "training_config_path": get_training_config_path(),
             "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
-            "dispatcher_workflow_path": str(get_role_chat_workflow_path(DISPATCHER_ROLE_ID)),
         }
 
         assistant_message_id = new_id()

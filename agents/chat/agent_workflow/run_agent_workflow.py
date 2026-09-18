@@ -10,17 +10,17 @@ from agents.chat.agent_workflow.collect_workflow_response import (
     merge_response_from_workflow_outputs,
 )
 from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
+from config.settings import (
+    get_agents_workflows_job_pub_endpoint,
+    get_agents_workflows_max_concurrent_calls,
+    get_agents_workflows_response_endpoint,
+)
 from core.normalizer.shared import workflow_inputs_to_json_object
 from core.schemas.primitives import (
     FormatProcess,
     JsonObject,
     WorkflowInputs,
     WorkflowOutputs,
-)
-from config.settings import (
-    get_agents_workflows_job_pub_endpoint,
-    get_agents_workflows_max_concurrent_calls,
-    get_agents_workflows_response_endpoint,
 )
 from runtime.executor import GraphStreamCallback
 from runtime.run import WorkflowTimeoutError
@@ -59,6 +59,7 @@ async def _publish_and_wait(
     execution_timeout_s: float | None,
     stream_callback: Callable[[str], None] | None,
     format: FormatProcess = "dict",
+    role_id: str,
 ) -> WorkflowOutputs:
     slot = await _slot_allocator.acquire()
     sub: ZmqSubscriber | None = None
@@ -125,6 +126,7 @@ async def _publish_and_wait(
             ),
             format=format,
             response_endpoint=RESPONSE_ENDPOINTS[slot],
+            role_id=role_id,
         )
 
         try:
@@ -148,7 +150,6 @@ async def _publish_and_wait(
         await _slot_allocator.release()
 
 
-
 async def run_agent_workflow(
     initial_inputs: WorkflowInputs | None = None,
     unit_param_overrides: WorkflowInputs | None = None,
@@ -156,6 +157,7 @@ async def run_agent_workflow(
     stream_callback: GraphStreamCallback| None = None,
     *,
     workflow_path: str | Path | None = None,
+    role_id: str,
 ) -> AgentWorkflowResponse:
     print(
         "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
@@ -181,6 +183,7 @@ async def run_agent_workflow(
         execution_timeout_s=execution_timeout_s,
         stream_callback=stream_callback,
         format="dict",
+        role_id=role_id,
     )
 
     return merge_response_from_workflow_outputs(outputs)

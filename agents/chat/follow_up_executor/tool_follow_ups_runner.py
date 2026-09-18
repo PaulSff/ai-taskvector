@@ -13,6 +13,7 @@ from agents.chat.context.follow_up_context import (
 from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.registry import get_follow_up_runner
 from agents.tools.types import LanguageHintGetter, ParserOutput
+from runtime.tools_bootstrap import ensure_all_tools_registration
 
 from .tool_controller import follow_up_tool_enabled
 
@@ -24,6 +25,8 @@ async def run_role_ordered_follow_ups(
     hint: LanguageHintGetter,
     acc: WDFollowUpAcc,
 ) -> None:
+    # ensure the tools are registered for the role_id
+    ensure_all_tools_registration(role_id=ctx.agent_role_id)
     # the ordered tools come either from the follow-up context or tools catalog
     ordered_tools = (
         getattr(ctx, "ordered_follow_up_tools", None)

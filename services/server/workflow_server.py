@@ -146,6 +146,7 @@ def _run_job_in_subprocess(
     response_endpoint: str | None,
     execution_timeout_s: float | None,
     keep_alive: bool,
+    role_id: str | None = None,
 ) -> WorkflowOutputs:
     """
     Execute one workflow inside the spawned subprocess.
@@ -177,6 +178,7 @@ def _run_job_in_subprocess(
             execution_timeout_s=execution_timeout_s,
             keep_alive=keep_alive,
             run_id=run_id,
+            role_id=role_id,
             zmq_publisher=zmq_publisher,
             control_queue=control_queue,
         )
@@ -191,6 +193,7 @@ def _run_job_in_subprocess(
         execution_timeout_s=execution_timeout_s,
         keep_alive=keep_alive,
         run_id=run_id,
+        role_id=role_id,
         zmq_publisher=zmq_publisher,
         control_queue=control_queue,
     )
@@ -209,6 +212,7 @@ def _proc_entrypoint(
     response_endpoint: str | None,
     execution_timeout_s: float | None,
     keep_alive: bool,
+    role_id: str | None = None,
 ) -> None:
     try:
         outputs = _run_job_in_subprocess(
@@ -223,6 +227,7 @@ def _proc_entrypoint(
             response_endpoint=response_endpoint,
             execution_timeout_s=execution_timeout_s,
             keep_alive=keep_alive,
+            role_id=role_id,
         )
 
         q.put(
@@ -351,6 +356,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             format_hint = payload.get("format")
             response_endpoint = payload.get("response_endpoint")
             keep_alive = payload.get("keep_alive", False)
+            role_id = payload.get("role_id")
 
             if not isinstance(run_id, str) or not run_id:
                 logger.error(
@@ -400,6 +406,13 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             ):
                 logger.error(
                     "Invalid job payload (response_endpoint must be a string): %r",
+                    payload,
+                )
+                return
+
+            if role_id is not None and not isinstance(role_id, str):
+                logger.error(
+                    "Invalid job payload (role_id must be a string): %r",
                     payload,
                 )
                 return
@@ -488,6 +501,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     "response_endpoint": response_endpoint,
                     "execution_timeout_s": execution_timeout_s,
                     "keep_alive": keep_alive,
+                    "role_id": role_id,
                 },
                 daemon=True,
             )

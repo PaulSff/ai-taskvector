@@ -583,6 +583,7 @@ async def run_execution_follow_up_chain_async(
                 follow_up_overrides,
                 None,
                 _run_token=ctx.token,
+                role_id=ctx.agent_role_id,
             )
         else:
             response = await runner(
@@ -592,6 +593,7 @@ async def run_execution_follow_up_chain_async(
                 None,
                 _run_token=ctx.token,
                 workflow_path=ctx.agent_workflow_path,
+                role_id=ctx.agent_role_id,
             )
 
         # update the action context with new actions
@@ -826,6 +828,7 @@ async def run_post_execution_follow_up_chain_async(
                     None,
                     _run_token=ctx.token,
                     workflow_path=ctx.agent_workflow_path,
+                    role_id=ctx.agent_role_id,
                 )
                 # invoke the callback to reconcile the graph
                 if ctx.on_workflow_response is not None:

@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from agents.chat.agent_workflow import run_agent_workflow
+from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
 from agents.chat.handlers.prompt_delegate_tool_visibility import (
     merge_prompt_llm_strip_delegate_when_auto,
 )
 from agents.roles import RL_COACH_ROLE_ID
 from agents.roles.workflow_path import get_role_chat_workflow_path
-from core.schemas.primitives import Data, WorkflowInputs
 from config.settings import (
     REPO_ROOT,
     get_best_model_path,
@@ -24,6 +23,7 @@ from config.settings import (
     get_role_rag_top_k,
     get_training_config_path,
 )
+from core.schemas.primitives import Data, WorkflowInputs
 from runtime.executor import GraphStreamCallback
 
 RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID)
@@ -146,7 +146,7 @@ async def run_rl_coach_workflow(
     unit_param_overrides: WorkflowInputs | None = None,
     execution_timeout_s: float | None = DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S,
     stream_callback: GraphStreamCallback| None = None,
-) -> WorkflowInputs:
+) -> AgentWorkflowResponse:
     """
     Run rl_coach_workflow.json via run_agent_workflow (merge_response.data shape).
 
@@ -159,4 +159,5 @@ async def run_rl_coach_workflow(
         execution_timeout_s=execution_timeout_s,
         stream_callback=stream_callback,
         workflow_path=RL_COACH_WORKFLOW_PATH,
+        role_id=RL_COACH_ROLE_ID,
     )

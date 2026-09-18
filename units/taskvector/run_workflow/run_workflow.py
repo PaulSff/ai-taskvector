@@ -67,6 +67,14 @@ RUN_WORKFLOW_OUTPUT_PORTS = [
 DEFAULT_EXECUTION_TIMEOUT_S = 120.0
 AWAIT_EXECUTION_EXPIRED_TIMEOUT_S = 6.0
 
+def _get_payload_role_id(payload: JsonObject) -> str | None:
+    role_id_value = payload.get("role_id")
+
+    if not isinstance(role_id_value, str):
+        return None
+
+    role_id = role_id_value.strip()
+    return role_id or None
 
 def _build_initial_inputs(
     graph: ProcessGraph,
@@ -162,6 +170,7 @@ async def _publish_and_wait_zmq(
     format: str | None,
     publish_config: ZmqPublishConfig,
     subscription_config: ZmqSubscriptionConfig,
+    role_id: str | None = None,
 ) -> WorkflowOutputs:
     run_id = uuid.uuid4().hex
 
@@ -255,6 +264,7 @@ async def _publish_and_wait_zmq(
             response_endpoint=publish_config.response_endpoint,
             update_endpoint=publish_config.update_endpoint,
             execution_timeout_s=execution_timeout_s,
+            role_id=role_id,
         )
 
         start = time.monotonic()
@@ -358,6 +368,13 @@ def _run_workflow_step(
         return {"data": {}, "error": ""}, state
 
     payload = payload_value
+
+    role_id_value = payload.get("role_id")
+    role_id = (
+        role_id_value.strip()
+        if isinstance(role_id_value, str) and role_id_value.strip()
+        else None
+    )
 
     stream_value = params.get("_stream_callback")
 
@@ -501,17 +518,12 @@ def _run_workflow_step(
                         else None
                     ),
                     initial_inputs=initial_inputs,
-                    unit_param_overrides=(
-                        unit_param_overrides
-                    ),
-                    stream_cb=(
-                        stream_callback
-                        if callable(stream_callback)
-                        else None
-                    ),
+                    unit_param_overrides=unit_param_overrides,
+                    stream_cb=stream_callback,
                     format=output_format,
                     publish_config=publish_config,
                     subscription_config=subscription_config,
+                    role_id=role_id,
                 )
 
             background_loop = _get_background_loop(params)
@@ -546,14 +558,11 @@ def _run_workflow_step(
                 unit_param_overrides=unit_param_overrides,
                 format=output_format,
                 execution_timeout_s=execution_timeout_s,
-                stream_callback=(
-                    stream_callback
-                    if callable(stream_callback)
-                    else None
-                ),
+                stream_callback=stream_callback,
                 run_id=None,
                 zmq_publisher=None,
                 send_job_message=False,
+                role_id=role_id,
             )
 
         return {

@@ -8,6 +8,8 @@ registry blurbs). Used to avoid depending on core.schemas or core.graph.
 
 from __future__ import annotations
 
+from config.settings import UNITS_LIBRARY_WORKFLOW_PATH
+from core.normalizer.runtime_detector import GraphInput
 from core.schemas.primitives import (
     Data,
     JsonObject,
@@ -16,7 +18,6 @@ from core.schemas.primitives import (
     is_json_object,
     require_json_object_from_object,
 )
-from config.settings import UNITS_LIBRARY_WORKFLOW_PATH
 
 
 def _parse_units_library_text(
@@ -108,7 +109,7 @@ def get_units_library_type_lists(
 
 
 def get_add_node_type_lists(
-    graph_summary_dict: Data,
+    graph_summary_dict: GraphInput,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Unit/pipeline types for the Add Node dialog: all environments, runtime-filtered.

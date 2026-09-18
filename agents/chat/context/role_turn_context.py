@@ -70,7 +70,6 @@ class RoleChatTurnContext:
     # Workflow graph recent changes summary (difference)
     recent_changes: str | None
     training_config_path: str | None
-    dispatcher_workflow_path: str | None
 
     apply_from_agent: Callable[[ProcessGraph], None] | None
     set_graph: Callable[[ProcessGraph], None]
@@ -197,11 +196,6 @@ class RoleChatTurnContext:
             "training_config_path",
         )
 
-        dispatcher_workflow_path = cls._optional_string(
-            context,
-            "dispatcher_workflow_path",
-        )
-
         recent_changes = cls._optional_string(
             context,
             "recent_changes",
@@ -250,7 +244,6 @@ class RoleChatTurnContext:
             ),
             recent_changes=recent_changes,
             training_config_path=training_config_path,
-            dispatcher_workflow_path=dispatcher_workflow_path,
             apply_from_agent=apply_from_agent,
             set_graph=cls._require_callable(
                 context,

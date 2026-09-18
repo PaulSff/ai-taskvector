@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -503,24 +504,25 @@ def list_llm_providers() -> list[str]:
     return sorted(set(out))
 
 
-def get_llm_provider(
-    *,
-    agent: str,
-) -> str:
-    """
-    Return the selected LLM provider adapter name for an agent profile.
+def _non_empty(value: object) -> object | None:
+    """Return None for missing or empty-string values."""
+    if value is None:
+        return None
 
-    The provider is discovered from the workflow-unit overrides. If no
-    provider is configured, ``DEFAULT_LLM_PROVIDER`` is returned.
-    """
-    config = get_llm_provider_config(agent=agent)
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
 
-    provider = config.get("provider")
+    return value
 
-    if isinstance(provider, str) and provider.strip():
-        return provider.strip().lower()
 
-    return DEFAULT_LLM_PROVIDER
+def _non_empty_string(value: object) -> str | None:
+    value = _non_empty(value)
+
+    if isinstance(value, str):
+        return value
+
+    return None
 
 
 def get_llm_provider_config(
@@ -528,55 +530,100 @@ def get_llm_provider_config(
     agent: str,
 ) -> Data:
     """
-    Return LLM configuration discovered from the role's workflow-unit
-    parameter overrides.
+    Return LLM configuration discovered from workflow-unit overrides.
 
-    The function discovers:
+    The first non-empty value found for each supported field wins. Workflow
+    units are inspected in the order provided by ``chat.overrides``.
 
+    Supported fields are:
+
+    - ``provider``
     - ``model_name``
     - ``host``
     - ``api_key``
+    - ``options``
 
-    If no API key is found in the workflow-unit overrides, the general
-    ``ollama_api_key`` setting is used as a fallback.
+    The general Ollama API key is used when no workflow-unit override
+    provides an API key.
     """
     from agents.roles.registry import get_role
-    role = get_role(agent.strip())
-    data = load_settings()
+
+    role = get_role(agent)
+    settings = load_settings()
 
     overrides = role.chat_overrides or {}
-
     result: Data = {}
 
-    for unit_params in overrides.values():
-        if not isinstance(unit_params, dict):
-            continue
+    if isinstance(overrides, Mapping):
+        for unit_params in overrides.values():
+            if not isinstance(unit_params, Mapping):
+                continue
 
-        if "model" not in result:
-            model_name = unit_params.get("model_name")
+            if "provider" not in result:
+                provider = _non_empty_string(
+                    unit_params.get("provider")
+                )
 
-            if model_name not in (None, ""):
-                result["model"] = model_name
+                if provider is not None:
+                    result["provider"] = provider.lower()
 
-        if "host" not in result:
-            host = unit_params.get("host")
+            if "model_name" not in result:
+                model_name = _non_empty(
+                    unit_params.get("model_name")
+                )
 
-            if host not in (None, ""):
-                result["host"] = host
+                if model_name is not None:
+                    result["model_name"] = model_name
 
-        if "api_key" not in result:
-            api_key = unit_params.get("api_key")
+            if "host" not in result:
+                host = _non_empty(
+                    unit_params.get("host")
+                )
 
-            if api_key not in (None, ""):
-                result["api_key"] = api_key
+                if host is not None:
+                    result["host"] = host
+
+            if "api_key" not in result:
+                api_key = _non_empty(
+                    unit_params.get("api_key")
+                )
+
+                if api_key is not None:
+                    result["api_key"] = api_key
+
+            if "options" not in result:
+                options = unit_params.get("options")
+
+                if isinstance(options, Mapping):
+                    result["options"] = dict(options)
 
     if "api_key" not in result:
-        api_key = data.get(KEY_OLLAMA_API_KEY)
+        api_key = _non_empty(
+            settings.get(KEY_OLLAMA_API_KEY)
+        )
 
-        if api_key not in (None, ""):
+        if api_key is not None:
             result["api_key"] = api_key
 
     return result
+
+
+def get_llm_provider(
+    *,
+    agent: str,
+) -> str:
+    """
+    Return the selected LLM provider for an agent.
+
+    The provider is discovered from the role's workflow-unit overrides.
+    ``DEFAULT_LLM_PROVIDER`` is returned when none is configured.
+    """
+    provider = get_llm_provider_config(agent=agent).get("provider")
+
+    if isinstance(provider, str) and provider:
+        return provider
+
+    return DEFAULT_LLM_PROVIDER
 
 
 def get_chat_history_dir() -> Path:

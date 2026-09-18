@@ -313,6 +313,7 @@ async def run_orchestrator_turn(
         state=state,
         token=token,
         recent_changes=recent_changes,
+        role_id=role_id,
     )
 
     _publish_in_progress = make_publish_in_progress(

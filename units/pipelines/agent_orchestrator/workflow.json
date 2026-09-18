@@ -20,7 +20,8 @@
             "all": [{ "field": "auto_delegation_is_allowed", "equals": true }],
             "parser_output": {
               "run_workflow": {
-                "path": "{dispatcher_workflow_path}",
+                "path": "role.dispatcher.chat.workflow",
+                "role_id": "role.dispatcher.id",
                 "initial_inputs": {
                   "inject_msg": {
                     "data": { "user_message": "{user_message}" }

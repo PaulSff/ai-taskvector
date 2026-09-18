@@ -44,6 +44,7 @@ class TurnRuntimeProxy:
         stream_callback: GraphStreamCallback | None,
         stream_buffer_ref: list[str],
         state: ChatSessionState,
+        role_id: str,
         token: int = 0,
         recent_changes: str | None = None,
         apply_from_agent: Callable[[ProcessGraph], None] | None = None,
@@ -52,6 +53,7 @@ class TurnRuntimeProxy:
         self._stream_cb = stream_callback
         self.stream_buffer_ref = stream_buffer_ref
         self._state = state
+        self._role_id = role_id
         self._token = token
         self._recent_changes = recent_changes
         self._apply_from_agent = apply_from_agent
@@ -119,6 +121,7 @@ class TurnRuntimeProxy:
         *,
         _run_token: object | None = None,
         workflow_path: str | Path | None = None,
+        role_id: str,
     ) -> AgentWorkflowResponse:
         del _run_token
 
@@ -128,4 +131,5 @@ class TurnRuntimeProxy:
             execution_timeout_s,
             stream_callback=self._stream_cb,
             workflow_path=workflow_path,
+            role_id=role_id,
         )

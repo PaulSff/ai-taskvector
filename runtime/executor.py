@@ -70,7 +70,8 @@ type GraphUpdateCallback = Callable[
     None,
 ]
 type GraphStreamCallback = Callable[[str], None]
-
+type BackgroundCoro = Coroutine[object, object, tuple[list[float], dict[str, object]]]
+type ObservationInfo = tuple[list[float], dict[str, object]]
 
 class GraphExecutor:
     """
@@ -343,8 +344,8 @@ class GraphExecutor:
 
     def _run_coro(
         self,
-        coro: Coroutine[object, object, tuple[list[float], dict[str, object]]],
-    ) -> tuple[list[float], dict[str, object]]:
+        coro: BackgroundCoro,
+    ) -> ObservationInfo:
         loop = self._loop
 
         if loop.is_closed():
@@ -974,7 +975,7 @@ class GraphExecutor:
         initial_inputs: dict[str, dict[str, object]] | None = None,
         stream_callback: GraphStreamCallback | None = None,
         state: dict[str, dict[str, object]] | None = None,
-    ) -> tuple[list[float], dict[str, object]]:
+    ) -> ObservationInfo:
 
         """
         Async version of step: runs the entire topological execution on the shared loop.
@@ -1064,7 +1065,7 @@ class GraphExecutor:
         initial_inputs: dict[str, dict[str, object]] | None = None,
         stream_callback: GraphStreamCallback | None = None,
         state: dict[str, dict[str, object]] | None = None,
-    ) -> tuple[list[float], dict[str, object]]:
+    ) -> ObservationInfo:
         """
         Execute one step. Returns (observation, info).
 
@@ -1087,7 +1088,7 @@ class GraphExecutor:
     def reset(
         self,
         initial_state: dict[str, dict[str, object]] | None = None,
-    ) -> tuple[list[float], dict[str, object]]:
+    ) -> ObservationInfo:
         """Reset all unit states and run one step with valves closed (idle)."""
         self._state = dict(initial_state or {})
         self._outputs = {}

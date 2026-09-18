@@ -43,6 +43,7 @@ class ExecutionFollowUpContext:
     state: ChatSessionState
     token: int
     turn_id: str
+    agent_role_id: str
     agent_label: str
     follow_up_contexts: list[str]
     max_rounds: int
@@ -72,10 +73,6 @@ class ExecutionFollowUpContext:
 
     # Agent role workflow response dictionary for the current follow-up round.
     follow_up_source_response: AgentWorkflowResponse | None = None
-
-    # agents.roles ID, such as "workflow_designer".
-    # Used for RAG follow-ups, not only for the UI label.
-    agent_role_id: str | None = None
 
     # When set, run_agent_workflow uses this JSON instead of
     # the Workflow Designer default.

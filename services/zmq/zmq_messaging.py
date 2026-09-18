@@ -105,6 +105,7 @@ class ZmqPublisher:
         update_endpoint: str | None = None,
         execution_timeout_s: float | None = None,
         keep_alive: bool = False,
+        role_id: str | None = None,
     ) -> None:
         if (workflow_path is None) == (workflow_graph is None):
             raise ValueError(
@@ -129,6 +130,7 @@ class ZmqPublisher:
                 "response_endpoint": response_endpoint,
                 "update_endpoint": update_endpoint,
                 "execution_timeout_s": execution_timeout_s,
+                "role_id": role_id,
                 "ts": time.time(),
             },
         )
