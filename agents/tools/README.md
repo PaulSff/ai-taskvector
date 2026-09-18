@@ -1,40 +1,41 @@
-# agent tools (`agents/tools/`)
+# TaskVector Tool Development Guide
 
-**Tools** are shared follow-up implementations (RAG, file reads, search, …) that any role can enable by listing stable string IDs in `role.yaml`. 
+This guide explains how to create and register new tools within the TaskVector framework. Tools are designed as modular components that can be registered into a global registry and triggered via specific action blocks.
 
-For the role side (YAML, chat wiring), see [roles/README.md](../roles/README.md).
+## Tool Structure
 
----
-
-## Creating a new tool (Agent follow-ups)
-
-Agent parser output is normalized to a dict of lists/flags (`gui/utils/workflow_output_normalizer.normalize_follow_up_parser_output`). Each **tool** consumes one slice of that dict, keyed by a stable **parser key** (see catalog below).
-
-### 1. Pick IDs and parser key
-
-- **`tool_id`**: short snake_case name used in `role.yaml` and the registry (`read_file`, `grep`, …).
-- **`parser_key`**: key on the normalized `parser_output` dict for that tool.
-
-For Agent, add a row to `ORDERED_WORKFLOW_DESIGNER_TOOLS` in `agents/tools/catalog.py`. **Order is the execution order** for `_run_role_ordered_follow_ups` in `agents/chat/parser_follow_up/chain.py`.
-
-Mirror the same order in `agents/roles/workflow_designer/role.yaml` under `tools:`.
-
-Run `python scripts/test_role_tools.py` after changing catalog or role tools so the two stay aligned.
-
-### 2. Implement the tool package
+Each tool should reside in its own directory under `agents/tools/<tool_name>/`. A standard tool implementation consists of the following files:
 
 Create a package directory:
 
 ```text
 /tools/list_dir -> 
 ├── __init__.py  # exports the follow-up runner (and helpers if needed)
+├── action_block.py # the tool action validation and its registration
 ├── follow_ups.py # follow-up prompt lines
 ├── list_dir_workflow.json
 ├── prompt.py # tool action prompt line
 └── tool.yaml # tool config
 ```
 
-### 2.1. Add the tool prompt lines
+### 1. `tool.yaml`
+Defines the tool's metadata and configuration.
+- `id`: Unique identifier for the tool.
+- `parser_keys`: A list of action strings that this tool is responsible for parsing.
+- `workflow`: (Optional) Path to a JSON workflow file associated with the tool.
+
+### 2. `action_block.py`
+This is where the tool's input validation and registration happen.
+- **Action Blocks**: Create Pydantic models that inherit from `agents.tools.types.ActionBlock`. Each model should define an `expected_action` (matching the keys in `tool.yaml`).
+- **Handlers**: Implement functions that process these blocks and append them to the `ParsedActions` object.
+- **Registration**: Call `register_tool()` from `agents.tools.registry` at the end of the file. This function links the tool ID, the follow-up execution function, the action block types, and their respective handlers.
+
+### 3. `follow_ups.py`
+Contains the core logic for the tool's execution. This is the function passed to `register_tool` as the `follow_up` handler. It manages the actual side effects or computations the tool performs.
+
+### 4. `prompt.py` (Optional)
+Contains tool-specific prompts or instructions used by the LLM to understand when and how to use the tool.
+
 - In the tool `prompt.py` create this module-level string
 `TOOL_ACTION_PROMPT_LINE`  - one bullet line descibing the JSON `action` the model emits to call the tool.
 
@@ -67,92 +68,14 @@ Register the type in `/agents/tools/types.py` as `FOLLOW_UP_EXTRA_<YOUR_TOOL>_FO
 Note: Placeholders are expanded at import by
 `agents.tools.prompt_lines.expand_tool_action_placeholders` (loads `prompt.py` by path to avoid import cycles).
 
-#### 2.1.1. Add the action line parser to the `process_agent` unit
-Locate the `units/canonical/process_agent/action_blocks.py` and add the parser into the`_parsed_blocks_to_action_blocks`, so the action appers under the top-level keys. Example of the output of the process_agent:
+## Implementation Example:
 
-```json
-{"edits": [], "calendar": {"action": "your_action_key", ...}
-```
+To implement a new action (e.g., `add_task`):
+1. **Define the Model**: In `action_block.py`, create a class `AddTaskActionBlock(ActionBlock)` with fields like `todo_list_id` and `text`.
+2. **Create the Handler**: Write a function that converts the block into a `GraphEdit` action.
+3. **Register**: Add the tool into a role prompts.py.
+4. **Update tool config**: tool.yaml
 
-### 2.2. Register the tool workflow path in the agent workflow runner
-navigate: `agents/chat/agent_workflow/paths.py` and add new tool path like this: `NEW_TOOL_WORKFLOW_PATH = get_tool_workflow_path("tool_id")`
+## Registry Flow
 
-### 2.3. Create the tool runner
-The follow-up runner should live in __init__.py as an **async** callable compatible with:
-
-```python
-async def run_<name>_follow_up(ctx, po, *, language_hint) -> FollowUpContribution
-```
-
-- **`ctx`**: narrow context object from the follow-up chain (e.g. `agent_label`, optional status callbacks). Agent sets **`follow_up_source_response`** on `ExecutionFollowUpContext` each round so tool runners can read fields outside normalized `parser_output` (e.g. **`grep_output`** for grep).
-- **`po`**: normalized parser output dict.
-- **`language_hint`**: zero-argument callable returning the session language string for prompt suffixes.
-
-Return `FollowUpContribution` from `agents/tools/types.py` (`context_chunks`, `any_empty_tool`, optional `extra`).
-
-Pass the `extra` flag in order to enable custom user_message: 
-```python
-return FollowUpContribution(
-        context_chunks=[chunk_ws],
-        any_empty_tool=False,
-        extra={FOLLOW_UP_EXTRA_YOUR_TOOL_FOLLOW_UP: True},
-    )
-```
-
-**Do not** import roles or `get_role` from tool code; roles list tool IDs only.
-
-### 3. Register the runner
-
-In `agents/tools/registry.py`, inside `_ensure_builtin_follow_up_tools`, import your runner and assign:
-
-```python
-TOOL_RUNNERS["<tool_id>"] = run_<name>_follow_up
-```
-
-Callers resolve implementations with `get_follow_up_runner("<tool_id>")`.
-
-### 4. Wire into the follow-up chain
-
-Register the runner in `agents/tools/registry.py`. The ordered loop in `agents/chat/parser_follow_up/chain.py` calls it when `parser_output` includes your parser key. Use `FollowUpContribution.extra` with `FOLLOW_UP_EXTRA_READ_CODE_IDS` / `FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES` from `agents/tools/types.py` only if the orchestrator must update `read_code_ids_for_msg` or `implementation_links_for_types`.
-
-Handle the extra user message in the follow up `chain.py`:
-
-- Define you type to the `WDFollowUpAcc`:
-
-```python
-your_tool_follow_up: bool = False
-```
-
-- Add condition into `_merge_follow_up_contribution_into_acc`
-```python
-if ex.get(FOLLOW_UP_EXTRA_YOUR_TOOL_FOLLOW_UP):
-        acc.your_tool_follow_up = True
-```
-
-- Wire into the `run_execution_follow_up_chain_async`: 
-```python
-calendar_follow_up = acc.your_tool_follow_up
-...
-elif calendar_follow_up:
-    follow_up_msg = YOUR_TOOL_FOLLOW_UP_USER_MESSAGE.format(
-        language=_hint(),
-        session_language=_hint(),
-    )
-...
-```
-
-### 5. Tests
-
-- `python scripts/test_role_tools.py` checks every `ORDERED_WORKFLOW_DESIGNER_TOOLS` id has a registered runner and that `workflow_designer/role.yaml` matches the catalog.
-- After adding a tool: update `catalog.py`, `role.yaml`, the new package, and `registry.py`, then run the script.
-
----
-
-## Quick reference (tools)
-
-| What | Where |
-|------|-------|
-| Agent tool order + parser keys | `agents/tools/catalog.py` |
-| Tool implementations | `agents/tools/<tool_id>/` |
-| Runner registry | `agents/tools/registry.py` |
-| WD follow-up orchestration | `agents/chat/parser_follow_up/` |
+`agents.tools.registry` -> `register_tool()` -> `action_id` to `(ActionBlock, Handler)` -> Used by the framework to parse LLM output into validated objects.
