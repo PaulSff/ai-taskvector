@@ -43,6 +43,7 @@ from agents.roles import (
     get_role,
     list_chat_dropdown_role_ids,
 )
+from agents.roles.registry import get_model_name
 from config.settings import (
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
@@ -700,12 +701,11 @@ def build_agents_chat_panel(
         role_config = get_role(profile)
 
         overrides = role_config.chat_overrides or {}
-        value = str(overrides.get("model_name") or "—")
+        value = get_model_name(overrides) or "—"
 
         model_label.value = value
         model_label_top.value = value
         safe_update(model_label, model_label_top)
-        # safe_page_update(page)
 
 
     _update_model_label()

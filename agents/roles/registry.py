@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -263,3 +264,26 @@ def list_chat_dropdown_role_ids() -> RoleIds:
             output.append(role_id)
 
     return tuple(output)
+
+
+def get_model_name(value: object) -> str | None:
+    if isinstance(value, Mapping):
+        model_name = value.get("model_name")
+
+        if isinstance(model_name, str) and model_name.strip():
+            return model_name.strip()
+
+        for nested_value in value.values():
+            result = get_model_name(nested_value)
+
+            if result is not None:
+                return result
+
+    elif isinstance(value, (list, tuple)):
+        for nested_value in value:
+            result = get_model_name(nested_value)
+
+            if result is not None:
+                return result
+
+    return None
