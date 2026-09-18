@@ -1380,7 +1380,7 @@ def _render_agent_content(
 
             async def _run() -> None:
                 try:
-                    await page.clipboard.set(_text)
+                    await ft.Clipboard().set(_text)
                     toast("Copied!")
                 except PermissionError:
                     pass
