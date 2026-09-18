@@ -17,7 +17,7 @@ llm:
     num_ctx: 128000
 chat:
   enabled: false
-  workflow: create_filename.json
+  workflow: agents/roles/create_filename.json
   overrides:
     llm_agent:
       provider: ollama

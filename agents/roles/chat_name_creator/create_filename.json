@@ -61,11 +61,7 @@
       "to_port": "1"
     }
   ],
-  "layout": {
-    "inject_user_message": { "x": 296.88, "y": 164.09 },
-    "llm_agent": { "x": 915.9, "y": 207.76 },
-    "prompt_llm": { "x": 640, "y": 60 }
-  },
+  "layout": {},
   "metadata": {
     "description": "Suggests a short snake_case filename from the user's first message. Used by Workflow Designer chat for new chat titles. Inject → Prompt → LLMAgent; run via run_create_filename_workflow()."
   },

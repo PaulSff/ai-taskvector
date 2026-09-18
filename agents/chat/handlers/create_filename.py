@@ -7,62 +7,20 @@ still comes from app settings.
 """
 from __future__ import annotations
 
-from core.schemas.primitives import Data, WorkflowInputs
-from config.settings import (
-    get_create_filename_prompt_path,
-    get_create_filename_workflow_path,
-    get_workflow_designer_llm_generation_options,
+from agents.chat.agent_workflow.build_units_param_overrides import (
+    build_agent_workflow_unit_param_overrides,
 )
+from agents.chat.agent_workflow.paths import DEFAULT_EXECUTION_TIMEOUT_S
+from config.settings import (
+    get_create_filename_workflow_path,
+)
+from core.schemas.primitives import WorkflowInputs
 from runtime.run import run_workflow
-
-
-def _required_config_string(
-    cfg: Data,
-    key: str,
-) -> str:
-    try:
-        value = getattr(cfg, key)
-    except AttributeError as exc:
-        raise ValueError(f"Unknown configuration value: {key}") from exc
-
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"Missing or invalid configuration value: {key}")
-
-    return value.strip()
-
-
-def build_create_filename_unit_param_overrides(
-    provider: str,
-    cfg: Data,
-) -> WorkflowInputs:
-    """Build parameter overrides for the create_filename workflow."""
-    model_name = _required_config_string(cfg, "model")
-    host = _required_config_string(cfg, "host")
-
-    provider_name = provider.strip()
-    if not provider_name:
-        raise ValueError("Provider cannot be empty")
-
-    return {
-        "llm_agent": {
-            "model_name": model_name,
-            "provider": provider_name,
-            "host": host,
-            "options": dict(
-                get_workflow_designer_llm_generation_options()
-            ),
-        },
-        "prompt_llm": {
-            "template_path": str(get_create_filename_prompt_path()),
-        },
-    }
 
 
 def run_create_filename_workflow(
     first_message: str,
-    provider: str,
-    cfg: Data | None,
-    execution_timeout_s: float = 60.0,
+    role_id: str,
 ) -> str:
     """
     Run the create_filename workflow to suggest a short snake_case filename.
@@ -70,8 +28,6 @@ def run_create_filename_workflow(
     Returns raw model output; the caller should slugify it.
     Returns an empty string on error or when no role configuration is provided.
     """
-    if cfg is None:
-        return ""
 
     initial_inputs: WorkflowInputs = {
         "inject_user_message": {
@@ -89,13 +45,13 @@ def run_create_filename_workflow(
             get_create_filename_workflow_path(),
             initial_inputs=initial_inputs,
             unit_param_overrides=(
-                build_create_filename_unit_param_overrides(
-                    provider=provider,
-                    cfg=cfg,
+                build_agent_workflow_unit_param_overrides(
+                    role_id=role_id,
                 )
             ),
             format="dict",
-            execution_timeout_s=execution_timeout_s,
+            execution_timeout_s=DEFAULT_EXECUTION_TIMEOUT_S,
+            role_id=role_id,
         )
 
         llm_agent = outputs.get("llm_agent")
@@ -105,5 +61,9 @@ def run_create_filename_workflow(
         action = llm_agent.get("action")
         return action.strip() if isinstance(action, str) else ""
 
-    except (OSError, ValueError, RuntimeError, TypeError):
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        print(
+                    f"run_create_filename_workflow failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
         return ""

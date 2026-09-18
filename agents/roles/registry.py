@@ -20,6 +20,7 @@ def roles_definitions_dir() -> Path:
 
 
 # Stable role ids.
+CHAT_NAME_CREATOR_ROLE_ID = "chat_name_creator"
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
 ANALYST_ROLE_ID = "analyst"

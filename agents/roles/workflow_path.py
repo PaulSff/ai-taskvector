@@ -8,7 +8,7 @@ from agents.roles.registry import (
     get_role,
 )
 
-CHAT_NAME_CREATOR_ROLE_ID = "chat_name_creator"
+from .registry import CHAT_NAME_CREATOR_ROLE_ID
 
 _ROLES_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _ROLES_ROOT.parent.parent

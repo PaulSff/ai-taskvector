@@ -51,8 +51,7 @@ from agents.chat.utils.workflow_run_utils import (
 )
 from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
-from agents.roles.registry import DISPATCHER_ROLE_ID
-from agents.roles.workflow_path import get_role_chat_workflow_path
+from agents.roles.registry import CHAT_NAME_CREATOR_ROLE_ID
 from config.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegation_is_allowed,
@@ -129,16 +128,10 @@ def _schedule_name_from_first_message_async(
     async def _run() -> None:
         base = ""
         try:
-            # get provider and provider's config for the the role_id chat_name_creator
-            provider = get_llm_provider(agent="chat_name_creator")
-            cfg = get_llm_provider_config(agent="chat_name_creator") or {}
-
             resp = await asyncio.to_thread(
                 run_create_filename_workflow,
                 first_message,
-                provider,
-                cfg,
-                60.0,
+                CHAT_NAME_CREATOR_ROLE_ID,
             )
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
 

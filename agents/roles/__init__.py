@@ -5,6 +5,7 @@ from __future__ import annotations
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
     CHAT_MAIN_AGENT_ROLE_IDS,
+    CHAT_NAME_CREATOR_ROLE_ID,
     CODER_ROLE_ID,
     DEMIURGE_ROLE_ID,
     PLANNER_ROLE_ID,
@@ -20,7 +21,6 @@ from agents.roles.registry import (
 )
 from agents.roles.types import RoleConfig, parse_role_config
 from agents.roles.workflow_path import (
-    CHAT_NAME_CREATOR_ROLE_ID,
     get_role_chat_workflow_path,
 )
 
