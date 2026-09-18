@@ -72,9 +72,9 @@ _PLANNER_SECTION_OUTPUT_FORMAT_RAW = """Output format
 End your reply with a valid JSON block inside ```json ... ``` with one object or an array of objects:
 
 Actions:
+{tool:todo_manager}
 {tool:add_comment}
 {tool:read_current_workflow}
-{tool:todo_manager}
 {tool:no_action}
 
 No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""

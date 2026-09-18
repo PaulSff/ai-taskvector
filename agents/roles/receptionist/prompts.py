@@ -77,14 +77,14 @@ _RECEPTIONIST_SECTION_OUTPUT_FORMAT_RAW = """Output format
 End your reply with a valid JSON block inside ```json ... ``` with one object or an array of objects:
 
 Extra actions:
-{tool:rag_search}
+{tool:grep}
 {tool:read_file}
 {tool:list_dir}
+{tool:read_current_workflow}
+{tool:rag_search}
 {tool:web_search}
 {tool:browse}
 {tool:github}
-{tool:read_current_workflow}
-{tool:grep}
 {tool:report}
 {tool:add_comment}
 {tool:todo_manager}
