@@ -1,3 +1,29 @@
+"""
+Smoke the action block with the following:
+
+python - <<'PY'
+from pydantic import ValidationError
+
+# Importing this module registers the tool via register_rag_search_tool()
+from agents.tools.rag_search.action_block import SearchActionBlock
+
+payload = {
+    "action": "search",
+    "query": "cable documentation",
+    "max_results": "10",
+}
+
+try:
+    block = SearchActionBlock.model_validate(payload)
+    print("VALID")
+    print(block.model_dump())
+except ValidationError as exc:
+    print("INVALID")
+    for error in exc.errors(include_url=False):
+        print(error)
+PY
+
+"""
 from __future__ import annotations
 
 from typing import Literal
@@ -57,9 +83,9 @@ def handle_search(
     )
 
 
-def register_search_tool() -> None:
+def register_rag_search_tool() -> None:
     register_tool(
-        "search",
+        "rag_search",
         run_rag_search_follow_up,
         action_blocks={
             "search": SearchActionBlock,
@@ -70,4 +96,4 @@ def register_search_tool() -> None:
     )
 
 
-register_search_tool()
+register_rag_search_tool()

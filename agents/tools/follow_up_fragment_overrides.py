@@ -51,15 +51,23 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "agents.tools.run_workflow.follow_ups",
         "RUN_WORKFLOW_FOLLOW_UP_SUFFIX",
     ),
-    ("grep_follow_up_prefix", "agents.tools.grep.follow_ups", "GREP_FOLLOW_UP_PREFIX"),
-    ("grep_follow_up_suffix", "agents.tools.grep.follow_ups", "GREP_FOLLOW_UP_SUFFIX"),
     (
-        "rag_follow_up_prefix",
+        "grep_follow_up_prefix",
+        "agents.tools.grep.follow_ups",
+        "GREP_FOLLOW_UP_PREFIX"
+    ),
+    (
+        "grep_follow_up_suffix",
+        "agents.tools.grep.follow_ups",
+        "GREP_FOLLOW_UP_SUFFIX"
+    ),
+    (
+        "rag_search_follow_up_prefix",
         "agents.tools.rag_search.follow_ups",
         "RAG_SEARCH_FOLLOW_UP_PREFIX",
     ),
     (
-        "rag_follow_up_suffix",
+        "rag_search_follow_up_suffix",
         "agents.tools.rag_search.follow_ups",
         "RAG_SEARCH_FOLLOW_UP_SUFFIX",
     ),
