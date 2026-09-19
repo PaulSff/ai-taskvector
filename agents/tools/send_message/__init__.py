@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
@@ -25,6 +24,7 @@ from agents.tools.types import (
     LanguageHintGetter,
     ParserOutput,
 )
+from core.schemas.primitives import WorkflowInputs
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -46,9 +46,12 @@ def _format_workflow_error(errs: object) -> str:
     if not errs:
         return "unknown workflow error"
 
+    if isinstance(errs, str):
+        return errs[:120]
+
     try:
         first_error = errs[0]  # type: ignore[index]
-    except (IndexError, TypeError):
+    except (IndexError, TypeError, KeyError):
         return str(errs)[:120]
 
     if isinstance(first_error, (tuple, list)) and len(first_error) > 1:
@@ -158,9 +161,9 @@ async def run_send_message_follow_up(
             payload = _normalize_send_message_action(raw_action)
 
             # Each message is intentionally executed in its own workflow run.
-            initial_inputs: dict[str, Any] = {
+            initial_inputs: WorkflowInputs = {
                 "inject_send_message": {
-                    "edits": [payload],
+                    "template": payload,
                 }
             }
 
