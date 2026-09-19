@@ -17,12 +17,15 @@ class DelegateRequestParserOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["delegate_request"]
-    delegate_to: str
-    message: str
+    delegate_to: str | None = None
+    message: str | None = None
 
     @field_validator("delegate_to", "message")
     @classmethod
-    def validate_non_empty(cls, value: str) -> str:
+    def validate_optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         value = value.strip()
 
         if not value:
@@ -36,12 +39,17 @@ class DelegateRequestActionBlock(
 ):
     """Delegate the current request to another role."""
 
-    delegate_to: str
-    message: str
+    model_config = ConfigDict(extra="forbid")
+
+    delegate_to: str | None = None
+    message: str | None = None
 
     @field_validator("delegate_to", "message")
     @classmethod
-    def validate_non_empty(cls, value: str) -> str:
+    def validate_optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         value = value.strip()
 
         if not value:
@@ -63,6 +71,7 @@ def handle_delegate_request(
         "delegate_request",
         block.as_json_object(),
     )
+
 
 def register_delegate_request_tool() -> None:
     register_tool(
