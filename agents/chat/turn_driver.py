@@ -51,7 +51,7 @@ from agents.chat.utils.workflow_run_utils import (
 )
 from agents.chat.zmq_jobs_client import publish_job_and_wait
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
-from agents.roles.registry import CHAT_NAME_CREATOR_ROLE_ID
+from agents.roles.registry import ANALYST_ROLE_ID, CHAT_NAME_CREATOR_ROLE_ID
 from config.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegation_is_allowed,
@@ -315,7 +315,7 @@ async def handle_turn(
     *,
     planning_mode: bool = False,
     graph_dict: ProcessGraph | None = None,
-    role_id: str | None = None,
+    role_id: str | None = ANALYST_ROLE_ID,
     recent_changes: str | None = None,
     pre_built_user_msg: Data | None = None,
     on_rename: Callable[[Path], None] | None = None,
