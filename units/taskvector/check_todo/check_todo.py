@@ -93,6 +93,7 @@ from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph
 from core.schemas import ProcessGraph
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 CHECK_TODO_INPUT_PORTS = [
@@ -131,11 +132,11 @@ def _to_jsonable(value: Any) -> Any:
 
 
 def _check_todo_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     del params, dt
 
     action_input = inputs.get("check_todo")
