@@ -4,8 +4,10 @@ rag_search follow-up: inject RAG context for the parser query.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Mapping
-from typing import Any
+from uuid import uuid4
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
@@ -25,7 +27,9 @@ from agents.tools.types import (
     LanguageHintGetter,
     ParserOutput,
 )
-from core.schemas.primitives import WorkflowInputs
+from core.schemas.primitives import JsonObject, WorkflowInputs
+
+logger = logging.getLogger(__name__)
 
 EXECUTION_TIMEOUT_S: float = 120.0
 
@@ -72,11 +76,8 @@ def _extract_result(output: object) -> tuple[str, str]:
     raw_data = output.get("data")
     raw_error = output.get("error")
 
-    data = ""
+    data = str(raw_data).strip() if raw_data is not None else ""
     error = ""
-
-    if raw_data is not None:
-        data = str(raw_data).strip()
 
     if isinstance(raw_error, Mapping):
         if "error" in raw_error:
@@ -90,20 +91,23 @@ def _extract_result(output: object) -> tuple[str, str]:
     return data, error
 
 
-def _build_unit_param_overrides(ctx: ExecutionFollowUpContext) -> dict[str, Any]:
+def _build_unit_param_overrides(
+    ctx: ExecutionFollowUpContext,
+) -> WorkflowInputs:
     agent_for_rag = (
         getattr(ctx, "agent_role_id", None)
         or WORKFLOW_DESIGNER_ROLE_ID
     )
 
     role_config = get_role(agent_for_rag)
-    rag_params: dict[str, Any] = (
+
+    rag_params: JsonObject = (
         getattr(role_config, "extra", None) or {}
     ).get("rag", {}) or {}
 
-    unit_param_overrides: dict[str, Any] = {}
+    unit_param_overrides: WorkflowInputs = {}
 
-    rag_search_override: dict[str, Any] = {}
+    rag_search_override: JsonObject = {}
 
     top_k = rag_params.get("top_k")
     min_score = rag_params.get("min_score")
@@ -117,7 +121,7 @@ def _build_unit_param_overrides(ctx: ExecutionFollowUpContext) -> dict[str, Any]
     if rag_search_override:
         unit_param_overrides["rag_search"] = rag_search_override
 
-    format_rag_override: dict[str, Any] = {}
+    format_rag_override: JsonObject = {}
 
     format_max_chars = rag_params.get("format_max_chars")
     format_snippet_max = rag_params.get("format_snippet_max")
@@ -134,21 +138,88 @@ def _build_unit_param_overrides(ctx: ExecutionFollowUpContext) -> dict[str, Any]
     return unit_param_overrides
 
 
+
+def _is_current_run(ctx: ExecutionFollowUpContext) -> bool:
+    """
+    A failed or stale UI update must never break the search itself.
+
+    The context API may not provide is_current_run() in every test or
+    lightweight implementation, so absence is treated as current.
+    """
+    try:
+        is_current_run = getattr(ctx, "is_current_run", None)
+
+        if is_current_run is None:
+            return True
+
+        return bool(is_current_run(ctx.token))
+
+    except (AttributeError, TypeError):
+        return True
+
+
+async def _safe_toast(
+    ctx: ExecutionFollowUpContext,
+    message: str,
+) -> None:
+    """
+    Toast only for the active run.
+
+    This prevents an older concurrent search from displaying an error after
+    a newer search has already become the active run.
+    """
+    if not _is_current_run(ctx):
+        return
+
+    try:
+        await ctx.toast(message)
+    except (AttributeError, TypeError):
+        pass
+
+
+def _safe_set_status(
+    ctx: ExecutionFollowUpContext,
+    message: str,
+) -> None:
+    if not _is_current_run(ctx):
+        return
+
+    try:
+        ctx.set_inline_status(message)
+    except (AttributeError, TypeError):
+        pass
+
+
 async def run_rag_search_follow_up(
     ctx: ExecutionFollowUpContext,
     po: ParserOutput,
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
+    """
+    Run one independent RAG search.
+
+    This function is safe to invoke concurrently as long as
+    run_workflow_with_errors() does not store per-execution state globally.
+    """
     # Keep this import local to avoid the action-block/follow-up import cycle.
     from agents.tools.rag_search.action_block import SearchActionBlock
 
-    try:
-        ctx.set_inline_status("Searching the knowledge base…")
-    except (AttributeError, TypeError):
-        pass
+    operation_id = uuid4().hex[:10]
 
-    hint = language_hint
+    # Snapshot this once. Calling a mutable context-backed hint multiple times
+    # could otherwise produce mixed-language output.
+    language = language_hint()
+
+    logger.info(
+        "RAG search started operation_id=%s",
+        operation_id,
+    )
+
+    _safe_set_status(
+        ctx,
+        f"Searching the knowledge base… ({operation_id})",
+    )
 
     try:
         search_actions = po.actions.get_tool_actions("search")
@@ -167,25 +238,21 @@ async def run_rag_search_follow_up(
 
         raw_action = search_actions[0]
 
-        # Validate and normalize parser output using the authoritative schema.
         try:
             action = SearchActionBlock.model_validate(raw_action)
         except ValidationError as exc:
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid search action: "
-                        f"{str(exc)[:120]}"
-                    )
-            except (AttributeError, TypeError):
-                pass
-
+            await _safe_toast(
+                ctx,
+                f"Invalid search action: {str(exc)[:120]}",
+            )
             raise
 
         payload: JsonValue = TypeAdapter(JsonValue).validate_python(
             action.model_dump(mode="json")
         )
 
+        # This list is created per invocation and must not be reused across
+        # concurrent workflow executions.
         edits: JsonValue = [payload]
 
         initial_inputs: WorkflowInputs = {
@@ -194,23 +261,37 @@ async def run_rag_search_follow_up(
             }
         }
 
+        # Also created per invocation. The workflow runner must not mutate and
+        # retain this object after the call completes.
+        unit_param_overrides = _build_unit_param_overrides(ctx)
+
+        logger.info(
+            "RAG workflow starting operation_id=%s",
+            operation_id,
+        )
+
         out, errs = await run_workflow_with_errors(
             RAG_SEARCH_WORKFLOW_PATH,
             initial_inputs=initial_inputs,
-            unit_param_overrides=_build_unit_param_overrides(ctx),
+            unit_param_overrides=unit_param_overrides,
             format="dict",
             execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
 
+        logger.info(
+            "RAG workflow completed operation_id=%s errors=%d output_type=%s",
+            operation_id,
+            len(errs),
+            type(out).__name__,
+        )
 
         if errs:
             error_text = _format_workflow_error(errs)
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"RAG search error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+            await _safe_toast(
+                ctx,
+                f"RAG search error ({operation_id}): {error_text}",
+            )
 
         format_rag_output: object = {}
 
@@ -219,13 +300,18 @@ async def run_rag_search_follow_up(
 
         result_data, result_error = _extract_result(format_rag_output)
 
-        # Prefer an explicit error returned by the workflow.
+        # Preserve the existing behavior: an explicit workflow error wins over
+        # returned data.
         result = result_error or result_data
 
         if not result:
-            return _empty_rag_search_contribution(hint)
-
-        language = hint()
+            logger.info(
+                "RAG workflow returned no result operation_id=%s",
+                operation_id,
+            )
+            return _empty_rag_search_contribution(
+                lambda: language,
+            )
 
         chunk = (
             RAG_SEARCH_FOLLOW_UP_PREFIX
@@ -241,27 +327,51 @@ async def run_rag_search_follow_up(
             any_empty_tool=False,
         )
 
-    except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("RAG search operation timed out")
-        except (AttributeError, TypeError):
-            pass
+    except asyncio.CancelledError:
+        # Do not convert cancellation into an empty result. The caller needs
+        # cancellation to propagate so it can stop the underlying operation.
+        logger.info(
+            "RAG search cancelled operation_id=%s",
+            operation_id,
+        )
+        raise
 
-        return _empty_rag_search_contribution(hint)
+    except TimeoutError:
+        logger.warning(
+            "RAG search timed out operation_id=%s",
+            operation_id,
+        )
+
+        await _safe_toast(
+            ctx,
+            f"RAG search operation timed out ({operation_id})",
+        )
+
+        return _empty_rag_search_contribution(
+            lambda: language,
+        )
 
     except ValidationError:
         raise
 
-    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast(
-                    "RAG search workflow crashed: "
-                    f"{type(exc).__name__}: {str(exc)[:120]}"
-                )
-        except (AttributeError, TypeError):
-            pass
+    except (
+        AttributeError,
+        TypeError,
+        KeyError,
+        ValueError,
+        IndexError,
+    ) as exc:
+        logger.exception(
+            "RAG workflow crashed operation_id=%s error_type=%s",
+            operation_id,
+            type(exc).__name__,
+        )
+
+        await _safe_toast(
+            ctx,
+            "RAG search workflow crashed: "
+            f"{type(exc).__name__}: {str(exc)[:120]}",
+        )
 
         raise
 
