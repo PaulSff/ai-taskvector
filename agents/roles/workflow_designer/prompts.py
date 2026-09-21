@@ -177,14 +177,14 @@ AI model integration:
 RL model training pipeline integration:
 {ai_training_integration}
 Single edits:
-- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
-- remove_unit: { "action": "remove_unit", "unit_id": "..." }
-- set_params: Set or update params for an existing unit (unit must exist). { "action": "set_params", "id": "unit_id", "new_params": { ... } }
-- connect: { "action": "connect", "from": "unit_id", "to": "unit_id", "from_port": "port_index":, "to_port": "port_index" } (The ports are indexed from 0 to n-1, default is "0". Use the port index, e.g. "from_port": "0","to_port": "1")
-- disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" } (Optionally, use "from_port": "port_index":, "to_port": "port_index")
-- replace_unit (replace a unit with another one while maintaining its connections): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
+{tool:add_unit}
+{tool:remove_unit}
+{tool:set_params}
+{tool:connect}
+{tool:disconnect}
+{tool:replace_unit}
 {add_code_block_edit}
-- replace_graph (rebuild the entire workflow graph in one go): { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
+{tool:replace_graph}
 {add_environment_edit}
 {list_unit_edit}
 {list_environment_edit}
