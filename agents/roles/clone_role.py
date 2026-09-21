@@ -384,14 +384,14 @@ def main(args):
             lambda m: (
                 m.group(1)
                 + re.sub(
-                    r'"model_name"\s*:\s*"role\.analyst\.llm\.ollama_model"',
-                    f'"model_name":"role.{new_id}.llm.ollama_model"',
+                    r'"model_name"\s*:\s*"role\.analyst\.llm\.provider_model"',
+                    f'"model_name":"role.{new_id}.llm.provider_model"',
                     re.sub(
                         r'"provider"\s*:\s*"role\.analyst\.llm\.provider"',
                         f'"provider":"role.{new_id}.llm.provider"',
                         re.sub(
-                            r'"host"\s*:\s*"role\.analyst\.llm\.ollama_host"',
-                            f'"host":"role.{new_id}.llm.ollama_host"',
+                            r'"host"\s*:\s*"role\.analyst\.llm\.provider_host"',
+                            f'"host":"role.{new_id}.llm.provider_host"',
                             re.sub(
                                 r'"options"\s*:\s*"role\.analyst\.llm\.generation_options"',
                                 f'"options":"role.{new_id}.llm.generation_options"',
