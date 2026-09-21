@@ -38,7 +38,7 @@ class EditFileData(TypedDict):
     ok: bool
     error: str | None
     output_path: str
-    uncommited_changes: str
+    changes_applied: str
 
 
 def _make_parser_output(
@@ -104,7 +104,7 @@ def test_edit_file_step_happy_path_applies_patch_and_writes_file():
     assert data["ok"] is True
     assert data["error"] is None
     assert data["output_path"] == str(target_path)
-    assert isinstance(data["uncommited_changes"], str)
+    assert isinstance(data["changes_applied"], str)
 
     assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
 
@@ -393,7 +393,7 @@ def test_edit_file_step_patch_target_basename_mismatch_returns_error():
 
 def test_edit_file_step_writes_preview_truncation():
     """Writes the updated file and returns a truncated
-    uncommited_changes string when the updated content exceeds
+    changes_applied string when the updated content exceeds
     the preview length limit."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
@@ -429,7 +429,7 @@ def test_edit_file_step_writes_preview_truncation():
     )
 
     data = cast(EditFileData, out["data"])
-    preview = data["uncommited_changes"]
+    preview = data["changes_applied"]
 
     assert data["ok"] is True
 
@@ -440,7 +440,7 @@ def test_edit_file_step_writes_preview_truncation():
 
     assert isinstance(preview, str)
 
-    # The step returns the full patch content in uncommited_changes (no truncation).
+    # The step returns the full patch content in changes_applied (no truncation).
     assert long_b in preview
     assert preview.startswith("--- a/new_file.txt")
 

@@ -26,7 +26,7 @@ Returns a dictionary upon success:
 
 - `ok` (bool): `True` if the patch was applied successfully.
 - `output_path` (string): The full system path to the modified file.
-- `uncommited_changes` (string): unified-diff patch.
+- `changes_applied` (string): unified-diff patch.
 - `md5_before` (string): md5 from the original file
 - `md5_after` (string): md5 from the modified file
 - `timestamp_utc` (string): timestamp UTC
@@ -70,7 +70,7 @@ def greet():
 {
   "ok": true,
   "output_path": "path/to/my/file/app.py",
-  "uncommited_changes": "@@ -1,2 +1,2 @@\n-def greet():\n+def greet(name):\n     print(\"Hello World\")",
+  "changes_applied": "@@ -1,2 +1,2 @@\n-def greet():\n+def greet(name):\n     print(\"Hello World\")",
   "error": null,
   "md5_before": "<md5 of the original file contents>",
   "md5_after": "<md5 of the updated file contents>",

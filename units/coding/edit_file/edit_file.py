@@ -24,7 +24,7 @@ class EditFileOutput:
     ok: bool = False
     output_path: str = ""
     error: str | None = None
-    uncommited_changes: str = ""
+    changes_applied: str = ""
     md5_before: str = ""
     md5_after: str = ""
     timestamp_utc: str = ""
@@ -476,7 +476,7 @@ def _edit_file_step(
     # Collect the output items:
     out_obj.ok = True
     out_obj.output_path = str(target_path)
-    out_obj.uncommited_changes = patch
+    out_obj.changes_applied = patch
     out_obj.md5_before = md5_before
     out_obj.md5_after = md5_after
     out_obj.timestamp_utc = datetime.datetime.now(datetime.UTC).isoformat()
