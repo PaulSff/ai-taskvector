@@ -8,141 +8,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from agents.tools.types import ToolList
 from core.schemas.primitives import WorkflowInputs
 
 type RoleIds = tuple[str, ...]
 
-
-def _coerce_bool(value: Any, *, default: bool = False) -> bool:
-    """Convert common YAML boolean representations to bool."""
-    if value is None or value == "":
-        return default
-
-    if isinstance(value, str):
-        return value.strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "y",
-        }
-
-    if isinstance(value, (bool, int, float)):
-        return bool(value)
-
-    return default
-
-
-def _coerce_features(raw: Any) -> dict[str, bool]:
-    """Convert a YAML feature mapping to ``dict[str, bool]``."""
-    if raw is None or not isinstance(raw, dict):
-        return {}
-
-    features: dict[str, bool] = {}
-
-    for key, value in raw.items():
-        feature_name = str(key).strip()
-
-        if not feature_name:
-            continue
-
-        if isinstance(value, bool):
-            features[feature_name] = value
-        elif isinstance(value, (int, float)):
-            features[feature_name] = bool(value)
-        elif isinstance(value, str):
-            features[feature_name] = value.strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "y",
-            }
-
-    return features
-
-
-def _parse_chat_fields(raw: Any) -> dict[str, Any]:
-    """
-    Parse the optional ``chat:`` YAML block.
-
-    Supported forms:
-
-    ```yaml
-    chat: true
-    ```
-
-    ```yaml
-    chat: false
-    ```
-
-    ```yaml
-    chat:
-      enabled: true
-      workflow: workflow.json
-      overrides:
-        rag_search:
-          top_k: 10
-        prompt_llm:
-          template_path: config/prompts/role.json
-      features:
-        attachments: true
-      chat_handler: package.module:Handler
-      light_graph_mode: false
-    ```
-    """
-    if raw is None:
-        return {}
-
-    if raw is True:
-        return {
-            "chat_enabled": True,
-        }
-
-    if raw is False:
-        return {
-            "chat_enabled": False,
-        }
-
-    if not isinstance(raw, dict):
-        return {}
-
-    workflow_raw = raw.get("workflow") or raw.get("chat_workflow")
-
-    workflow: str | Path | None = (
-        workflow_raw.strip()
-        if isinstance(workflow_raw, str) and workflow_raw.strip()
-        else None
-    )
-
-    raw_overrides = raw.get("overrides")
-
-    if raw_overrides is not None and not isinstance(raw_overrides, dict):
-        raise TypeError(
-            "role.yaml field 'chat.overrides' must be a mapping or null"
-        )
-
-    handler_raw = raw.get("chat_handler") or raw.get("handler")
-
-    chat_handler: str | None = (
-        handler_raw.strip()
-        if isinstance(handler_raw, str) and handler_raw.strip()
-        else None
-    )
-
-    return {
-        "chat_enabled": _coerce_bool(
-            raw.get("enabled"),
-            default=True,
-        ),
-        "chat_workflow": workflow,
-        "chat_overrides": raw_overrides,
-        "chat_features": _coerce_features(raw.get("features")),
-        "chat_handler": chat_handler,
-        "light_graph_mode": _coerce_bool(raw.get("light_graph_mode")),
-    }
-
+class ChatFields(TypedDict, total=False):
+    chat_enabled: bool
+    chat_workflow: str | None
+    chat_overrides: WorkflowInputs | None
+    chat_features: dict[str, bool]
+    chat_handler: str | None
+    light_graph_mode: bool
 
 @dataclass(frozen=True)
 class RoleConfig:
@@ -203,7 +82,112 @@ class RoleConfig:
         return self.chat_features.get(key, default)
 
 
-def parse_role_config(raw: Any) -> RoleConfig:
+def _coerce_bool(value: object, *, default: bool = False) -> bool:
+    """Convert common YAML boolean representations to bool."""
+    if value is None or value == "":
+        return default
+
+    if isinstance(value, str):
+        return value.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+        }
+
+    if isinstance(value, (bool, int, float)):
+        return bool(value)
+
+    return default
+
+
+def _coerce_features(raw: object) -> dict[str, bool]:
+    """Convert a YAML feature mapping to ``dict[str, bool]``."""
+    if raw is None or not isinstance(raw, dict):
+        return {}
+
+    features: dict[str, bool] = {}
+
+    for key, value in raw.items():
+        feature_name = str(key).strip()
+
+        if not feature_name:
+            continue
+
+        if isinstance(value, bool):
+            features[feature_name] = value
+        elif isinstance(value, (int, float)):
+            features[feature_name] = bool(value)
+        elif isinstance(value, str):
+            features[feature_name] = value.strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "y",
+            }
+
+    return features
+
+
+def _parse_chat_fields(raw: object) -> ChatFields:
+    """
+    Parse the optional ``chat:`` YAML block.
+    """
+    if raw is None:
+        return {}
+
+    if raw is True:
+        return {"chat_enabled": True}
+
+    if raw is False:
+        return {"chat_enabled": False}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    workflow_raw = raw.get("workflow") or raw.get("chat_workflow")
+
+    workflow: str | None = (
+        workflow_raw.strip()
+        if isinstance(workflow_raw, str) and workflow_raw.strip()
+        else None
+    )
+
+    raw_overrides = raw.get("overrides")
+
+    if raw_overrides is not None and not isinstance(raw_overrides, dict):
+        raise TypeError(
+            "role.yaml field 'chat.overrides' must be a mapping or null"
+        )
+
+    chat_overrides: WorkflowInputs | None = (
+        None if raw_overrides is None else dict(raw_overrides)
+    )
+
+    handler_raw = raw.get("chat_handler") or raw.get("handler")
+
+    chat_handler: str | None = (
+        handler_raw.strip()
+        if isinstance(handler_raw, str) and handler_raw.strip()
+        else None
+    )
+
+    return {
+        "chat_enabled": _coerce_bool(
+            raw.get("enabled"),
+            default=True,
+        ),
+        "chat_workflow": workflow,
+        "chat_overrides": chat_overrides,
+        "chat_features": _coerce_features(raw.get("features")),
+        "chat_handler": chat_handler,
+        "light_graph_mode": _coerce_bool(
+            raw.get("light_graph_mode"),
+        ),
+    }
+
+
+def parse_role_config(raw: object) -> RoleConfig:
     """
     Parse a role configuration mapping.
 
