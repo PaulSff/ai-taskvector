@@ -442,56 +442,56 @@ def main(args):
     # 7. Update handler.py and __init__.py replacements
     handler_py = new_role_turns / "handler.py"
     init_py = new_role_turns / "__init__.py"
+
     ensure_exists(handler_py, "handler.py in new role_turns")
     ensure_exists(init_py, "__init__.py in new role_turns")
 
-    # Preserve any light_graph_mode occurrences — do NOT replace light_graph_mode with <new_role>_mode
-    # Replace other tokens safely
+    # Preserve the role-specific constants that should remain
+    # associated with the analyst implementation.
     old_upper = SRC_ROLE.upper()
     new_upper = new_id.upper()
+
     replacements = {
         f"{old_upper}_ROLE_ID": f"{new_upper}_ROLE_ID",
-        f"ORDERED_{old_upper}_TOOLS": f"ORDERED_{new_upper}_TOOLS",
-        f"{SRC_ROLE}_workflow.json": f"{new_id}_workflow.json",
-        "config/prompts/analyst.json": f"config/prompts/{new_id}.json",
         "AnalystChatHandler": f"{new_id.capitalize()}ChatHandler",
-        # Do NOT replace 'light_graph_mode' so preserve it as-is
     }
+
     replace_in_file(handler_py, replacements)
+
     replace_in_file(
         init_py,
         {
-            "Analyst chat turn: analysis-focused tools, comments/todos only (no structural graph edits).": f"{new_id.capitalize()} chat turn: {new_id}-focused tools, comments/todos only (no structural graph edits).",
-            "from .handler import AnalystChatHandler": f"from .handler import {new_id.capitalize()}ChatHandler",
-            '__all__ = ["AnalystChatHandler"]': f'__all__ = ["{new_id.capitalize()}ChatHandler"]',
+            "Analyst chat turn: analysis-focused tools, comments/todos only (no structural graph edits).":
+                f"{new_id.capitalize()} chat turn: {new_id}-focused tools, comments/todos only (no structural graph edits).",
+
+            "from .handler import AnalystChatHandler":
+                f"from .handler import {new_id.capitalize()}ChatHandler",
+
+            '__all__ = ["AnalystChatHandler"]':
+                f'__all__ = ["{new_id.capitalize()}ChatHandler"]',
         },
     )
 
-    # Update uppercase ANALYST token in handler.py but avoid touching 'light_graph_mode'
-    regex_replace_in_file(handler_py, r"\bANALYST\b", new_upper)
-    # standalone 'analyst' word replacement: only replace occurrences that look like identifiers
-    regex_replace_in_file(handler_py, r"\banalyst\b(?!_mode\b)", new_id)
-    # docstring: """Analyst agents chat turn:...  -> """<New\_role> agents chat turn:
+    # Update uppercase ANALYST token in handler.py,
+    # while preserving light_graph_mode.
+    regex_replace_in_file(
+        handler_py,
+        r"\bANALYST\b",
+        new_upper,
+    )
+
+    # Replace standalone lowercase analyst, except analyst_mode.
+    regex_replace_in_file(
+        handler_py,
+        r"\banalyst\b(?!_mode\b)",
+        new_id,
+    )
+
+    # Update the handler docstring.
     regex_replace_in_file(
         handler_py,
         r'"""Analyst agents chat turn:',
         f'"""{new_id.capitalize()} agents chat turn:',
-    )
-    # rename workflow/prompt path constant identifiers and tool id list name
-    regex_replace_in_file(
-        handler_py,
-        r"\b_ANALYST_WORKFLOW_PATH\b",
-        f"_{new_id.upper()}_WORKFLOW_PATH",
-    )
-    regex_replace_in_file(
-        handler_py,
-        r"\b_ANALYST_PROMPT_PATH\b",
-        f"_{new_id.upper()}_PROMPT_PATH",
-    )
-    regex_replace_in_file(
-        handler_py,
-        r"\banalyst_tool_ids\b",
-        f"{new_id}_tool_ids",
     )
 
     # 7b plug in new role handler into the chat flow
