@@ -37,11 +37,7 @@ from units.taskvector.agent_orchestrator.utils.batch_update_helpers import (
 from units.taskvector.agent_orchestrator.utils.batch_update_publisher import (
     BatchUpdatePublisher,
 )
-from units.taskvector.agent_orchestrator.utils.graph_hasher import graph_md5
 from units.taskvector.agent_orchestrator.utils.ids import new_id
-from units.taskvector.agent_orchestrator.utils.merge_final_graph import (
-    merge_latest_graph_for_final_output,
-)
 from units.taskvector.agent_orchestrator.utils.proxies import (
     SessionProxy,
     TurnRuntimeProxy,
@@ -115,7 +111,7 @@ async def run_orchestrator_turn(
         context.get("contribution_is_allowed", False),
     )
 
-    initial_graph_md5 = graph_md5(graph)
+    # initial_graph_md5 = graph_md5(graph)
 
     graph_ref: list[ProcessGraph] = [graph]
     last_apply_result_ref: list[
@@ -461,13 +457,13 @@ async def run_orchestrator_turn(
                 "error": None,
             }
 
-    merged_graph = await merge_latest_graph_for_final_output(
-        graph_ref=graph_ref,
-        initial_graph_md5=initial_graph_md5,
-    )
-
-    if merged_graph is not None:
-        graph_ref[0] = merged_graph
+    # merged_graph = await merge_latest_graph_for_final_output(
+    #     graph_ref=graph_ref,
+    #     initial_graph_md5=initial_graph_md5,
+    # )
+    #
+    # if merged_graph is not None:
+    #     graph_ref[0] = merged_graph
 
     content = content_ref[0]
     result = result_ref[0]
