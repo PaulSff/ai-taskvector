@@ -6,9 +6,13 @@ This never produces the combined agents_team_members.md file.
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 from config.settings.paths import RAG_SUBDIR
+from services.logging import setup_colored_logging
+
+logger = setup_colored_logging(logging.DEBUG)
 
 
 def roles_yaml_paths_sorted(roles_root: Path) -> list[Path]:
@@ -54,8 +58,11 @@ def materialize_team_members_rag_docs(
     mydata_dir: Path, *, roles_root: Path
 ) -> list[Path]:
     """
-    Write one ``ROLE.md`` per role into ``mydata_dir/taskvector/<role_id>/ROLE.md`` from loaded role configs.
-    Always returns list of written Paths (empty list if no roles). Does NOT write any combined file.
+    Write one ``ROLE.md`` per role into
+    ``mydata_dir/taskvector/<role_id>/ROLE.md`` from loaded role configs.
+
+    Always returns a list of written Paths, empty if there are no roles.
+    Does not write any combined file.
     """
     out_dir = (mydata_dir / RAG_SUBDIR).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -67,15 +74,19 @@ def materialize_team_members_rag_docs(
 
     clear_role_cache()
     written: list[Path] = []
+
     for rid in sorted(list_role_ids()):
         try:
-            r = get_role(rid)
+            role = get_role(rid)
         except Exception:
+            logger.exception("Failed to load role %r; skipping it", rid)
             continue
-        role_dir = out_dir / r.id
+
+        role_dir = out_dir / role.id
         role_dir.mkdir(parents=True, exist_ok=True)
+
         out_path = role_dir / "ROLE.md"
-        out_path.write_text(_single_role_markdown(r), encoding="utf-8")
+        out_path.write_text(_single_role_markdown(role), encoding="utf-8")
         written.append(out_path)
 
     return written
