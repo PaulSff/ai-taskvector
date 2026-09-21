@@ -1,0 +1,427 @@
+{
+  "environment_type": "messengers",
+  "environments": [
+    "canonical",
+    "messengers",
+    "network",
+    "taskvector",
+    "time"
+  ],
+  "keep_alive": true,
+  "units": [
+    {
+      "id": "tg_bot",
+      "type": "TelegramBot",
+      "controllable": true,
+      "params": {
+        "_needs_executor": true,
+        "_unit_id": "tg_bot",
+        "bot_token": "tool.get_chats.telegram.bot_token",
+        "wait_for_delivery": true,
+        "delivery_timeout_s": 60,
+        "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
+        "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
+        "response_endpoint": "tool.get_chats.mq.zmq_response_endpoint",
+        "workflow_path": "tool.get_chats.workflow"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "tg_start",
+          "type": "Any"
+        },
+        {
+          "name": "tg_stop",
+          "type": "Any"
+        },
+        {
+          "name": "get_unread",
+          "type": "Any"
+        },
+        {
+          "name": "send_message",
+          "type": "Any"
+        },
+        {
+          "name": "raw",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "update",
+          "type": "Any"
+        },
+        {
+          "name": "status",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "check_todo",
+      "type": "CheckTodo",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "check_todo",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tasks_todo",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "router",
+      "type": "Router",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "port": "out_0",
+            "all": [
+              {
+                "any_item": {
+                  "field": "update.chats",
+                  "rule": {
+                    "field": "unread_count",
+                    "gt": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "port": "default",
+            "default": true,
+            "parser_output": {
+              "action": "check_todo"
+            }
+          }
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "out_0",
+          "type": "Any"
+        },
+        {
+          "name": "out_1",
+          "type": "Any"
+        },
+        {
+          "name": "out_2",
+          "type": "Any"
+        },
+        {
+          "name": "out_3",
+          "type": "Any"
+        },
+        {
+          "name": "out_4",
+          "type": "Any"
+        },
+        {
+          "name": "out_5",
+          "type": "Any"
+        },
+        {
+          "name": "out_6",
+          "type": "Any"
+        },
+        {
+          "name": "out_7",
+          "type": "Any"
+        },
+        {
+          "name": "out_8",
+          "type": "Any"
+        },
+        {
+          "name": "out_9",
+          "type": "Any"
+        },
+        {
+          "name": "out_10",
+          "type": "Any"
+        },
+        {
+          "name": "out_11",
+          "type": "Any"
+        },
+        {
+          "name": "out_12",
+          "type": "Any"
+        },
+        {
+          "name": "out_13",
+          "type": "Any"
+        },
+        {
+          "name": "out_14",
+          "type": "Any"
+        },
+        {
+          "name": "out_15",
+          "type": "Any"
+        },
+        {
+          "name": "default",
+          "type": "Any"
+        },
+        {
+          "name": "unmatched",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "push_unread_msg",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5757"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "bypass",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "push_todo",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5656"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "bypass",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "delay",
+      "type": "DelayLoop",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "update_interval_s": 60,
+        "payload": {
+          "action": "get_unread",
+          "messenger": "telegram"
+        }
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "control",
+          "type": "Any"
+        },
+        {
+          "name": "payload",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "out",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "type": "WorkflowTrigger",
+      "controllable": false,
+      "params": {
+        "default_payload": {
+          "action": "start"
+        }
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "payload",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "payload",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "tg_bot",
+      "to": "router",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "check_todo",
+      "from_port": "16",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "push_unread_msg",
+      "from_port": "0",
+      "to_port": "3",
+      "connection_type": null
+    },
+    {
+      "from": "check_todo",
+      "to": "push_todo",
+      "from_port": "0",
+      "to_port": "3",
+      "connection_type": null
+    },
+    {
+      "from": "delay",
+      "to": "tg_bot",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "control",
+      "to": "delay",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": {},
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "New workflow template"
+  },
+  "comments": [
+    {
+      "id": "comment_system_canonical",
+      "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
+      "commenter": "System",
+      "created_at": "2025-01-01T00:00:00Z",
+      "x": 69.36701965332031,
+      "y": 287.58103942871094
+    }
+  ],
+  "todo_lists": [
+    {
+      "id": "todo_list_default",
+      "title": "Current workflow TODOs",
+      "tasks": [],
+      "x": 1345.296875,
+      "y": 309.7823791503906
+    }
+  ]
+}
