@@ -8,8 +8,7 @@ See docs/PROCESS_GRAPH_TOPOLOGY.md §5.2.
 
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
@@ -20,8 +19,31 @@ LLMAGENT_OUTPUT_PORTS = [("action", "Any"), ("error", "str")]
 # Same placeholder as Aggregate/Prompt so we can detect when the pipeline lost the user message.
 _USER_MESSAGE_PLACEHOLDER = "(No message provided.)"
 
+def _param_str(params: Data, key: str, default: str) -> str:
+    raw = params.get(key)
+    if isinstance(raw, str):
+        value = raw.strip()
+        return value or default
+    return default
 
-def _is_user_message_missing(raw: Any) -> bool:
+def _param_int(params: Data, key: str, default: int) -> int:
+    raw = params.get(key)
+
+    if isinstance(raw, bool):
+        return default
+
+    if isinstance(raw, int):
+        return raw
+
+    if isinstance(raw, str):
+        try:
+            return int(raw.strip())
+        except ValueError:
+            return default
+
+    return default
+
+def _is_user_message_missing(raw: object) -> bool:
     """True if user_message is empty or the known placeholder (pipeline did not receive real message)."""
     if raw is None:
         return True
@@ -30,11 +52,11 @@ def _is_user_message_missing(raw: Any) -> bool:
 
 
 def _llm_agent_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Call LLM client; return response as action (string). Expects system_prompt and user_message from Prompt unit."""
     raw_system = inputs.get("system_prompt")
     raw_user = inputs.get("user_message")
@@ -53,15 +75,14 @@ def _llm_agent_step(
             "check the units upstream and its params)."
         )
 
-    provider = (params.get("provider") or "ollama").strip()
+    provider = _param_str(params, "provider", "ollama")
     provider_lower = provider.lower()
-    model_name = (params.get("model_name") or "llama3.2").strip()
-    host = (params.get("host") or "http://127.0.0.1:11434").strip()
-    try:
-        timeout_s = int(params.get("timeout_s") or 120)
-    except (TypeError, ValueError):
-        timeout_s = 120
+    model_name = _param_str(params, "model_name", "llama3.2")
+    host = _param_str(params, "host", "http://127.0.0.1:11434")
+
+    timeout_s = _param_int(params, "timeout_s", 120)
     timeout_s = max(60, min(600, timeout_s))
+
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_prompt},
@@ -76,7 +97,7 @@ def _llm_agent_step(
         from llm_integrations import client as llm_client
 
         # Build provider-agnostic config (accept common API key aliases if present)
-        config: dict[str, Any] = {"model": model_name}
+        config: Data = {"model": model_name}
         if provider_lower == "ollama":
             config["host"] = host
             for key in ("api_key", "ollama_api_key", "provider_api_key"):
@@ -147,12 +168,23 @@ def _llm_agent_step(
 
         action = (response_text or "").strip() or "(No response.)"
 
-    except (TypeError, ValueError, TimeoutError) as e:
+    except (
+        TypeError,
+        ValueError,
+        TimeoutError,
+        ConnectionError,
+        OSError,
+    ) as e:
         try:
             from llm_integrations import client as llm_client
-            friendly = llm_client.format_exception(provider=provider, e=e).strip()
+
+            friendly = llm_client.format_exception(
+                provider=provider,
+                e=e,
+            ).strip()
         except (ImportError, AttributeError, TypeError, ValueError) as inner_e:
             friendly = str(inner_e).strip()[:500]
+
         err = err or friendly
         action = f"[LLM error: {friendly}]"
 

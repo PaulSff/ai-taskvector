@@ -22,6 +22,35 @@ from core.schemas.primitives import Data
 class LLMIntegrationError(RuntimeError):
     pass
 
+import functools
+import random
+import time
+
+_DEFAULT_RETRIES = 3
+
+def retry_with_backoff(
+    retries: int = _DEFAULT_RETRIES,
+    backoff_in_seconds: float = 1.0,
+    retryable_exceptions: tuple = (Exception,)
+):
+    """Exponential backoff decorator with jitter."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            x = 0
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except retryable_exceptions:
+                    if x == retries:
+                        raise
+                    # Exponential backoff: base * 2^x + random jitter
+                    sleep = (backoff_in_seconds * (2 ** x)) + random.uniform(0, 1)
+                    time.sleep(sleep)
+                    x += 1
+        return wrapper
+    return decorator
+
 type LLMMessages = list[dict[str, str]]
 
 def _load_provider_module(provider: str):
@@ -34,6 +63,14 @@ def _load_provider_module(provider: str):
         raise LLMIntegrationError(f"Unknown LLM provider: {name!r}") from e
 
 
+@retry_with_backoff(
+    retries=_DEFAULT_RETRIES,
+    retryable_exceptions=(
+        TimeoutError,
+        ConnectionError,
+        LLMIntegrationError
+    )
+)
 def chat(
     *,
     provider: str,
@@ -62,6 +99,7 @@ def chat(
         return chat_fn(messages=messages, **cfg)
 
 
+@retry_with_backoff(retries=3, retryable_exceptions=(TimeoutError, ConnectionError, LLMIntegrationError))
 def chat_stream(
     *,
     provider: str,
