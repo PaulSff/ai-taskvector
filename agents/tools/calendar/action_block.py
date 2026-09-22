@@ -15,7 +15,6 @@ class CalendarDateTime(BaseModel):
 
     model_config = ConfigDict(
         extra="allow",
-        strict=True,
     )
 
     date: date
@@ -27,7 +26,6 @@ class PeriodicAvailability(BaseModel):
 
     model_config = ConfigDict(
         extra="allow",
-        strict=True,
     )
 
     periodic: dict[str, str]
@@ -86,7 +84,10 @@ def handle_calendar(
 
     actions.add_tool_action(
         "calendar",
-        block.as_json_object(),
+        block.model_dump(
+            mode="json",
+            by_alias=True,
+        ),
     )
 
 

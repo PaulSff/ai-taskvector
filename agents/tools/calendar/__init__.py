@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 
 from pydantic import TypeAdapter, ValidationError
@@ -130,7 +131,9 @@ async def run_calendar_follow_up(
         raw_action = calendar_actions[0]
 
         try:
-            action = TypeAdapter(CalendarActionBlock).validate_python(raw_action)
+            action = TypeAdapter(CalendarActionBlock).validate_json(
+                json.dumps(raw_action)
+            )
         except ValidationError as exc:
             raise ValueError(
                 "Invalid calendar action block: "
