@@ -10,7 +10,7 @@ Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out
 
 Outputs: **`out_0` …** (see ``ROUTER_MAX_BRANCHES`` in ``router.py``), **`default`**, **`unmatched`**. Wire downstream only from the ports you use.
 
-## Router unit params  descritpion `params.routes`
+## Router Unit Parameters: `params.routes`
 
 List of route objects, evaluated **in order**. First route that matches is used.
 
@@ -23,6 +23,8 @@ A route with **neither** `all` nor `any` (and not `default`) **never matches** (
 
 ### Rule dicts
 
+Note: `any_item` is a special rule. Instead of a direct comparison, its value is an object `{ "field": "...", "rule": { ... } }`. The router will check if **any** element in the list found at `field` satisfies the nested `rule`.
+
 Each rule should include **`field`** (dot path into `data`, e.g. `path` or `payload.path`) except when using only `exists` on the whole payload (set `field` to `""` and `exists` is interpreted on `data` via value from `_get_field` — prefer explicit `field`).
 
 Supported keys (first applicable wins per rule object):
@@ -31,11 +33,14 @@ Supported keys (first applicable wins per rule object):
 |-----|---------|
 | **`equals`** | Field value must equal this (Python `==`). |
 | **`equals_str`** | Compare as stripped strings. |
+| **`gt`** | Greater than. |
+| **`gte`** | Greater than or equal. |
 | **`ends_with`** | String field ends with suffix (case-insensitive). |
 | **`starts_with`** | String field starts with prefix (case-insensitive). |
 | **`contains`** | Substring (case-insensitive). |
 | **`regex`** | `re.search` on stringified value. |
 | **`exists`** | If `true`, field is present and not `None`. |
+| **`any_item`** | If the field is a list, matches if **any** element in that list satisfies the nested `rule` config. |
 
 ## Example (`read_file` → xlsx vs rest)
 
@@ -61,6 +66,18 @@ If `action` must also be `read_file`:
   { "field": "action", "equals_str": "read_file" },
   { "field": "path", "ends_with": ".xlsx" }
 ]
+```
+
+## Payload Transformation
+
+By default, the router passes the original `data` through to the chosen port. However, you can specify a **`parser_output`** key in the route object to emit a custom object instead:
+
+```json
+{
+  "port": "out_0",
+  "parser_output": { "status": "success", "message": "Matched route 0" },
+  "all": [{ "field": "action", "equals": "ping" }]
+}
 ```
 
 ## Behaviour
