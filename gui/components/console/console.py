@@ -7,9 +7,10 @@ from dataclasses import dataclass
 
 import flet as ft
 
-from core.normalizer import to_process_graph
-from core.schemas.process_graph import ProcessGraph
 from config.settings import DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
+from core.normalizer import to_process_graph
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
 from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging
@@ -644,7 +645,7 @@ def build_workflow_run_console(
     )
 
     def show_console_with_run_output(
-        run_output: dict[str, object],
+        run_output: Data,
     ) -> None:
         """Display existing workflow output without executing the workflow."""
 
