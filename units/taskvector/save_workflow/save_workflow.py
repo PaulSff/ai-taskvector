@@ -5,7 +5,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -16,6 +15,7 @@ from config.settings import (
 )
 
 # Application types/settings — required. Do not hardcode defaults here.
+from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from units.registry import UnitSpec, register_unit
 
@@ -29,6 +29,12 @@ SAVE_WORKFLOW_OUTPUT_PORTS = [
     ("saved_at", "Any"),
     ("error", "Any"),
 ]
+
+@dataclass(frozen=True)
+class _SaveResult:
+    saved: bool
+    path: Path | None
+    reason: str  # "saved" | "no_changes" | "no_graph" | "error" | "validation:..."
 
 
 def _now_timestamp() -> str:
@@ -45,7 +51,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: Any | None) -> dict[str, Any]:
+def _graph_to_payload(graph: ProcessGraph | None) -> Data:
     """
     Normalize graph into a dictionary suitable for saving.
 
@@ -108,7 +114,7 @@ def _graph_to_payload(graph: Any | None) -> dict[str, Any]:
     raise ValueError("invalid_graph")
 
 
-def _graph_json_bytes(graph: dict[str, Any] | Any | None) -> bytes:
+def _graph_json_bytes(graph: ProcessGraph | None) -> bytes:
     payload = _graph_to_payload(graph)
     order = (
         "environment_type",
@@ -144,18 +150,11 @@ def _latest_saved_file(project_dir: Path, ext: str = ".json") -> Path | None:
     return files[-1] if files else None
 
 
-@dataclass(frozen=True)
-class _SaveResult:
-    saved: bool
-    path: Path | None
-    reason: str  # "saved" | "no_changes" | "no_graph" | "error" | "validation:..."
-
-
 def _write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def _dump_yaml_bytes(obj: dict[str, Any]) -> bytes:
+def _dump_yaml_bytes(obj: Data) -> bytes:
     try:
         import yaml  # PyYAML
     except Exception as exc:
@@ -166,7 +165,7 @@ def _dump_yaml_bytes(obj: dict[str, Any]) -> bytes:
 
 
 def _save_workflow_version(
-    graph: dict[str, Any] | None,
+    graph: ProcessGraph | None,
     *,
     project_name: str | None = None,
     template: str | None = None,
@@ -230,16 +229,37 @@ def _save_workflow_version(
 
 
 def _save_workflow_step(
-    params: dict[str, Any], inputs: dict[str, Any], state: dict[str, Any], dt: float
+    params: Data,
+    inputs: Data,
+    state: Data,
+    dt: float,
 ):
-    graph = inputs.get("graph")
-    fmt = (params.get("format") or "json").lower()
-    # Template override param takes precedence. If not provided, use settings function.
-    template_override = params.get("workflow_save_path") or params.get(
-        "workflow_save_path_template"
+    raw_graph = inputs.get("graph")
+    graph = raw_graph if isinstance(raw_graph, ProcessGraph) else None
+
+    raw_format = params.get("format")
+    fmt = raw_format.lower() if isinstance(raw_format, str) else "json"
+
+    # Template override parameter takes precedence.
+    raw_template = params.get("workflow_save_path")
+    if not isinstance(raw_template, str):
+        raw_template = params.get("workflow_save_path_template")
+
+    template_override = (
+        raw_template if isinstance(raw_template, str) else None
     )
-    project_name_override = params.get("project_name")
-    repo_root_override = params.get("repo_root")
+
+    raw_project_name = params.get("project_name")
+    project_name_override = (
+        raw_project_name if isinstance(raw_project_name, str) else None
+    )
+
+    raw_repo_root = params.get("repo_root")
+    repo_root_override = (
+        raw_repo_root
+        if isinstance(raw_repo_root, (str, Path))
+        else None
+    )
 
     result = _save_workflow_version(
         graph,
@@ -250,18 +270,26 @@ def _save_workflow_step(
     )
 
     if result.saved and result.path is not None:
-        outputs = {"saved_at": str(result.path), "error": None}
+        outputs = {
+            "saved_at": str(result.path),
+            "error": None,
+        }
     else:
         if result.reason == "no_changes":
-            err = {"error": "no changes to save"}
+            error = "no changes to save"
         elif result.reason == "no_graph":
-            err = {"error": "no workflow loaded"}
+            error = "no workflow loaded"
         elif result.reason.startswith("validation:"):
-            msg = result.reason.split(":", 1)[1]
-            err = {"error": f"validation failed: {msg}"}
+            message = result.reason.split(":", 1)[1]
+            error = f"validation failed: {message}"
         else:
-            err = {"error": "save failed"}
-        outputs = {"saved_at": None, "error": err}
+            error = "save failed"
+
+        outputs = {
+            "saved_at": None,
+            "error": error,
+        }
+
     return outputs, state
 
 
