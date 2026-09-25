@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 import flet as ft
 from pydantic import ValidationError
@@ -20,6 +19,8 @@ from config.settings import (
     get_workflow_save_path_template,
     get_workflow_undo_max_depth,
 )
+from core.normalizer.normalizer import to_process_graph
+from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.console import build_workflow_run_console
 from gui.components.workflow_tab.dialogs import (
@@ -51,7 +52,7 @@ def build_workflow_tab(
     *,
     on_graph_changed: Callable[[ProcessGraph | None], None] | None = None,
     chat_graph_drag_group: str | None = None,
-    chat_panel_api: dict[str, Any] | None = None,
+    chat_panel_api: Data | None = None,
 ) -> tuple[
     ft.Control,
     Callable[[ProcessGraph | None], None],
@@ -59,7 +60,7 @@ def build_workflow_tab(
     Callable[[], Awaitable[str | None]],
     Callable[[], None],
     Callable[[], None],
-    Callable[[dict[str, Any]], None],
+    Callable[[Data], None],
 ]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
@@ -257,21 +258,33 @@ def build_workflow_tab(
 
     async def get_recent_changes() -> str | None:
         """Diff between previous snapshot and current graph. Returns None if no undo history."""
-        prev = undo.get_previous_snapshot()
+        prev_snapshot = undo.get_previous_snapshot()
         curr = graph_ref[0]
-        if prev is None or curr is None:
+
+        if prev_snapshot is None or curr is None:
             return None
-        diff = await run_graph_diff_inline(prev, curr)
-        return diff if diff else None
+
+        prev_graph = to_process_graph(prev_snapshot, format="dict")
+
+        diff = await run_graph_diff_inline(prev_graph, curr)
+        return diff or None
+
 
     async def open_add_node() -> None:
         try:
-            summary = await run_graph_summary_inline(graph_ref[0])
-            open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
+            graph = graph_ref[0]
+
+            if graph is None:
+                raise RuntimeError("No process graph is loaded")
+
+            summary = await run_graph_summary_inline(graph)
+            open_add_node_dialog(page, summary, graph, on_graph_saved)
+
         except (ValueError, KeyError, RuntimeError) as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(sb)
             page.update()
+
 
     def open_link() -> None:
         if graph_ref[0] is None:

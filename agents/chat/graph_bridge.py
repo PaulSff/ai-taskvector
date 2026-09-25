@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from core.schemas.primitives import Data
+from core.schemas.primitives import Data, JsonObject, is_json_object
 
 _get_live_graph_dict: Callable[[], Data | None] | None = None
 _on_apply_graph: Callable[[Data], Awaitable[None]] | None = None
@@ -21,17 +21,22 @@ def register_live_graph_accessors(
     _on_apply_graph = on_apply_graph
 
 
-def get_live_graph_dict() -> Data | None:
-    """Return the current canvas graph as a dict, or None when GUI is not running."""
+def get_live_graph_dict() -> JsonObject | None:
+    """Return the current canvas graph as a JSON-compatible dict,
+    or None when GUI is not running.
+    """
     if _get_live_graph_dict is None:
         return None
 
     try:
-        g = _get_live_graph_dict()
+        graph = _get_live_graph_dict()
     except (TypeError, ValueError, AttributeError):
         return None
 
-    return g if isinstance(g, dict) else None
+    if not is_json_object(graph):
+        return None
+
+    return graph
 
 
 async def apply_graph_from_turn(inner_msg: Data) -> bool:

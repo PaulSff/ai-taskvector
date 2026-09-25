@@ -104,18 +104,19 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TypeGuard, cast
 
-from core.normalizer.shared import workflow_inputs_to_json_object
-from core.schemas.primitives import (
-    FormatProcess,
-    JsonObject,
-    WorkflowInputs,
-)
-from core.schemas.process_graph import ProcessGraph
 from config.settings import (
     DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS,
     DEFAULT_RUN_CONSOLE_JOB_PUB_ENDPOINT,
     DEFAULT_RUN_CONSOLE_RESULT_SUB_ENDPOINT,
 )
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import (
+    Data,
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+)
+from core.schemas.process_graph import ProcessGraph
 from runtime.run import WorkflowTimeoutError
 from services.server import (
     RoundRobinSlotAllocator,
@@ -181,14 +182,14 @@ def extract_keep_alive(graph: Mapping[str, object]) -> bool:
 def debug_log_param_overrides_for_graph_dict(
     graph: ProcessGraph,
     log_path: str,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     """Build Debug unit parameter overrides for the specified log path."""
     log_path = (log_path or "").strip()
 
     if not log_path:
         return {}
 
-    overrides: dict[str, dict[str, object]] = {}
+    overrides: WorkflowInputs = {}
 
     for unit in graph.units:
         if (unit.type or "").strip() != "Debug":
@@ -259,7 +260,7 @@ def format_run_outputs(outputs: Mapping[str, object]) -> str:
 def build_initial_inputs_for_run(
     graph: ProcessGraph,
     user_message: str,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     """
     Build initial inputs for Inject units.
 
@@ -352,7 +353,7 @@ async def run_via_jobs_and_await(
     on_error: ErrorCallback | None = None,
     on_token: TokenCallback | None = None,
     stop_event: asyncio.Event | None = None,
-) -> dict[str, object]:
+) -> Data:
 
     """
     Publish a workflow job and receive its results.

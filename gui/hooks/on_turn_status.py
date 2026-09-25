@@ -5,14 +5,15 @@ from collections.abc import Callable, Coroutine
 
 import flet as ft
 
+from core.schemas.primitives import Data
 from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
 
 
 def on_turn_status_hook(
     page: ft.Page,
     bar: TurnProgressBar,
-) -> Callable[[dict[str, object]], Coroutine[object, object, None]]:
-    async def on_turn_status(payload: dict[str, object]) -> None:
+) -> Callable[[Data], Coroutine[object, object, None]]:
+    async def on_turn_status(payload: Data) -> None:
         status_obj = payload.get("status")
         messenger_obj = payload.get("messenger")
 

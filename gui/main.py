@@ -49,7 +49,7 @@ from config.settings import (
     get_workflow_save_dir,
     save_settings,
 )
-from core.schemas.primitives import Data, JsonObject, WorkflowInputs, WorkflowOutputs
+from core.schemas.primitives import Data, JsonObject, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 from gui.components.chat_panel.chat import (
     CHAT_GRAPH_DRAG_GROUP,
@@ -429,7 +429,7 @@ async def main(page: ft.Page) -> None:
         on_redo=_redo_if_workflow,
     )
 
-    def on_show_run_console_from_chat(run_output: WorkflowOutputs) -> None:
+    def on_show_run_console_from_chat(run_output: Data) -> None:
         """Switch to Workflow tab and show console with run_workflow results (no re-run)."""
         if active_tab_idx[0] != 0:
             content_col.controls = [contents[0]]
