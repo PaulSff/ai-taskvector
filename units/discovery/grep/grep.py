@@ -12,8 +12,8 @@ Pattern can come from params.pattern, params.regex, or params.command (alias for
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import re
-import subprocess
 from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 
@@ -86,64 +86,80 @@ def _get_background_loop_from_params(
 
 
 def _python_grep_sync(
-    pattern: str, source: str, use_file: bool, options: list[str]
+    grep_pattern: str,
+    grep_source: str,
+    is_file: bool,
+    options_list: list[str],
 ) -> str:
-    """Perform grep-like search in Python and return matching lines joined with newlines.
-    Options handling: supports '-n' (line numbers) and '-i' (ignore case) and basic flags in options list."""
     flags = 0
-    if any(opt == "-i" for opt in options):
+
+    if any(option == "-i" for option in options_list):
         flags |= re.IGNORECASE
 
-    # Interpret pattern literally unless options include '-E' (extended) or pattern looks like regex.
-    # We'll treat pattern as a regex by default to preserve grep flexibility.
     try:
-        regex = re.compile(pattern, flags)
+        regex = re.compile(grep_pattern, flags)
     except re.error:
-        # Fallback: escape pattern
-        regex = re.compile(re.escape(pattern), flags)
+        regex = re.compile(re.escape(grep_pattern), flags)
 
-    lines = []
-    if use_file:
+    matches: list[tuple[int, str]] = []
+
+    if is_file:
         try:
-            with open(source, "r", encoding="utf-8", errors="replace") as fh:
-                for lineno, line in enumerate(fh, start=1):
+            with open(
+                grep_source,
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as file_handle:
+                for line_number, line in enumerate(file_handle, start=1):
                     if regex.search(line):
-                        lines.append((lineno, line.rstrip("\n")))
-        except Exception as e:
-            raise RuntimeError(f"file read failed: {e}") from e
+                        matches.append(
+                            (line_number, line.rstrip("\n"))
+                        )
+        except OSError as exc:
+            raise RuntimeError(f"file read failed: {exc}") from exc
     else:
-        for lineno, line in enumerate(source.splitlines(), start=1):
+        for line_number, line in enumerate(
+            grep_source.splitlines(),
+            start=1,
+        ):
             if regex.search(line):
-                lines.append((lineno, line))
+                matches.append((line_number, line))
 
-    show_lineno = any(opt == "-n" for opt in options) or any(
-        opt == "--line-number" for opt in options
+    show_line_numbers = (
+        "-n" in options_list
+        or "--line-number" in options_list
     )
-    joined = []
-    for ln, text in lines:
-        if show_lineno:
-            joined.append(f"{ln}:{text}")
+
+    output_lines: list[str] = []
+
+    for line_number, line_text in matches:
+        if show_line_numbers:
+            output_lines.append(f"{line_number}:{line_text}")
         else:
-            joined.append(text)
-    return "\n".join(joined)
+            output_lines.append(line_text)
+
+    return "\n".join(output_lines)
 
 
 def _schedule_on_background_loop(
-    coro: BackgroundCoro, background_loop: asyncio.AbstractEventLoop, timeout: float
+    coro: BackgroundCoro,
+    background_loop: asyncio.AbstractEventLoop,
+    timeout_seconds: float,
 ) -> tuple[list[float], dict[str, object]]:
-    if (
-        not isinstance(background_loop, asyncio.AbstractEventLoop)
-        or not background_loop.is_running()
-    ):
+    if not background_loop.is_running():
         raise RuntimeError("background loop not running")
-    fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+
+    future = asyncio.run_coroutine_threadsafe(
+        coro,
+        background_loop,
+    )
+
     try:
-        return fut.result(timeout=timeout)
+        return future.result(timeout=timeout_seconds)
     except FutureTimeout:
-        fut.cancel()
-        raise subprocess.TimeoutExpired(cmd="grep", timeout=timeout)
-    except Exception:
-        raise
+        future.cancel()
+        raise TimeoutError("grep timed out")
 
 
 def _grep_step(
@@ -152,10 +168,6 @@ def _grep_step(
     state: Data,
     dt: float,
 ) -> Output:
-    import asyncio
-    import concurrent.futures
-    import re
-    from concurrent.futures import TimeoutError as FutureTimeout
 
     par = params or {}
 
@@ -219,104 +231,6 @@ def _grep_step(
     use_file = path_obj is not None and path_obj.is_file()
     opt_list = _normalize_options(options)
 
-    def _python_grep_sync(
-        grep_pattern: str,
-        grep_source: str,
-        is_file: bool,
-        options_list: list[str],
-    ) -> str:
-        flags = 0
-
-        if any(option == "-i" for option in options_list):
-            flags |= re.IGNORECASE
-
-        try:
-            regex = re.compile(grep_pattern, flags)
-        except re.error:
-            regex = re.compile(re.escape(grep_pattern), flags)
-
-        matches: list[tuple[int, str]] = []
-
-        if is_file:
-            try:
-                with open(
-                    grep_source,
-                    "r",
-                    encoding="utf-8",
-                    errors="replace",
-                ) as file_handle:
-                    for line_number, line in enumerate(file_handle, start=1):
-                        if regex.search(line):
-                            matches.append(
-                                (line_number, line.rstrip("\n"))
-                            )
-            except OSError as exc:
-                raise RuntimeError(f"file read failed: {exc}") from exc
-        else:
-            for line_number, line in enumerate(
-                grep_source.splitlines(),
-                start=1,
-            ):
-                if regex.search(line):
-                    matches.append((line_number, line))
-
-        show_line_numbers = (
-            "-n" in options_list
-            or "--line-number" in options_list
-        )
-
-        output_lines: list[str] = []
-
-        for line_number, line_text in matches:
-            if show_line_numbers:
-                output_lines.append(f"{line_number}:{line_text}")
-            else:
-                output_lines.append(line_text)
-
-        return "\n".join(output_lines)
-
-    def _get_background_loop_from_params(
-        params_data: Data,
-    ) -> asyncio.AbstractEventLoop | None:
-        background = (
-            params_data.get("_background_loop")
-            or params_data.get("_executor_loop")
-        )
-
-        if isinstance(background, asyncio.AbstractEventLoop):
-            return background
-
-        executor = params_data.get("_executor")
-
-        if executor is not None:
-            background = (
-                getattr(executor, "background_loop", None)
-                or getattr(executor, "loop", None)
-            )
-
-            if isinstance(background, asyncio.AbstractEventLoop):
-                return background
-
-        return None
-
-    def _schedule_on_background_loop(
-        coro: BackgroundCoro,
-        background_loop: asyncio.AbstractEventLoop,
-        timeout_seconds: float,
-    ) -> tuple[list[float], dict[str, object]]:
-        if not background_loop.is_running():
-            raise RuntimeError("background loop not running")
-
-        future = asyncio.run_coroutine_threadsafe(
-            coro,
-            background_loop,
-        )
-
-        try:
-            return future.result(timeout=timeout_seconds)
-        except FutureTimeout:
-            future.cancel()
-            raise TimeoutError("grep timed out")
 
     background_loop = _get_background_loop_from_params(par)
 
