@@ -4,12 +4,20 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any
 
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import JsonObject, WorkflowInputs, WorkflowOutputs
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
-ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]
-ErrorHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
+ResponseHandler = Callable[
+    [JsonObject],
+    Awaitable[None],
+]
+
+ErrorHandler = Callable[
+    [str, JsonObject],
+    Awaitable[None],
+]
 
 
 class WorkflowServerClient:
@@ -42,17 +50,17 @@ class WorkflowServerClient:
         self._on_response: ResponseHandler | None = on_response
         self._on_error: ErrorHandler | None = on_error
 
-        self._futures_by_run_id: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._futures_by_run_id: dict[str, asyncio.Future[WorkflowOutputs]] = {}
         self._futures_lock: asyncio.Lock = asyncio.Lock()
 
         self._started: bool = False
         self._start_lock: asyncio.Lock = asyncio.Lock()
 
         # Register handlers once.
-        async def _handle_result(topic: str, payload: dict[str, Any]) -> None:
+        async def _handle_result(topic: str, payload: JsonObject) -> None:
             await self._handle_result_payload(payload)
 
-        async def _handle_error(topic: str, payload: dict[str, Any]) -> None:
+        async def _handle_error(topic: str, payload: JsonObject) -> None:
             await self._handle_error_payload(payload)
 
         self._sub.on(self._topics.result, _handle_result)
@@ -79,7 +87,7 @@ class WorkflowServerClient:
 
     async def _get_or_create_future(
         self, run_id: str
-    ) -> asyncio.Future[dict[str, Any]]:
+    ) -> asyncio.Future[WorkflowOutputs]:
         loop = asyncio.get_running_loop()
         async with self._futures_lock:
             # Normally run_id is unique, but keep it robust.
@@ -91,13 +99,13 @@ class WorkflowServerClient:
 
     async def _pop_future(
         self, run_id: str
-    ) -> asyncio.Future[dict[str, Any]] | None:
+    ) -> asyncio.Future[WorkflowOutputs] | None:
         async with self._futures_lock:
             return self._futures_by_run_id.pop(run_id, None)
 
     async def _handle_result_payload(
         self,
-        payload: dict[str, Any],
+        payload: JsonObject,
     ) -> None:
         run_id = payload.get("run_id")
 
@@ -116,7 +124,7 @@ class WorkflowServerClient:
         else:
             fut.set_result({"error": "Missing/invalid `result` key", "payload": payload})
 
-    async def _handle_error_payload(self, payload: dict[str, Any]) -> None:
+    async def _handle_error_payload(self, payload: JsonObject) -> None:
         run_id = payload.get("run_id")
         if not isinstance(run_id, str):
             return
@@ -138,10 +146,10 @@ class WorkflowServerClient:
         self,
         *,
         workflow_path: str,
-        unit_param_overrides: dict[str, Any],
-        initial_inputs: dict[str, Any] | None = None,
+        unit_param_overrides: WorkflowInputs,
+        initial_inputs: WorkflowInputs | None = None,
         format: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> WorkflowOutputs:
         """
         Returns:
           - on success: {"result": <raw workflow outputs dict>}
@@ -156,8 +164,8 @@ class WorkflowServerClient:
         self._pub.publish_job(
             run_id=run_id,
             workflow_path=workflow_path,
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
+            initial_inputs=workflow_inputs_to_json_object(initial_inputs),
+            unit_param_overrides=workflow_inputs_to_json_object(unit_param_overrides),
             format=format,
             response_endpoint=self._sub_endpoint,
             update_endpoint=None,

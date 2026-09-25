@@ -18,8 +18,14 @@ import sys
 import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
+from core.schemas.primitives import (
+    JsonValue,
+    WorkflowInputs,
+    is_json_object,
+    safe_int,
+)
 from rag.index_workflow_handler import WorkflowServerClient
 from rag.ragconf_loader import (
     rag_index_loop_timeout_s_raw,
@@ -186,12 +192,20 @@ class RAGIndex:
                     if "error" in out:
                         return 0
 
-                    outputs = out.get("result", {}) or {}
-                    chroma_out = (outputs or {}).get("chroma", {}) or {}
-                    if not isinstance(chroma_out, dict):
+                    outputs_value = out.get("result")
+
+                    if not isinstance(outputs_value, dict):
                         return 0
 
-                    return int(chroma_out.get("count", 0) or 0)
+                    chroma_value = outputs_value.get("chroma")
+
+                    if not isinstance(chroma_value, dict):
+                        return 0
+
+                    count = safe_int(chroma_value.get("count"))
+
+                    return count if count is not None else 0
+
                 except asyncio.CancelledError:
                     raise
                 except RuntimeError as e:
@@ -445,12 +459,20 @@ class RAGIndex:
             if "error" in out:
                 return 0
 
-            outputs = out.get("result", {}) or {}
-            chroma_out = (outputs or {}).get("chroma", {}) or {}
-            if not isinstance(chroma_out, dict):
+            outputs_value = out.get("result")
+
+            if not isinstance(outputs_value, dict):
                 return 0
 
-            return int(chroma_out.get("count", 0) or 0)
+            chroma_value = outputs_value.get("chroma")
+
+            if not isinstance(chroma_value, dict):
+                return 0
+
+            count = safe_int(chroma_value.get("count"))
+
+            return count if count is not None else 0
+
 
         except asyncio.CancelledError:
             raise
@@ -516,19 +538,34 @@ class RAGIndex:
         if not file_paths:
             return 0
 
-        from rag.ragconf_loader import rag_delete_from_index_workflow_path_raw
+        from rag.ragconf_loader import (
+            rag_delete_from_index_workflow_path_raw,
+        )
         from runtime.run import run_workflow
 
         wf_path = _repo_root() / rag_delete_from_index_workflow_path_raw()
+
         if not wf_path.is_file():
             return 0
+
+        file_paths_json: list[JsonValue] = [
+            path for path in file_paths
+        ]
+
+        initial_inputs: WorkflowInputs = {
+            "inject_paths": {
+                "data": file_paths_json,
+            },
+        }
 
         try:
             outputs = run_workflow(
                 wf_path,
-                initial_inputs={"inject_paths": {"data": file_paths}},
+                initial_inputs=initial_inputs,
                 unit_param_overrides={
-                    "delete_idx": {"persist_dir": str(self.persist_dir)},
+                    "delete_idx": {
+                        "persist_dir": str(self.persist_dir),
+                    },
                 },
                 execution_timeout_s=60.0,
             )
@@ -536,11 +573,23 @@ class RAGIndex:
             raise
         except TimeoutError:
             return 0
-        except (OSError, ValueError, json.JSONDecodeError, RuntimeError):
+        except (
+            OSError,
+            ValueError,
+            json.JSONDecodeError,
+            RuntimeError,
+        ):
             return 0
 
-        result = (outputs or {}).get("delete_idx", {})
-        return int(result.get("count", 0) or 0) if isinstance(result, dict) else 0
+        result = outputs.get("delete_idx")
+
+        if not is_json_object(result):
+            return 0
+
+        count = safe_int(result.get("count"))
+
+        return count if count is not None else 0
+
 
     # ------------------------------------------------------------------
     # Search / retrieval — driven by rag_raw_search.json
@@ -552,7 +601,7 @@ class RAGIndex:
         top_k: int = 10,
         content_type: str | None = None,
         metadata_file_path_contains: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[JsonValue]:
         """
         Search the index via workflow. Returns list of {text, metadata, score}.
         Runs rag_raw_search.json with the query wired to RagSearch.
@@ -568,7 +617,7 @@ class RAGIndex:
             metadata_file_path_contains=metadata_file_path_contains,
         )
 
-    def get_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
+    def get_by_file_path(self, file_path: str) -> list[JsonValue]:
         """
         Retrieve all indexed chunks for the given file path via workflow.
         Returns list of {text, metadata, score} (score 1.0 for path match).
