@@ -9,7 +9,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 import flet as ft
 from flet import (
@@ -50,7 +49,7 @@ from config.settings import (
     get_workflow_save_dir,
     save_settings,
 )
-from core.schemas.primitives import Data
+from core.schemas.primitives import Data, JsonObject, WorkflowInputs, WorkflowOutputs
 from core.schemas.process_graph import ProcessGraph
 from gui.components.chat_panel.chat import (
     CHAT_GRAPH_DRAG_GROUP,
@@ -282,7 +281,15 @@ async def main(page: ft.Page) -> None:
             logger.debug("Failed to load template %s: %s", _new_flow_template_path, err)
     await _set_page_title(graph_ref[0])
 
-    chat_panel_api: dict[str, Any] = {}
+
+
+    chat_panel_api: Data = {}
+
+    def _refresh_model_label() -> None:
+        refresh = chat_panel_api.get("refresh_model_label")
+
+        if callable(refresh):
+            refresh()
 
     # Workflow tab (process graph + code view + dialogs)
     def _on_graph_changed(graph: ProcessGraph | None) -> None:
@@ -311,7 +318,7 @@ async def main(page: ft.Page) -> None:
 
    # --- Integrate the live graph_bridge to apply graph from external messengers ---
 
-    _external_apply_state: dict[str, Any] = {
+    _external_apply_state: Data = {
         "last_graph_to_apply": None,
         "graph_apply_error": None,
         "graph_applied": False,
@@ -358,7 +365,7 @@ async def main(page: ft.Page) -> None:
     )
     settings_content = build_settings_tab(
         page,
-        on_saved=lambda: chat_panel_api.get("refresh_model_label", lambda: None)(),
+        on_saved=_refresh_model_label,
     )
     dev = _dev_mode()
     if dev:
@@ -422,7 +429,7 @@ async def main(page: ft.Page) -> None:
         on_redo=_redo_if_workflow,
     )
 
-    def on_show_run_console_from_chat(run_output: dict[str, Any]) -> None:
+    def on_show_run_console_from_chat(run_output: WorkflowOutputs) -> None:
         """Switch to Workflow tab and show console with run_workflow results (no re-run)."""
         if active_tab_idx[0] != 0:
             content_col.controls = [contents[0]]
@@ -448,7 +455,7 @@ async def main(page: ft.Page) -> None:
     _base_on_turn_status = on_turn_status_hook(page, turn_progress_bar)
 
     # Trigger RAG update on turn success to ingest new history, context
-    async def on_turn_status(payload: dict[str, Any]) -> None:
+    async def on_turn_status(payload: Data) -> None:
         await _base_on_turn_status(payload)
 
         if payload.get("status") == "done":
@@ -859,7 +866,7 @@ async def main(page: ft.Page) -> None:
         page.overlay.remove(spinner_overlay)
     page.update()
 
-    _tasks: list[Any] = []
+    _tasks: list[object] = []
 
     page.on_keyboard_event = on_keyboard
 
@@ -879,7 +886,7 @@ async def main(page: ft.Page) -> None:
                 await show_toast(page, "RAG: rag_update workflow not found")
                 return
 
-            overrides = {
+            overrides: WorkflowInputs = {
                 "rag_update": {
                     "rag_index_data_dir": str(get_rag_index_dir()),
                     "units_dir": str(UNITS_DIR),
@@ -888,20 +895,24 @@ async def main(page: ft.Page) -> None:
                 },
             }
 
-            async def on_response(payload: dict[str, Any]) -> None:
+            async def on_response(payload: JsonObject) -> None:
                 callback_fired.set()
 
-                response = (payload or {}).get("response", {}) or {}
-                message = (
-                    response.get("message")
-                    or response.get("details")
-                    or "RAG is up to date"
-                )
+                response_value = payload.get("response")
 
-                await show_toast(page, str(message)[:150])
+                if isinstance(response_value, dict):
+                    message_value = (
+                        response_value.get("message")
+                        or response_value.get("details")
+                        or "RAG is up to date"
+                    )
+                else:
+                    message_value = "RAG is up to date"
+
+                await show_toast(page, str(message_value)[:150])
 
 
-            async def on_error(err: str, payload: dict[str, Any]) -> None:
+            async def on_error(err: str, payload: JsonObject) -> None:
                 callback_fired.set()
                 await show_toast(page, f"RAG update error: {err!s}"[:150])
 
@@ -943,7 +954,7 @@ async def main(page: ft.Page) -> None:
     async def _rag_startup() -> None:
         _start_rag_update("startup")
 
-    _rag_tasks: set[asyncio.Task[Any]] = set()
+    _rag_tasks: set[asyncio.Task[object]] = set()
 
 
     def _start_rag_update(reason: str = "manual") -> None:

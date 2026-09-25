@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
-from typing import Any
 
 from config.settings import RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import JsonObject, WorkflowInputs, WorkflowOutputs
+from rag.index_workflow_handler import ErrorHandler, ResponseHandler
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
-
-ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]
-ErrorHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 _DEFAULT_TOPICS = ZmqTopics()
 _DEFAULT_RESPONSE_TIMEOUT = RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
@@ -51,18 +49,18 @@ class RagUpdateViaZmq:
         self._sub_endpoint = sub_endpoint
 
         self._run_id: str | None = None
-        self._result_future: asyncio.Future[dict[str, Any]] | None = None
+        self._result_future: asyncio.Future[WorkflowOutputs] | None = None
 
-        async def _handle_result(topic: str, payload: dict[str, Any]) -> None:
+        async def _handle_result(topic: str, payload: JsonObject) -> None:
             await self._handle_result_payload(payload)
 
-        async def _handle_error(topic: str, payload: dict[str, Any]) -> None:
+        async def _handle_error(topic: str, payload: JsonObject) -> None:
             await self._handle_error_payload(payload)
 
         self._sub.on(self._topics.result, _handle_result)
         self._sub.on(self._topics.error, _handle_error)
 
-    async def _handle_result_payload(self, payload: dict[str, Any]) -> None:
+    async def _handle_result_payload(self, payload: JsonObject) -> None:
         # Expect: {"run_id": "...", "outputs": {...}, "ts": ...}
         if self._run_id is not None and payload.get("run_id") != self._run_id:
             return
@@ -81,7 +79,7 @@ class RagUpdateViaZmq:
             # GUI hook gets the response-wrapper; caller can extract `response`
             await self._on_response({"response": response, "outputs": outputs})
 
-    async def _handle_error_payload(self, payload: dict[str, Any]) -> None:
+    async def _handle_error_payload(self, payload: JsonObject) -> None:
         if self._run_id is not None and payload.get("run_id") != self._run_id:
             return
         err = payload.get("error") if isinstance(payload, dict) else None
@@ -89,7 +87,7 @@ class RagUpdateViaZmq:
             err = "Unknown error"
         await self._set_error_from_payload(err, payload)
 
-    async def _set_error_from_payload(self, err: str, payload: dict[str, Any]) -> None:
+    async def _set_error_from_payload(self, err: str, payload: JsonObject) -> None:
         if self._result_future is not None and not self._result_future.done():
             self._result_future.set_result({"error": err, "payload": payload})
         if self._on_error is not None:
@@ -99,10 +97,10 @@ class RagUpdateViaZmq:
         self,
         *,
         workflow_path: str,
-        unit_param_overrides: dict[str, Any],
-        initial_inputs: dict[str, Any] | None = None,
+        unit_param_overrides: WorkflowInputs,
+        initial_inputs: WorkflowInputs | None = None,
         format: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> WorkflowOutputs:
         """
         Returns:
           - on success: {"response": <rag_update output dict>, "outputs": <raw outputs>}
@@ -116,8 +114,8 @@ class RagUpdateViaZmq:
             self._pub.publish_job(
                 run_id=self._run_id,
                 workflow_path=workflow_path,
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides,
+                initial_inputs=workflow_inputs_to_json_object(initial_inputs),
+                unit_param_overrides=workflow_inputs_to_json_object(unit_param_overrides),
                 format=format,
                 response_endpoint=self._sub_endpoint,
                 update_endpoint=None,
