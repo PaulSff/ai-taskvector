@@ -1,38 +1,86 @@
 import logging
 
-from core.schemas.graph_edit_api import GraphEdit
+from core.graph.batch_edits import apply_workflow_edits
+from core.schemas.graph_edit_api import (
+    ApplyWorkflowEditsResult,
+    GraphEdit,
+    MultipleEditsSequential,
+)
+from core.schemas.process_graph import ProcessGraph
 from services.logging import setup_colored_logging
 
 logger = setup_colored_logging(logging.DEBUG)
 
 
-async def set_commenter_for_new_comments(
+async def set_commenter_and_curator(
     edits: list[GraphEdit],
     *,
-    agent_role_id: str,
-) -> None:
+    current: ProcessGraph,
+    role_id: str,
+) -> ApplyWorkflowEditsResult:
     """
-    For each add_comment edit, set commenter to the trusted chat agent
-    role ID in place.
+    Apply metadata-only edits for the current role.
+
+    The original workflow edits are never passed to apply_workflow_edits.
+    Only dedicated set_curator/add_comment edits are created and applied.
     """
-    rid = agent_role_id.strip()
+    rid = role_id.strip()
+    metadata_edits: list[GraphEdit] = []
+
     if not rid:
         logger.warning(
-            "Skipping commenter assignment: agent_role_id is empty"
+            "Skipping commenter and curator assignment: role_id is empty"
         )
-        return
+        return ApplyWorkflowEditsResult(
+            attempted=False,
+            success=True,
+            error=None,
+            graph_after=current,
+            edits_summary=None,
+        )
 
     for index, edit in enumerate(edits):
-        if edit.action != "add_comment":
-            continue
+        if edit.action == "add_task" and edit.task_id:
+            metadata_edit = GraphEdit(
+                action="set_curator",
+                task_id=edit.task_id,
+                curator=rid,
+            )
+            metadata_edits.append(metadata_edit)
 
-        edit.commenter = rid
+            logger.info(
+                "Prepared curator metadata edit: "
+                "source_edit_index=%d task_id=%s curator=%s",
+                index,
+                edit.task_id,
+                rid,
+            )
 
-        logger.info(
-            "Set commenter for new comment: "
-            "edit_index=%d comment_id=%s commenter=%s info=%r",
-            index,
-            edit.id,
-            rid,
-            edit.info,
+        if edit.action == "add_comment" and edit.info:
+            metadata_edit = GraphEdit(
+                action="add_comment",
+                info=edit.info,
+                commenter=rid,
+            )
+            metadata_edits.append(metadata_edit)
+
+            logger.info(
+                "Prepared commenter metadata edit: "
+                "source_edit_index=%d commenter=%s",
+                index,
+                rid,
+            )
+
+    if not metadata_edits:
+        return ApplyWorkflowEditsResult(
+            attempted=False,
+            success=True,
+            error=None,
+            graph_after=current,
+            edits_summary=None,
         )
+
+    return apply_workflow_edits(
+        current=current,
+        edits=MultipleEditsSequential(edits=metadata_edits),
+    )

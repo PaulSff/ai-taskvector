@@ -8,11 +8,11 @@ from agents.chat.role_turns.registry import (
     clear_dynamic_handler_cache,
     get_role_chat_handler,
 )
-from agents.chat.role_turns.turn_edits import set_commenter_for_new_comments
+from agents.chat.role_turns.turn_edits import set_commenter_and_curator
 
 __all__ = [
     "RoleChatHandler",
     "clear_dynamic_handler_cache",
     "get_role_chat_handler",
-    "set_commenter_for_new_comments",
+    "set_commenter_and_curator",
 ]
