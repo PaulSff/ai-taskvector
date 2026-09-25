@@ -5,15 +5,33 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from core.schemas.process_graph import ProcessGraph
 from config.settings import (
     _AGENTS_WORKFLOWS_DIR,
     _CORE_WORKFLOWS_DIR,
     _UNITS_LIBRARY_PATHS_SINGLE,
 )
+from core.graph import GraphEdit
+from core.normalizer.normalizer import to_process_graph
+from core.schemas.primitives import (
+    Data,
+    FormatProcess,
+    JsonObject,
+    JsonValue,
+    RawProcessInput,
+    WorkflowInputs,
+    WorkflowOutputs,
+    is_data,
+    is_format_process,
+    is_json_document,
+    is_json_object,
+)
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import TrainingConfig
 from services.logging import setup_colored_logging
 
 EXECUTION_TIMEOUT_S = 30
+
+logger = setup_colored_logging(logging.DEBUG)
 
 def missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
@@ -21,9 +39,9 @@ def missing_workflow_msg(path: Path) -> str:
 
 def _run_sync(
     path: Path,
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    initial_inputs: WorkflowInputs,
+    unit_param_overrides: WorkflowInputs | None = None,
+) -> WorkflowOutputs:
     from runtime.run import run_workflow
 
     return run_workflow(
@@ -37,9 +55,9 @@ def _run_sync(
 
 async def _run_async(
     path: Path,
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    initial_inputs: WorkflowInputs,
+    unit_param_overrides: WorkflowInputs | None = None,
+) -> WorkflowOutputs:
     return await asyncio.to_thread(
         _run_sync, path, initial_inputs, unit_param_overrides
     )
@@ -67,400 +85,376 @@ async def register_env_agnostic_units() -> None:
     except (OSError, PermissionError, ValueError, TypeError):
         pass
 
-
-def run_graph_summary_inline_sync(graph: Any) -> dict[str, Any]:
-    """Run GraphSummary workflow; return summary dict. No Core import in caller."""
-    if graph is None:
-        return {"units": [], "connections": []}
+async def run_graph_summary_inline(graph: ProcessGraph) -> Data:
     g = (
         graph.model_dump(by_alias=True)
         if hasattr(graph, "model_dump")
         else (graph if isinstance(graph, dict) else {})
     )
+
     path = _CORE_WORKFLOWS_DIR / "graph_summary_single.json"
     if not path.is_file():
         return {"units": [], "connections": []}
-    out = _run_sync(path, {"inject_graph": {"data": g}})
-    summary = (out.get("graph_summary") or {}).get("summary")
-    return summary if isinstance(summary, dict) else {"units": [], "connections": []}
 
-
-async def run_graph_summary_inline(graph: Any) -> dict[str, Any]:
-    if graph is None:
-        return {"units": [], "connections": []}
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "graph_summary_single.json"
-    if not path.is_file():
-        return {"units": [], "connections": []}
     out = await _run_async(path, {"inject_graph": {"data": g}})
-    summary = (out.get("graph_summary") or {}).get("summary")
-    return summary if isinstance(summary, dict) else {"units": [], "connections": []}
 
+    graph_summary = out.get("graph_summary")
+    if not is_json_object(graph_summary):
+        return {"units": [], "connections": []}
 
-def run_units_library_source_paths_inline_sync(
-    graph_summary: dict[str, Any] | None,
-    implementation_links_for_types: list[str] | None,
-) -> list[str]:
-    """
-    Run units_library_paths_single.json: UnitsLibrary → source_paths (registry already filled by run_workflow).
-    Used by Workflow Designer follow-ups instead of importing units.* in the GUI layer.
-    """
-    gs = graph_summary if isinstance(graph_summary, dict) else {}
-    link = [
-        str(x).strip() for x in (implementation_links_for_types or []) if str(x).strip()
-    ]
-    if not link or not _UNITS_LIBRARY_PATHS_SINGLE.is_file():
-        return []
-    out = _run_sync(
-        _UNITS_LIBRARY_PATHS_SINGLE,
-        {"inject_graph_summary": {"data": gs}},
-        unit_param_overrides={
-            "units_library": {"implementation_links_for_types": link}
-        },
-    )
-    raw = (out.get("units_library") or {}).get("source_paths")
-    if not isinstance(raw, list):
-        return []
-    return [str(p) for p in raw if p is not None and str(p).strip()]
+    summary = graph_summary.get("summary")
+    if not is_data(summary):
+        return {"units": [], "connections": []}
+
+    return summary
 
 
 async def run_units_library_source_paths_inline(
-    graph_summary: dict[str, Any] | None,
+    graph_summary: Data | None,
     implementation_links_for_types: list[str] | None,
 ) -> list[str]:
-    gs = graph_summary if isinstance(graph_summary, dict) else {}
-    link = [
-        str(x).strip() for x in (implementation_links_for_types or []) if str(x).strip()
-    ]
+    gs: JsonObject = (
+        graph_summary
+        if graph_summary is not None and is_json_object(graph_summary)
+        else {}
+    )
+
+    link: list[JsonValue] = []
+
+    for value in implementation_links_for_types or []:
+        item = str(value).strip()
+        if item:
+            link.append(item)
+
     if not link or not _UNITS_LIBRARY_PATHS_SINGLE.is_file():
         return []
+
+    unit_param_overrides: WorkflowInputs = {
+        "units_library": {
+            "implementation_links_for_types": link,
+        }
+    }
+
     out = await _run_async(
         _UNITS_LIBRARY_PATHS_SINGLE,
         {"inject_graph_summary": {"data": gs}},
-        unit_param_overrides={
-            "units_library": {"implementation_links_for_types": link}
-        },
+        unit_param_overrides=unit_param_overrides,
     )
-    raw = (out.get("units_library") or {}).get("source_paths")
+
+    units_library = out.get("units_library")
+    if not is_json_object(units_library):
+        return []
+
+    raw = units_library.get("source_paths")
     if not isinstance(raw, list):
         return []
-    return [str(p) for p in raw if p is not None and str(p).strip()]
+
+    return [
+        str(path)
+        for path in raw
+        if path is not None and str(path).strip()
+    ]
 
 
-def run_graph_diff_inline_sync(prev_graph: Any, current_graph: Any) -> str | None:
-    """Run GraphDiff workflow; return diff string or None. No Core import in caller."""
-    if prev_graph is None or current_graph is None:
-        return None
+async def run_graph_diff_inline(
+    prev_graph: ProcessGraph,
+    current_graph: ProcessGraph,
+) -> str | None:
     prev = (
         prev_graph.model_dump(by_alias=True)
         if hasattr(prev_graph, "model_dump")
         else (prev_graph if isinstance(prev_graph, dict) else {})
     )
+
     curr = (
         current_graph.model_dump(by_alias=True)
         if hasattr(current_graph, "model_dump")
         else (current_graph if isinstance(current_graph, dict) else {})
     )
+
     path = _CORE_WORKFLOWS_DIR / "graph_diff_single.json"
     if not path.is_file():
         return None
-    out = _run_sync(
-        path, {"inject_prev": {"data": prev}, "inject_curr": {"data": curr}}
-    )
-    diff = (out.get("graph_diff") or {}).get("diff")
-    return str(diff).strip() or None if diff else None
 
-
-async def run_graph_diff_inline(prev_graph: Any, current_graph: Any) -> str | None:
-    if prev_graph is None or current_graph is None:
-        return None
-    prev = (
-        prev_graph.model_dump(by_alias=True)
-        if hasattr(prev_graph, "model_dump")
-        else (prev_graph if isinstance(prev_graph, dict) else {})
-    )
-    curr = (
-        current_graph.model_dump(by_alias=True)
-        if hasattr(current_graph, "model_dump")
-        else (current_graph if isinstance(current_graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "graph_diff_single.json"
-    if not path.is_file():
-        return None
     out = await _run_async(
-        path, {"inject_prev": {"data": prev}, "inject_curr": {"data": curr}}
+        path,
+        {
+            "inject_prev": {"data": prev},
+            "inject_curr": {"data": curr},
+        },
     )
-    diff = (out.get("graph_diff") or {}).get("diff")
-    return str(diff).strip() or None if diff else None
 
+    graph_diff = out.get("graph_diff")
+    if not is_json_object(graph_diff):
+        return None
 
-def run_load_workflow_inline_sync(
-    path_str: str, format: str | None = None
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
-    path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    overrides = {"load_workflow": {"format": format}} if format else {}
-    out = _run_sync(
-        path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides
-    )
-    unit_out = out.get("load_workflow") or {}
-    return (unit_out.get("graph"), unit_out.get("error"))
+    diff = graph_diff.get("diff")
+    if not diff:
+        return None
+
+    result = str(diff).strip()
+    return result or None
 
 
 async def run_load_workflow_inline(
-    path_str: str, format: str | None = None
-) -> tuple[dict[str, Any] | None, str | None]:
+    path_str: str,
+    format: str | None = None,
+) -> tuple[ProcessGraph | None, str | None]:
     path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
+
     if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    overrides = {"load_workflow": {"format": format}} if format else {}
-    out = await _run_async(
-        path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides
-    )
-    unit_out = out.get("load_workflow") or {}
-    return (unit_out.get("graph"), unit_out.get("error"))
+        return None, missing_workflow_msg(path)
 
+    overrides: WorkflowInputs = {}
 
-def run_export_workflow_inline_sync(graph: Any, format: str) -> tuple[Any, str | None]:
-    """Run ExportWorkflow; return (exported dict/list, error). No Core import in caller."""
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else None)
-    )
-    if g is None:
-        return (None, "ExportWorkflow: graph missing")
-    path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    out = _run_sync(
-        path,
-        {"inject_graph": {"data": g}},
-        unit_param_overrides={"export_workflow": {"format": format}},
-    )
-    unit_out = out.get("export_workflow") or {}
-    return (unit_out.get("exported"), unit_out.get("error"))
+    if format:
+        overrides = {
+            "load_workflow": {
+                "format": format,
+            }
+        }
 
-
-async def run_export_workflow_inline(graph: Any, format: str) -> tuple[Any, str | None]:
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else None)
-    )
-    if g is None:
-        return (None, "ExportWorkflow: graph missing")
-    path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
     out = await _run_async(
         path,
-        {"inject_graph": {"data": g}},
-        unit_param_overrides={"export_workflow": {"format": format}},
+        {"inject_path": {"data": path_str}},
+        unit_param_overrides=overrides,
     )
-    unit_out = out.get("export_workflow") or {}
-    return (unit_out.get("exported"), unit_out.get("error"))
+
+    unit_out = out.get("load_workflow")
+    if not is_json_object(unit_out):
+        return None, None
+
+    raw_graph = unit_out.get("graph")
+    raw_error = unit_out.get("error")
+
+    error = str(raw_error) if raw_error is not None else None
+
+    if not is_json_object(raw_graph):
+        return None, error
+
+    try:
+        graph = to_process_graph(raw_graph, format="dict")
+    except (TypeError, ValueError):
+        return None, error
+
+    return graph, error
 
 
-def run_runtime_label_inline_sync(graph: Any) -> tuple[str, bool]:
-    """Run RuntimeLabel workflow; return (label, is_native). No Core import in caller."""
-    if graph is None:
-        return ("canonical", True)
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "runtime_label_single.json"
+async def run_export_workflow_inline(
+    graph: ProcessGraph,
+    format: str,
+) -> tuple[RawProcessInput, str | None]:
+    graph_data = graph.model_dump(by_alias=True)
+
+    path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
     if not path.is_file():
-        return ("canonical", True)
-    out = _run_sync(path, {"inject_graph": {"data": g}})
-    unit_out = out.get("runtime_label") or {}
-    return (
-        str(unit_out.get("label", "canonical")),
-        bool(unit_out.get("is_native", True)),
-    )
+        return "", missing_workflow_msg(path)
 
-
-async def run_runtime_label_inline(graph: Any) -> tuple[str, bool]:
-    if graph is None:
-        return ("canonical", True)
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "runtime_label_single.json"
-    if not path.is_file():
-        return ("canonical", True)
-    out = await _run_async(path, {"inject_graph": {"data": g}})
-    unit_out = out.get("runtime_label") or {}
-    return (
-        str(unit_out.get("label", "canonical")),
-        bool(unit_out.get("is_native", True)),
-    )
-
-
-def run_apply_edits_inline_sync(
-    graph: Any,
-    edits: list[dict[str, Any]],
-    graph_origin: str | None = None,
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Run ApplyEdits workflow; return (graph_dict, error). No Core import in caller."""
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    init: dict[str, dict[str, Any]] = {
-        "inject_graph": {"data": g},
-        "inject_edits": {"data": edits},
-        "inject_origin": {"data": graph_origin or ""},
+    unit_param_overrides: WorkflowInputs = {
+        "export_workflow": {
+            "format": format,
+        }
     }
-    out = _run_sync(path, init)
-    unit_out = out.get("apply_edits") or {}
-    err = unit_out.get("error")
-    if err:
-        return (None, str(err)[:200])
-    return (unit_out.get("graph"), None)
+
+    out = await _run_async(
+        path,
+        {"inject_graph": {"data": graph_data}},
+        unit_param_overrides=unit_param_overrides,
+    )
+
+    unit_out = out.get("export_workflow")
+    if not is_json_object(unit_out):
+        return "", None
+
+    exported = unit_out.get("exported")
+    error = unit_out.get("error")
+
+    error_text = str(error) if error is not None else None
+
+    if isinstance(exported, str):
+        return exported, error_text
+
+    if is_json_document(exported):
+        return exported, error_text
+
+    return "", error_text
+
+
+async def run_runtime_label_inline(
+    graph: ProcessGraph,
+) -> tuple[str, bool]:
+    path = _CORE_WORKFLOWS_DIR / "runtime_label_single.json"
+
+    if not path.is_file():
+        return "canonical", True
+
+    graph_data = graph.model_dump(by_alias=True)
+
+    out = await _run_async(
+        path,
+        {"inject_graph": {"data": graph_data}},
+    )
+
+    unit_out = out.get("runtime_label")
+    if not is_json_object(unit_out):
+        return "canonical", True
+
+    label = unit_out.get("label", "canonical")
+    is_native = unit_out.get("is_native", True)
+
+    return str(label), bool(is_native)
 
 
 async def run_apply_edits_inline(
-    graph: Any,
-    edits: list[dict[str, Any]],
+    graph: ProcessGraph,
+    edits: list[GraphEdit],
     graph_origin: str | None = None,
-) -> tuple[dict[str, Any] | None, str | None]:
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
+) -> tuple[ProcessGraph | None, str | None]:
     path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
+
     if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    init: dict[str, dict[str, Any]] = {
-        "inject_graph": {"data": g},
-        "inject_edits": {"data": edits},
-        "inject_origin": {"data": graph_origin or ""},
+        return None, missing_workflow_msg(path)
+
+    graph_data = graph.model_dump(by_alias=True)
+
+    edits_data: list[JsonValue] = [
+        edit.model_dump(by_alias=True)
+        for edit in edits
+    ]
+
+    init: WorkflowInputs = {
+        "inject_graph": {
+            "data": graph_data,
+        },
+        "inject_edits": {
+            "data": edits_data,
+        },
+        "inject_origin": {
+            "data": graph_origin or "",
+        },
     }
+
     out = await _run_async(path, init)
-    unit_out = out.get("apply_edits") or {}
-    err = unit_out.get("error")
-    if err:
-        return (None, str(err)[:200])
-    return (unit_out.get("graph"), None)
 
+    unit_out = out.get("apply_edits")
+    if not is_json_object(unit_out):
+        return None, None
 
-def run_apply_training_config_edits_inline_sync(
-    training_config: Any,
-    edits: list[dict[str, Any]],
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Run ApplyTrainingConfigEdits workflow; return (config_dict, error). Same unit as RL Coach apply step."""
-    cfg = (
-        training_config.model_dump(by_alias=True)
-        if hasattr(training_config, "model_dump")
-        else (training_config if isinstance(training_config, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "apply_training_config_edits_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    init: dict[str, dict[str, Any]] = {
-        "inject_training_config": {"data": cfg},
-        "inject_edits": {"data": edits},
-    }
-    out = _run_sync(path, init)
-    unit_out = out.get("apply_training_config_edits") or {}
-    err = unit_out.get("error")
-    if err:
-        return (None, str(err)[:500])
-    merged = unit_out.get("config")
-    return (merged if isinstance(merged, dict) else None, None)
+    raw_error = unit_out.get("error")
+    if raw_error:
+        return None, str(raw_error)[:200]
+
+    raw_graph = unit_out.get("graph")
+    if not is_json_object(raw_graph):
+        return None, None
+
+    try:
+        updated_graph = to_process_graph(raw_graph, format="dict")
+    except (TypeError, ValueError) as exc:
+        return None, str(exc)[:200]
+
+    return updated_graph, None
 
 
 async def run_apply_training_config_edits_inline(
-    training_config: Any,
-    edits: list[dict[str, Any]],
-) -> tuple[dict[str, Any] | None, str | None]:
-    cfg = (
-        training_config.model_dump(by_alias=True)
-        if hasattr(training_config, "model_dump")
-        else (training_config if isinstance(training_config, dict) else {})
-    )
+    training_config: TrainingConfig,
+    edits: list[GraphEdit],
+) -> tuple[TrainingConfig | None, str | None]:
+    cfg = training_config.model_dump(by_alias=True)
+
     path = _CORE_WORKFLOWS_DIR / "apply_training_config_edits_single.json"
     if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    init: dict[str, dict[str, Any]] = {
-        "inject_training_config": {"data": cfg},
-        "inject_edits": {"data": edits},
+        return None, missing_workflow_msg(path)
+
+    edits_data: list[JsonValue] = [
+        edit.model_dump(by_alias=True)
+        for edit in edits
+    ]
+
+    init: WorkflowInputs = {
+        "inject_training_config": {
+            "data": cfg,
+        },
+        "inject_edits": {
+            "data": edits_data,
+        },
     }
+
     out = await _run_async(path, init)
-    unit_out = out.get("apply_training_config_edits") or {}
-    err = unit_out.get("error")
-    if err:
-        return (None, str(err)[:500])
+
+    unit_out = out.get("apply_training_config_edits")
+    if not is_json_object(unit_out):
+        return None, None
+
+    raw_error = unit_out.get("error")
+    if raw_error:
+        return None, str(raw_error)[:500]
+
     merged = unit_out.get("config")
-    return (merged if isinstance(merged, dict) else None, None)
+    if not is_json_object(merged):
+        return None, None
 
+    try:
+        merged_config = TrainingConfig.model_validate(merged)
+    except (TypeError, ValueError):
+        return None, "Invalid training configuration returned by workflow"
 
-def run_normalize_graph_inline_sync(
-    graph: Any, format: str = "dict"
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Run NormalizeGraph workflow; return (graph_dict, error). No Core import in caller."""
-    if graph is None:
-        return (None, "NormalizeGraph: graph missing")
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
-    path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
-    if not path.is_file():
-        return (None, missing_workflow_msg(path))
-    out = _run_sync(
-        path,
-        {"inject_graph": {"data": g}},
-        unit_param_overrides={"normalize_graph": {"format": format}},
-    )
-    unit_out = out.get("normalize_graph") or {}
-    return (unit_out.get("graph"), unit_out.get("error"))
+    return merged_config, None
 
 
 async def run_normalize_graph_inline(
-    graph: Any, format: str = "dict"
-) -> tuple[dict[str, Any] | None, str | None]:
-    if graph is None:
-        return (None, "NormalizeGraph: graph missing")
-    g = (
-        graph.model_dump(by_alias=True)
-        if hasattr(graph, "model_dump")
-        else (graph if isinstance(graph, dict) else {})
-    )
+    graph: ProcessGraph,
+    format: str = "dict",
+) -> tuple[ProcessGraph | None, str | None]:
     path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
+
     if not path.is_file():
-        return (None, missing_workflow_msg(path))
+        return None, missing_workflow_msg(path)
+
+    unit_param_overrides: WorkflowInputs = {
+        "normalize_graph": {
+            "format": format,
+        }
+    }
+
+    graph_data = graph.model_dump(by_alias=True)
+
     out = await _run_async(
         path,
-        {"inject_graph": {"data": g}},
-        unit_param_overrides={"normalize_graph": {"format": format}},
+        {"inject_graph": {"data": graph_data}},
+        unit_param_overrides=unit_param_overrides,
     )
-    unit_out = out.get("normalize_graph") or {}
-    return (unit_out.get("graph"), unit_out.get("error"))
 
+    unit_out = out.get("normalize_graph")
+    if not is_json_object(unit_out):
+        return None, None
 
-logger = setup_colored_logging(logging.DEBUG)
+    raw_graph = unit_out.get("graph")
+    raw_error = unit_out.get("error")
+
+    error = str(raw_error) if raw_error is not None else None
+
+    if not is_json_object(raw_graph):
+        return None, error
+
+    graph_format: FormatProcess = (
+        format if is_format_process(format) else "dict"
+    )
+
+    try:
+        normalized_graph = to_process_graph(
+            raw_graph,
+            format=graph_format,
+        )
+    except (TypeError, ValueError) as exc:
+        return None, str(exc)
+
+    return normalized_graph, error
+
 
 def validate_graph_to_apply_for_canvas_inline_sync(
-    graph: Any,
-) -> tuple[Any, str | None]:
+    graph: ProcessGraph,
+) -> tuple[ProcessGraph, str | None]:
     """
     Run ``validate_graph_to_apply_single.json`` (Inject → ValidateGraphToApply), then build
     ``ProcessGraph`` for ``set_graph`` / canvas apply.
@@ -516,8 +510,8 @@ def validate_graph_to_apply_for_canvas_inline_sync(
 
 
 async def validate_graph_to_apply_for_canvas_inline(
-    graph: Any,
-) -> tuple[Any, str | None]:
+    graph: ProcessGraph,
+) -> tuple[ProcessGraph, str | None]:
     return await asyncio.to_thread(
         validate_graph_to_apply_for_canvas_inline_sync, graph
     )
@@ -525,19 +519,33 @@ async def validate_graph_to_apply_for_canvas_inline(
 
 def run_clean_text_for_chat_inline_sync(text: str) -> str:
     """
-    Run Inject → CleanText (units/semantics/clean_text) to remove fenced markdown/code and
-    JSON-like noise from message text for history and previous-turn prompts.
+    Run Inject → CleanText to remove fenced markdown/code and JSON-like
+    noise from message text.
     """
     from units.semantics import register_semantics_units
 
     register_semantics_units()
+
     path = _AGENTS_WORKFLOWS_DIR / "clean_text_chat_single.json"
-    raw = text if isinstance(text, str) else str(text or "")
+    raw = text.strip()
+
     if not path.is_file():
-        return raw.strip()
-    out = _run_sync(path, {"inject_text": {"data": raw}})
-    unit_out = out.get("clean_text") or {}
-    return str(unit_out.get("text", "") or "")
+        return raw
+
+    out = _run_sync(
+        path,
+        {"inject_text": {"data": raw}},
+    )
+
+    unit_out = out.get("clean_text")
+    if not is_json_object(unit_out):
+        return ""
+
+    cleaned_text = unit_out.get("text")
+    if cleaned_text is None:
+        return ""
+
+    return str(cleaned_text)
 
 
 async def run_clean_text_for_chat_inline(text: str) -> str:
