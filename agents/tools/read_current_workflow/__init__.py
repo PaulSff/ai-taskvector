@@ -1,6 +1,6 @@
 """
-read_current_workflow follow-up: inject a **full** ``graph_summary`` (structure + code blocks policy)
-into ``follow_up_context``, same orchestration as RAG/search (no separate tool workflow run).
+read_current_workflow follow-up: inject a full graph_summary
+(structure + code blocks policy) into follow_up_context.
 """
 
 from __future__ import annotations
@@ -17,16 +17,6 @@ from agents.tools.read_current_workflow.follow_ups import (
 from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
 from config.settings import get_coding_is_allowed
 from core.graph.summary import graph_summary
-from core.schemas import ProcessGraph
-from core.schemas.primitives import Data
-
-
-def _graph_to_dict(graph_ref: list[ProcessGraph]) -> Data:
-    if graph_ref is None:
-        return {}
-    if hasattr(graph_ref, "model_dump"):
-        return graph_ref.model_dump(by_alias=True)
-    return graph_ref if isinstance(graph_ref, dict) else {}
 
 
 async def run_read_current_workflow_follow_up(
@@ -35,47 +25,63 @@ async def run_read_current_workflow_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    if not po.get("read_current_workflow"):
-        return FollowUpContribution(context_chunks=[], any_empty_tool=False)
+    if not po.actions.tool_actions.get("read_current_workflow"):
+        return FollowUpContribution(
+            context_chunks=[],
+            any_empty_tool=False,
+        )
 
-    try:
-        ctx.set_inline_status("Reading full graph summary…")
-    except Exception:
-        pass
+    ctx.set_inline_status("Reading full graph summary…")
 
-    hint = language_hint
-    lang = (hint() or "English").strip() or "English"
+    lang = (language_hint() or "English").strip() or "English"
 
     if not ctx.graph_ref or ctx.graph_ref[0] is None:
         chunk = (
             READ_CURRENT_WORKFLOW_FOLLOW_UP_PREFIX
-            + "(No graph loaded in the designer; nothing to summarize.)\n"
+            + "(No graph loaded; nothing to summarize.)\n"
             + READ_CURRENT_WORKFLOW_FOLLOW_UP_SUFFIX.format(
                 language=lang,
                 session_language=lang,
             )
         )
-        return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
+        return FollowUpContribution(
+            context_chunks=[chunk],
+            any_empty_tool=True,
+        )
 
-    g_dict = _graph_to_dict(ctx.graph_ref[0])
+    graph = ctx.graph_ref[0]
 
     def _build_summary_text() -> str:
-        params = get_summary_params(get_coding_is_allowed(), g_dict)
-        ids = params.get("include_source_for_unit_ids")
-        summ = graph_summary(
-            g_dict,
-            include_structure=True,
-            include_code_block_source=bool(params.get("include_code_block_source")),
-            include_source_for_unit_ids=list(ids)
-            if isinstance(ids, list) and ids
-            else None,
+        params = get_summary_params(
+            get_coding_is_allowed(),
+            graph,
         )
-        return json.dumps(summ, indent=2, ensure_ascii=False)
 
-    try:
-        body = await asyncio.to_thread(_build_summary_text)
-    except Exception as ex:
-        body = f"(Failed to build graph summary: {ex})"
+        ids = params.get("include_source_for_unit_ids")
+        source_ids: list[str] | None = None
+
+        if isinstance(ids, list):
+            source_ids = [
+                item for item in ids
+                if isinstance(item, str)
+            ] or None
+
+        summary = graph_summary(
+            graph,
+            include_structure=True,
+            include_code_block_source=bool(
+                params.get("include_code_block_source")
+            ),
+            include_source_for_unit_ids=source_ids,
+        )
+
+        return json.dumps(
+            summary,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    body = await asyncio.to_thread(_build_summary_text)
 
     chunk = (
         READ_CURRENT_WORKFLOW_FOLLOW_UP_PREFIX
@@ -87,7 +93,11 @@ async def run_read_current_workflow_follow_up(
             session_language=lang,
         )
     )
-    return FollowUpContribution(context_chunks=[chunk], any_empty_tool=False)
+
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=False,
+    )
 
 
 __all__ = ["run_read_current_workflow_follow_up"]
