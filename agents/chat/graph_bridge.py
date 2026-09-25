@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
-_get_live_graph_dict: Callable[[], dict[str, Any] | None] | None = None
-_on_apply_graph: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+from core.schemas.primitives import Data
+
+_get_live_graph_dict: Callable[[], Data | None] | None = None
+_on_apply_graph: Callable[[Data], Awaitable[None]] | None = None
 
 
 def register_live_graph_accessors(
     *,
-    get_graph_dict: Callable[[], dict[str, Any] | None],
-    on_apply_graph: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    get_graph_dict: Callable[[], Data | None],
+    on_apply_graph: Callable[[Data], Awaitable[None]] | None = None,
 ) -> None:
     """Register canvas graph getter/apply hooks (called from gui.main on startup)."""
     global _get_live_graph_dict, _on_apply_graph
@@ -20,7 +21,7 @@ def register_live_graph_accessors(
     _on_apply_graph = on_apply_graph
 
 
-def get_live_graph_dict() -> dict[str, Any] | None:
+def get_live_graph_dict() -> Data | None:
     """Return the current canvas graph as a dict, or None when GUI is not running."""
     if _get_live_graph_dict is None:
         return None
@@ -33,7 +34,7 @@ def get_live_graph_dict() -> dict[str, Any] | None:
     return g if isinstance(g, dict) else None
 
 
-async def apply_graph_from_turn(inner_msg: dict[str, Any]) -> bool:
+async def apply_graph_from_turn(inner_msg: Data) -> bool:
     """Apply graph from an orchestrator in-progress/final message to the canvas."""
     if _on_apply_graph is None:
         return False

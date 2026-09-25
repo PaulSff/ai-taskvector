@@ -9,6 +9,8 @@ from typing import cast
 
 import flet as ft
 
+from core.schemas.graph_edit_api import GraphEdit
+from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.editor.graph_visual_editor.flow_layout import EdgeTuple
 
@@ -62,18 +64,30 @@ def open_remove_link_dialog(
         from_port: str | None = None,
         to_port: str | None = None,
     ) -> None:
-        edit: dict = {"action": "disconnect", "from": from_id, "to": to_id}
+        edit_data: Data = {
+            "action": "disconnect",
+            "from": from_id,
+            "to": to_id,
+        }
+
         if from_port is not None:
-            edit["from_port"] = from_port
+            edit_data["from_port"] = from_port
+
         if to_port is not None:
-            edit["to_port"] = to_port
+            edit_data["to_port"] = to_port
+
+        edit = GraphEdit.model_validate(edit_data)
 
         new_graph = await apply_edit_via_workflow(graph, edit)
         on_saved(new_graph)
 
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
-        result = save_workflow_version(new_graph, project_name=proj, template=template)
+        result = save_workflow_version(
+            new_graph,
+            project_name=proj,
+            template=template,
+        )
 
         if result.reason == "saved":
             _toast("Saved!")
@@ -83,6 +97,7 @@ def open_remove_link_dialog(
             _toast("No workflow loaded")
         else:
             _toast("Save failed")
+
 
     def _conn_key(c: object) -> EdgeTuple:
         fid_obj = getattr(c, "from_id", None) or (c.get("from") if isinstance(c, dict) else None)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import flet as ft
 
@@ -10,16 +10,17 @@ from agents.chat.utils.save_workflow import (
     _now_timestamp,
     save_workflow_version,
 )
-from core.schemas.process_graph import ProcessGraph
 from config.settings import (
     get_workflow_project_name,
     get_workflow_save_path_template,
     save_settings,
 )
+from core.normalizer.normalizer import to_process_graph
+from core.schemas.primitives import Data, RawProcessInput
+from core.schemas.process_graph import ProcessGraph
 from gui.utils.notifications import show_toast
 
-GraphDict = dict[str, Any]
-GraphLike = ProcessGraph | GraphDict
+GraphLike = ProcessGraph | Data
 GraphOrRef = GraphLike | list[GraphLike | None] | None
 
 def open_save_workflow_dialog(
@@ -29,19 +30,26 @@ def open_save_workflow_dialog(
     on_saved: Callable[[Path], None] | None = None,
 ) -> None:
 
-    def _get_graph() -> GraphLike | None:
+    def _get_process_graph() -> ProcessGraph | None:
         if isinstance(graph_or_ref, list):
-            # return first non-None element (or None if none exist)
-            for item in graph_or_ref:
-                if item is not None:
-                    return item
+            raw_graph = next(
+                (item for item in graph_or_ref if item is not None),
+                None,
+            )
+        else:
+            raw_graph = graph_or_ref
+
+        if raw_graph is None:
             return None
 
-        # not a list => graph_or_ref is GraphLike | None
-        return graph_or_ref
+        if isinstance(raw_graph, ProcessGraph):
+            return raw_graph
 
-    graph = _get_graph()
-    # now `graph` is correctly typed as GraphLike | None
+        return to_process_graph(
+            cast(RawProcessInput, raw_graph),
+            format="dict",
+        )
+
 
     def _toast(msg: str) -> None:
         async def _run() -> None:
@@ -187,7 +195,7 @@ def open_save_workflow_dialog(
         user_template = str(Path(abs_folder) / user_name_template)
 
         result = save_workflow_version(
-            _get_graph(),
+            _get_process_graph(),
             project_name=proj,
             template=user_template,
         )

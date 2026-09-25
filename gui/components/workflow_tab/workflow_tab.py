@@ -14,14 +14,14 @@ import flet as ft
 from pydantic import ValidationError
 
 from agents.chat.utils import save_workflow_version
-from core.schemas.process_graph import ProcessGraph
-from gui.components.console import build_workflow_run_console
 from config.settings import (
     NEW_FLOW_TEMPLATE_PATH,
     get_workflow_project_name,
     get_workflow_save_path_template,
     get_workflow_undo_max_depth,
 )
+from core.schemas.process_graph import ProcessGraph
+from gui.components.console import build_workflow_run_console
 from gui.components.workflow_tab.dialogs import (
     open_add_link_dialog,
     open_add_node_dialog,
