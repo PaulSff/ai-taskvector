@@ -37,13 +37,6 @@ async def run_role_ordered_follow_ups(
         if not follow_up_tool_enabled(ctx, tool_id):
             continue
 
-        print(
-            "\033[38;5;245m"
-            "[parser_follow_up_chain] followup_tool_enabled "
-            f"tool_id={tool_id}\033[0m",
-            flush=True,
-        )
-
         if not po.actions.has_tool_action(parser_key):
             continue
 
