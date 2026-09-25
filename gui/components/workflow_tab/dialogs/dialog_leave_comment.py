@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import flet as ft
 
+from core.schemas.graph_edit_api import GraphEdit
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -43,11 +44,11 @@ def open_leave_comment_dialog(
         page.run_task(_run)
 
     async def _add_comment_and_autosave(info: str) -> None:
-        edit = {
-            "action": "add_comment",
-            "info": info,
-            "commenter": "user",
-        }
+        edit = GraphEdit(
+            action="add_comment",
+            info=info,
+            commenter="user",
+        )
 
         new_graph = await apply_edit_via_workflow(graph, edit)
         on_saved(new_graph)
