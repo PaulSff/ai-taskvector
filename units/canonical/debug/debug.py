@@ -10,15 +10,15 @@ from __future__ import annotations
 import datetime
 import json
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 DEBUG_INPUT_PORTS = [("data", "Any")]
 DEBUG_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _serialize(value: Any) -> str:
+def _serialize(value: object) -> str:
     """Convert value to a log-friendly string."""
     if value is None:
         return (
@@ -46,11 +46,11 @@ def _serialize(value: Any) -> str:
 
 
 def _debug_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Forward input to output and append a line to log_path."""
     data = inputs.get("data")
     log_path = params.get("log_path") or "workflow.log"

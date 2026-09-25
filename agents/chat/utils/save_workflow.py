@@ -19,12 +19,13 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from core.schemas.process_graph import ProcessGraph
 from config.settings import (
     REPO_ROOT,
     get_workflow_project_name,
     get_workflow_save_path_template,
 )
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph
 
 PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"
 PLACEHOLDER_TIMESTAMP = "$YY-MM-DD-HHMMSS$"
@@ -46,7 +47,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: ProcessGraph | None) -> dict[str, object]:
+def _graph_to_payload(graph: ProcessGraph | None) -> Data:
     """Normalize to a full dict for saving. Handles ProcessGraph or dict (e.g. from workflow); ensures all keys."""
     if graph is None:
         return {"environment_type": "thermodynamic", "units": [], "connections": []}
