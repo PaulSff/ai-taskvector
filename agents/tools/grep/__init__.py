@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Mapping, Sequence
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
@@ -22,11 +23,13 @@ from agents.tools.types import (
 
 EXECUTION_TIMEOUT_S: float = 60.0
 
+type GrepFollowUpResult = FollowUpContribution | BaseException
+
 
 def _empty_grep_contribution(
-    hint: LanguageHintGetter,
+    language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    language = hint()
+    language = language_hint()
 
     chunk = (
         GREP_FOLLOW_UP_PREFIX
@@ -75,6 +78,7 @@ def _format_grep_result(grep_output: object) -> str:
 
     if error is not None and str(error).strip():
         error_text = str(error).strip()
+
         result = (
             f"{result}\nError: {error_text}".strip()
             if result
@@ -84,82 +88,78 @@ def _format_grep_result(grep_output: object) -> str:
     return result
 
 
-async def run_grep_follow_up(
+def _is_current_run(
     ctx: ExecutionFollowUpContext,
-    po: ParserOutput,
-    *,
-    language_hint: LanguageHintGetter,
-) -> FollowUpContribution:
-    # Keep this import local to avoid the action-block/follow-up import cycle.
-    from agents.tools.grep.action_block import GrepActionBlock
+) -> bool:
+    try:
+        return ctx.is_current_run(ctx.token)
+    except (AttributeError, TypeError, RuntimeError):
+        return False
+
+
+async def _toast_if_current_run(
+    ctx: ExecutionFollowUpContext,
+    message: str,
+) -> None:
+    if not _is_current_run(ctx):
+        return
 
     try:
-        setter = getattr(ctx, "set_inline_status", None)
-        if callable(setter):
-            setter("Using grep…")
+        await ctx.toast(message)
     except (AttributeError, TypeError, RuntimeError):
         pass
 
-    hint = language_hint
+
+def _set_inline_status(
+    ctx: ExecutionFollowUpContext,
+    message: str,
+) -> None:
+    try:
+        ctx.set_inline_status(message)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+
+
+async def _run_one_grep_action(
+    ctx: ExecutionFollowUpContext,
+    raw_action: object,
+    *,
+    language_hint: LanguageHintGetter,
+    notify: bool,
+) -> FollowUpContribution:
+    """
+    Validate and execute one grep action.
+    """
+
+    # Local import avoids the action-block/follow-up import cycle.
+    from agents.tools.grep.action_block import GrepActionBlock
 
     try:
-        grep_actions = po.actions.get_tool_actions("grep")
+        action = GrepActionBlock.model_validate(raw_action)
 
-        if not grep_actions:
-            raise ValueError(
-                "Grep follow-up was requested, but no grep action was found"
-            )
-
-        if len(grep_actions) != 1:
-            raise ValueError(
-                "Grep follow-up expected exactly one grep action, "
-                f"got {len(grep_actions)}"
-            )
-
-        raw_action = grep_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = GrepActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid grep action: "
-                        f"{str(exc)[:120]}"
-                    )
-            except (AttributeError, TypeError):
-                pass
-
-            raise
-
-        # Pass the complete normalized action to the workflow.
         payload: JsonValue = TypeAdapter(JsonValue).validate_python(
             action.model_dump(mode="json")
         )
 
-        initial_inputs = {
-            "inject_payload": {
-                "template": payload,
-            }
-        }
-
         out, errs = await run_workflow_with_errors(
             GREP_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
+            initial_inputs={
+                "inject_payload": {
+                    "template": payload,
+                }
+            },
             unit_param_overrides=None,
             format="dict",
             execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
 
-        if errs:
+        if errs and notify:
             error_text = _format_workflow_error(errs)
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Grep error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+            await _toast_if_current_run(
+                ctx,
+                f"Grep error: {error_text}",
+            )
 
         grep_output: object = {}
 
@@ -169,9 +169,9 @@ async def run_grep_follow_up(
         result = _format_grep_result(grep_output)
 
         if not result.strip():
-            return _empty_grep_contribution(hint)
+            return _empty_grep_contribution(language_hint)
 
-        language = hint()
+        language = language_hint()
 
         chunk = (
             GREP_FOLLOW_UP_PREFIX
@@ -188,28 +188,182 @@ async def run_grep_follow_up(
         )
 
     except TimeoutError:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast("Grep operation timed out")
-        except (AttributeError, TypeError):
-            pass
+        if notify:
+            await _toast_if_current_run(
+                ctx,
+                "Grep operation timed out",
+            )
 
-        return _empty_grep_contribution(hint)
+        return _empty_grep_contribution(language_hint)
 
-    except ValidationError:
+    except ValidationError as exc:
+        if notify:
+            await _toast_if_current_run(
+                ctx,
+                "Invalid grep action: "
+                f"{str(exc)[:120]}",
+            )
+
         raise
 
-    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
-        try:
-            if ctx.is_current_run(ctx.token):
-                await ctx.toast(
-                    "Grep workflow crashed: "
-                    f"{type(exc).__name__}: {str(exc)[:120]}"
+    except (
+        AttributeError,
+        TypeError,
+        KeyError,
+        ValueError,
+        IndexError,
+    ) as exc:
+        if notify:
+            await _toast_if_current_run(
+                ctx,
+                "Grep workflow crashed: "
+                f"{type(exc).__name__}: {str(exc)[:120]}",
+            )
+
+        raise
+
+
+async def run_grep_follow_up(
+    ctx: ExecutionFollowUpContext,
+    po: ParserOutput,
+    *,
+    language_hint: LanguageHintGetter,
+    notify: bool = True,
+) -> FollowUpContribution:
+    """
+    Execute all grep actions in one ParserOutput concurrently.
+
+    Results preserve the original action order. Individual failures are
+    omitted from the combined contribution.
+    """
+
+    if notify:
+        _set_inline_status(ctx, "Using grep…")
+
+    try:
+        grep_actions = po.actions.get_tool_actions("grep")
+
+        if not grep_actions:
+            raise ValueError(
+                "Grep follow-up was requested, but no grep action was found"
+            )
+
+        tasks = [
+            asyncio.create_task(
+                _run_one_grep_action(
+                    ctx,
+                    raw_action,
+                    language_hint=language_hint,
+                    notify=notify,
                 )
-        except (AttributeError, TypeError):
-            pass
+            )
+            for raw_action in grep_actions
+        ]
+
+        results = await asyncio.gather(
+            *tasks,
+            return_exceptions=True,
+        )
+
+        return combine_grep_follow_up_results(results)
+
+    except TimeoutError:
+        if notify:
+            await _toast_if_current_run(
+                ctx,
+                "Grep operation timed out",
+            )
+
+        return _empty_grep_contribution(language_hint)
+
+    except (
+        AttributeError,
+        TypeError,
+        KeyError,
+        ValueError,
+        IndexError,
+    ) as exc:
+        if notify:
+            await _toast_if_current_run(
+                ctx,
+                "Grep workflow crashed: "
+                f"{type(exc).__name__}: {str(exc)[:120]}",
+            )
 
         raise
 
 
-__all__ = ["run_grep_follow_up"]
+async def run_grep_follow_ups_concurrently(
+    ctx: ExecutionFollowUpContext,
+    parser_outputs: Sequence[ParserOutput],
+    *,
+    language_hint: LanguageHintGetter,
+) -> list[GrepFollowUpResult]:
+    """
+    Execute multiple ParserOutputs concurrently.
+
+    Each ParserOutput may contain one or more grep actions. Since
+    run_grep_follow_up() also executes actions concurrently, this supports
+    concurrency at both the ParserOutput and action levels.
+    """
+
+    if not parser_outputs:
+        return []
+
+    _set_inline_status(
+        ctx,
+        f"Running {len(parser_outputs)} grep searches…",
+    )
+
+    tasks = [
+        asyncio.create_task(
+            run_grep_follow_up(
+                ctx,
+                parser_output,
+                language_hint=language_hint,
+                notify=False,
+            )
+        )
+        for parser_output in parser_outputs
+    ]
+
+    return list(
+        await asyncio.gather(
+            *tasks,
+            return_exceptions=True,
+        )
+    )
+
+
+def combine_grep_follow_up_results(
+    results: Sequence[GrepFollowUpResult],
+) -> FollowUpContribution:
+    """
+    Combine successful grep results while preserving their original order.
+
+    Failed grep calls are omitted.
+    """
+
+    context_chunks: list[str] = []
+    any_empty_tool = False
+
+    for result in results:
+        if isinstance(result, BaseException):
+            continue
+
+        context_chunks.extend(result.context_chunks)
+        any_empty_tool = (
+            any_empty_tool or result.any_empty_tool
+        )
+
+    return FollowUpContribution(
+        context_chunks=context_chunks,
+        any_empty_tool=any_empty_tool,
+    )
+
+
+__all__ = [
+    "combine_grep_follow_up_results",
+    "run_grep_follow_up",
+    "run_grep_follow_ups_concurrently",
+]
