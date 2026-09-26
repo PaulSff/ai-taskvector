@@ -29,6 +29,7 @@ from config.settings import (
     LEFT_PANEL_DEFAULT,
     LEFT_PANEL_MAX,
     LEFT_PANEL_MIN,
+    NEW_FLOW_TEMPLATE_PATH,
     RESIZE_GRIP_WIDTH,
     RESIZE_UPDATE_INTERVAL_S,
     RIGHT_PANEL_DEFAULT,
@@ -246,13 +247,7 @@ async def main(page: ft.Page) -> None:
 
     # Load the most recently modified workflow from the save folder; else new-flow template; else empty
     graph_ref: list[ProcessGraph | None] = [None]
-    _new_flow_template_path = (
-        Path(__file__).resolve().parent
-        / "components"
-        / "workflow"
-        / "import"
-        / "new_flow_template.json"
-    )
+    _new_flow_template_path = NEW_FLOW_TEMPLATE_PATH
     save_dir = get_workflow_save_dir()
     if save_dir.exists():
         json_files = list(save_dir.glob("*.json"))

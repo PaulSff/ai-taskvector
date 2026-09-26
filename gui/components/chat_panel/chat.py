@@ -13,7 +13,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import flet as ft
 from flet import Border, BorderSide
@@ -48,6 +48,8 @@ from config.settings import (
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
 )
+from core.schemas.graph_edit_api import SetGraphCallback
+from core.schemas.primitives import Data
 from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
 from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
 from gui.components.chat_panel.ui.graph_references import GraphReferencesController
@@ -85,14 +87,14 @@ def build_agents_chat_panel(
     page: ft.Page,
     *,
     graph_ref: list[ProcessGraph | None],
-    set_graph: Callable[[ProcessGraph | None], None],
-    apply_from_agent: Callable[[ProcessGraph | None], None] | None = None,
+    set_graph: SetGraphCallback,
+    apply_from_agent: SetGraphCallback | None = None,
     get_recent_changes: Callable[[], Awaitable[str | None]] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
-    on_show_run_console: Callable[[dict[str, Any]], None] | None = None,
-    chat_panel_api: dict[str, Any] | None = None,
-    on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None
+    on_show_run_console: Callable[[Data], None] | None = None,
+    chat_panel_api: Data | None = None,
+    on_turn_status: Callable[[Data], Coroutine[object, object, None]] | None = None
 ) -> ft.Control:
     """
     Build the right-column agents chat panel.
@@ -323,7 +325,7 @@ def build_agents_chat_panel(
     )
     refs_chips_row = refs_controller.row
 
-    def _row_builder(msg: dict[str, Any]) -> ft.Row:
+    def _row_builder(msg: Data) -> ft.Row:
         # bubble_width=None makes bubbles expand to available chat column width (responsive).
         return build_message_row(
             page=page,
@@ -416,11 +418,11 @@ def build_agents_chat_panel(
         role: str,
         content: str,
         *,
-        msg: dict[str, Any] | None = None,
-        meta: dict[str, Any] | None = None,
-        after_io: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        msg: Data | None = None,
+        meta: Data | None = None,
+        after_io: Callable[[], Awaitable[None]] | None = None,
         skip_messages_col_update: bool = False,
-    ) -> dict[str, Any]:
+    ) -> Data:
         """
         Insert a message row in the Flet UI. Purely visual — no history tracking, no I/O.
         Session history and persistence are owned by turn_driver (handle_turn /
@@ -784,7 +786,7 @@ def build_agents_chat_panel(
     # Hoisted out of _send_from_field so Enter does not synchronously re-parse a large nested def
     # before the handler returns (that delay blocked the status line from painting).
     async def _run_chat_turn(
-        token: int, *, turn_id: str, user_msg: dict[str, Any], message_for_workflow: str
+        token: int, *, turn_id: str, user_msg: Data, message_for_workflow: str
     ) -> None:
         """Run one agent turn via turn_driver.handle_turn()."""
         try:
@@ -866,7 +868,7 @@ def build_agents_chat_panel(
                 "is_initial_apply_done": False,
             }
 
-            async def _on_apply(inner_msg: dict[str, Any]) -> None:
+            async def _on_apply(inner_msg: Data) -> None:
                 await on_apply_hook(
                     token=token,
                     inner_msg=inner_msg,
@@ -908,7 +910,7 @@ def build_agents_chat_panel(
                 return
 
             # handle_turn returns the orchestrator unit's output dict directly.
-            orch_out: dict[str, Any] = outputs or {}
+            orch_out: Data = outputs or {}
 
             # callback role_llm_inspector_tab (in DEV mode)
             if chat_panel_api is not None:
@@ -965,7 +967,7 @@ def build_agents_chat_panel(
                 return
             _set_inline_status(None)
             err_content = str(ex).strip() or type(ex).__name__
-            err_msg: dict[str, Any] = {
+            err_msg: Data = {
                 "id": new_id(),
                 "ts": now_ts(),
                 "role": "agent",
@@ -1002,8 +1004,8 @@ def build_agents_chat_panel(
         if not _td_session.history:
             return
 
-        last_user_msg: dict[str, Any] | None = None
-        last_agent_msg: dict[str, Any] | None = None
+        last_user_msg: Data | None = None
+        last_agent_msg: Data | None = None
 
         # Find last user and last agent rendered in the current session history.
         for m in reversed(_td_session.history):
@@ -1053,7 +1055,7 @@ def build_agents_chat_panel(
             input_tf_first.disabled = True
             input_tf.disabled = True
             safe_update(input_tf_first, input_tf)
-            user_msg_lc: dict[str, Any] = {
+            user_msg_lc: Data = {
                 "id": new_id(),
                 "ts": now_ts(),
                 "role": "user",
@@ -1068,7 +1070,7 @@ def build_agents_chat_panel(
                 if cmd_lang == ""
                 else f"Session language set to: {cmd_lang}"
             )
-            ack_msg: dict[str, Any] = {
+            ack_msg: Data = {
                 "id": new_id(),
                 "ts": now_ts(),
                 "role": "agent",
@@ -1107,11 +1109,11 @@ def build_agents_chat_panel(
         state.busy = True
         input_tf_first.disabled = True
         input_tf.disabled = True
-        run_turn_holder: list[Any] = [None]
+        run_turn_holder: list[Callable[[int], Awaitable[None]] | None] = [None]
 
         # Pre-build user message dict so the same object is stored in both the
         # Flet row and the turn_driver session history (via pre_built_user_msg).
-        user_msg: dict[str, Any] = {
+        user_msg: Data = {
             "id": new_id(),
             "ts": now_ts(),
             "role": "user",

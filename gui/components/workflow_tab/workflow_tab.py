@@ -20,6 +20,7 @@ from config.settings import (
     get_workflow_undo_max_depth,
 )
 from core.normalizer.normalizer import to_process_graph
+from core.schemas.graph_edit_api import SetGraphCallback
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.console import build_workflow_run_console
@@ -50,13 +51,13 @@ def build_workflow_tab(
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], None],
     *,
-    on_graph_changed: Callable[[ProcessGraph | None], None] | None = None,
+    on_graph_changed: SetGraphCallback | None = None,
     chat_graph_drag_group: str | None = None,
     chat_panel_api: Data | None = None,
 ) -> tuple[
     ft.Control,
-    Callable[[ProcessGraph | None], None],
-    Callable[[ProcessGraph | None], None],
+    SetGraphCallback,
+    SetGraphCallback,
     Callable[[], Awaitable[str | None]],
     Callable[[], None],
     Callable[[], None],

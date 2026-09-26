@@ -221,20 +221,41 @@ async def run_load_workflow_inline(
     )
 
     unit_out = out.get("load_workflow")
+
     if not is_json_object(unit_out):
+        logger.warning(
+            "Invalid load_workflow unit output for %s: expected object, got %s",
+            path_str,
+            type(unit_out).__name__,
+        )
         return None, None
 
     raw_graph = unit_out.get("graph")
     raw_error = unit_out.get("error")
-
     error = str(raw_error) if raw_error is not None else None
 
     if not is_json_object(raw_graph):
+        logger.warning(
+            "Invalid load_workflow graph for %s: expected object, got %s; "
+            "error=%r; keys=%s",
+            path_str,
+            type(raw_graph).__name__,
+            error,
+            list(unit_out.keys()),
+        )
         return None, error
 
     try:
         graph = to_process_graph(raw_graph, format="dict")
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "Could not parse load_workflow graph for %s: %s; "
+            "error=%r; graph_keys=%s",
+            path_str,
+            exc,
+            error,
+            list(raw_graph.keys()),
+        )
         return None, error
 
     return graph, error

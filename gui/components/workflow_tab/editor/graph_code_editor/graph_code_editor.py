@@ -12,6 +12,7 @@ from typing import Any
 
 import flet as ft
 
+from core.schemas.graph_edit_api import SetGraphCallback
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.dialogs import dict_to_graph
 from gui.utils.code_editor import build_code_editor
@@ -42,7 +43,7 @@ def build_graph_code_view(
     graph_ref: list[ProcessGraph | None],
     *,
     selection_watch_token_ref: list[int],
-    on_graph_saved: Callable[[ProcessGraph | None], None],
+    on_graph_saved: SetGraphCallback,
     show_graph_view: Callable[[], None],
     show_toast: Callable[[ft.Page, str], None],  # ← SYNCHRONOUS function (no await)
     chat_panel_api: dict[str, Any] | None = None,

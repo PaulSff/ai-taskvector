@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
 from pathlib import Path
 
 import flet as ft
 from pydantic import ValidationError
 
 from agents.tools.import_workflow import import_workflow_graph_path
+from config.settings import (
+    AUTO_IMPORT_WORKFLOW_PATH,
+)
+from core.schemas.graph_edit_api import SetGraphCallback
 from core.schemas.primitives import (
     JsonDocument,
     WorkflowInputs,
@@ -17,9 +20,6 @@ from core.schemas.primitives import (
     is_json_object,
 )
 from core.schemas.process_graph import ProcessGraph
-from config.settings import (
-    AUTO_IMPORT_WORKFLOW_PATH,
-)
 from gui.utils.file_picker import register_file_picker
 
 IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
@@ -120,7 +120,7 @@ def _show_snack(page: ft.Page, message: str) -> None:
 
 def open_import_workflow_dialog(
     page: ft.Page,
-    on_imported: Callable[[ProcessGraph], None],
+    on_imported: SetGraphCallback,
 ) -> None:
     from agents.chat.utils import save_workflow_version
     from config.settings import (

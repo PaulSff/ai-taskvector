@@ -85,15 +85,21 @@ If the graph is unavailable or graph loading fails, the unit returns:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph
 from core.schemas import ProcessGraph
-from core.schemas.primitives import Data, Output
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    JsonValue,
+    Output,
+    is_json_value,
+    is_model_dumpable,
+)
 from units.registry import UnitSpec, register_unit
 
 CHECK_TODO_INPUT_PORTS = [
@@ -110,25 +116,35 @@ CHECK_TODO_OUTPUT_PORTS = [
 logger = logging.getLogger("CheckTodo")
 
 
-def _to_jsonable(value: Any) -> Any:
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+def _to_jsonable(value: object) -> JsonValue:
+    if is_model_dumpable(value):
+        dumped = value.model_dump(mode="json")
+
+        if not is_json_value(dumped):
+            raise TypeError(
+                "model_dump() returned a non-JSON-serializable value"
+            )
+
+        return dumped
+
+    if is_json_value(value):
+        return value
+
+    if isinstance(value, tuple):
+        return [_to_jsonable(item) for item in value]
 
     if isinstance(value, dict):
-        result: dict[str, Any] = {}
+        result: JsonObject = {}
 
         for key, item in value.items():
             result[str(key)] = _to_jsonable(item)
 
         return result
 
-    if isinstance(value, list):
-        return [_to_jsonable(item) for item in value]
-
-    if isinstance(value, tuple):
-        return [_to_jsonable(item) for item in value]
-
-    return value
+    raise TypeError(
+        "Value is not JSON-serializable: "
+        f"{type(value).__name__}"
+    )
 
 
 def _check_todo_step(
@@ -245,7 +261,12 @@ def _check_todo_step(
         )
 
         # Serialize todo tasks to JSON-compatible values.
-        incomplete_tasks_json = _to_jsonable(list(incomplete_tasks or []))
+        incomplete_tasks_json = _to_jsonable(
+            list(incomplete_tasks or [])
+        )
+
+        if not isinstance(incomplete_tasks_json, list):
+            raise TypeError("Expected incomplete tasks to serialize as a JSON array")
 
         tasks_todo = {
             "type": "update",

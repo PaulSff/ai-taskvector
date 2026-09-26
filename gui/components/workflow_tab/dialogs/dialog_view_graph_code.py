@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
-from typing import Any
 
 import flet as ft
 
+from core.schemas.graph_edit_api import SetGraphCallback
+from core.schemas.primitives import Data
 from core.schemas.process_graph import (
     CodeBlock,
     Comment,
@@ -38,8 +38,8 @@ def open_view_graph_code_dialog(
     comment_id: str | None = None,
     todo_list_id: str | None = None,
     todo_task_id: str | None = None,
-    on_graph_saved: Callable[[ProcessGraph], None] | None = None,
-    chat_panel_api: dict[str, Any] | None = None,
+    on_graph_saved: SetGraphCallback | None = None,
+    chat_panel_api: Data | None = None,
 ) -> None:
     """Graph / code block editor dialog with position-mapped overlay editing."""
 

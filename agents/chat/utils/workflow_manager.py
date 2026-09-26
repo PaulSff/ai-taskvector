@@ -17,15 +17,15 @@ from typing import Literal, cast
 
 from pydantic import ValidationError
 
-from core.normalizer.shared import to_json_value
-from core.schemas import ProcessGraph
-from core.schemas.primitives import JsonValue, WorkflowInputs
 from config.settings import (
     AUTO_IMPORT_WORKFLOW_PATH,
     NEW_FLOW_TEMPLATE_PATH,
     get_workflow_project_name,
     get_workflow_save_dir,
 )
+from core.normalizer.shared import to_json_value
+from core.schemas import ProcessGraph
+from core.schemas.primitives import Data, JsonObject, JsonValue, WorkflowInputs
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def _pick_latest_workflow_json(workflows_dir: Path, project_name: str) -> Path |
 async def _run_workflow_async(
     workflow_json_path: str,
     initial_inputs: WorkflowInputs,
-) -> dict[str, object]:
+) -> Data:
     """
     Async wrapper around the synchronous runtime.
 
@@ -70,7 +70,7 @@ async def _run_workflow_async(
 
     from runtime.run import run_workflow
 
-    def _run() -> dict[str, object]:
+    def _run() -> Data:
         outputs = run_workflow(
             workflow_json_path,
             initial_inputs=initial_inputs,
@@ -94,8 +94,8 @@ class ImportResult:
 
 
 async def run_auto_import_workflow_async(
-    raw_data: dict[str, JsonValue] | list[JsonValue],
-) -> tuple[dict[str, JsonValue] | None, str]:
+    raw_data: JsonObject | list[JsonValue],
+) -> tuple[JsonObject | None, str]:
     """
     Async version of run_auto_import_workflow(raw_data).
     """
