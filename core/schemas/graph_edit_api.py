@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar, Literal, TypeGuard
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from core.schemas import NodePosition, ProcessGraph
 from core.schemas.primitives import JsonValue, is_object_list
+
+type SetGraphCallback = Callable[[ProcessGraph | None], None]
 
 # Action types
 GraphEditAction = Literal[
