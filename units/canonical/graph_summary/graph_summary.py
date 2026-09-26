@@ -61,12 +61,15 @@ def _graph_summary_step(
 
     summary = _graph_summary(
         graph,
+        # Whether to include the code block sources
         include_code_block_source=_as_bool(
             params.get("include_code_block_source"),
         ),
+        # An optional filter for source inclusion. E.g. "include_source_for_unit_ids": ["unit_1", "unit_3"]
         include_source_for_unit_ids=_source_unit_ids(
             params.get("include_source_for_unit_ids"),
         ),
+        # Whether to include the workflow structure (Units, Connections, etc.)
         include_structure=_as_bool(
             params.get("include_structure"),
             default=True,
