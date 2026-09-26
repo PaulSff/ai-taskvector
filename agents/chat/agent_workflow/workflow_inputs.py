@@ -6,6 +6,8 @@ Kept under ``agents/roles/workflow_designer`` so headless code and tests do not 
 
 from __future__ import annotations
 
+import logging
+
 from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
     WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
@@ -27,10 +29,13 @@ from core.schemas.graph_edit_api import (
     ApplyWorkflowEditsResult,
 )
 from core.schemas.primitives import WorkflowInputs
+from services.logging import setup_colored_logging
 
 from .wf_inputs_schema import WorkflowDesignerWorkflowInputs
 
 DEFAULT_WF_LANGUAGE = "English (en)"
+
+logger = setup_colored_logging(logging.DEBUG)
 
 
 def default_wf_language_hint(session_language: str) -> str:
@@ -119,6 +124,12 @@ def build_agent_workflow_initial_inputs(
     *,
     light_graph_mode: bool = False,
 ) -> WorkflowInputs:
+
+    logger.info(
+            "[build_agent_workflow_initial_inputs] light_graph_mode=%s",
+            str(bool(light_graph_mode)).lower(),
+        )
+
     user_message = (user_message or "").strip() or "(No message provided.)"
 
     if language_hint is None:
@@ -205,6 +216,7 @@ def build_agent_workflow_initial_inputs(
             if can_contribute
             else ""
         ),
+
     )
 
     if light_graph_mode:

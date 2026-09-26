@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from core.schemas.primitives import JsonValue, WorkflowInputs
+from core.schemas.primitives import JsonObject, JsonValue, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -37,7 +37,7 @@ class WorkflowDesignerWorkflowInputs(BaseModel):
             by_alias=True,
         )
 
-        def data(value: JsonValue) -> dict[str, JsonValue]:
+        def data(value: JsonValue) -> JsonObject:
             return {"data": value}
 
         return {
