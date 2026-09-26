@@ -25,6 +25,7 @@ from config.settings import (
     get_todo_task_deadline_s,
 )
 from core.schemas import ProcessGraph, TodoTask
+from core.schemas.primitives import Data
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def _parse_deadline_ts(deadline_value: str | None) -> float | None:
 
 HandleTurn = Callable[
     ...,
-    Awaitable[dict[str, object] | None],
+    Awaitable[Data | None],
 ]
 
 async def handle_tasks_expired_hook(
@@ -129,7 +130,7 @@ async def handle_tasks_expired_hook(
 
         graph_result = await import_latest_workflow_graph_async()
 
-        if getattr(graph_result, "error", None):
+        if graph_result.error:
             logger.warning(
                 "session=%s: failed to import workflow graph: %s",
                 sess,
@@ -137,24 +138,18 @@ async def handle_tasks_expired_hook(
             )
             return
 
-        graph_data = getattr(graph_result, "graph", None)
-        if not isinstance(graph_data, dict):
+        current_graph = graph_result.graph
+
+        if not isinstance(current_graph, ProcessGraph):
             logger.warning(
-                "session=%s: imported workflow graph is invalid",
+                "session=%s: imported workflow graph is invalid: type=%s error=%s",
                 sess,
+                type(current_graph).__name__,
+                getattr(graph_result, "error", None),
             )
             return
 
-        try:
-            current_graph = ProcessGraph.model_validate(graph_data)
-        except (ValidationError, TypeError):
-            logger.exception(
-                "session=%s: failed to validate imported workflow graph",
-                sess,
-            )
-            return
-
-        current_now_ts = time.time()
+        current_now_ts = now_ts
         tasks_expired = _compute_expired(
             current_graph,
             current_now_ts,
@@ -187,18 +182,18 @@ async def handle_tasks_expired_hook(
         )
 
         if updated_graph_dict is not None:
-            graph_dict = updated_graph_dict
+            try:
+                graph = ProcessGraph.model_validate(updated_graph_dict)
+            except (ValidationError, TypeError):
+                logger.exception(
+                    "session=%s: failed to validate updated workflow graph",
+                    sess,
+                )
+                return
         else:
-            graph_dict = current_graph.model_dump()
+            graph = current_graph
 
-        try:
-            graph = ProcessGraph.model_validate(graph_dict)
-        except (ValidationError, TypeError):
-            logger.exception(
-                "session=%s: failed to validate updated workflow graph",
-                sess,
-            )
-            return
+        graph_dict = graph.model_dump()
 
         from agents.chat.utils import save_workflow_version
 
@@ -230,8 +225,6 @@ async def handle_tasks_expired_hook(
                 save_result.reason,
             )
 
-        graph_dict = graph.model_dump()
-
         expired_task_ids = [str(task.id) for task in tasks_expired]
 
         logger.info(
@@ -245,8 +238,12 @@ async def handle_tasks_expired_hook(
             out_session,
         )
 
+        expired_task_texts = ", ".join(
+            task.text for task in tasks_expired
+        )
+
         user_message = TODO_TASKS_EXPIRED_USER_MESSAGE_TEMPLATE.format(
-            tasks_expired=tasks_expired,
+            tasks_expired=expired_task_texts,
         )
 
         outputs = await handle_turn(
