@@ -34,7 +34,7 @@
       "controllable": false,
       "params": {
         "include_code_block_source": false,
-        "include_structure": false
+        "include_structure": true
       },
       "name": null,
       "input_ports": [

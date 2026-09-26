@@ -39,6 +39,9 @@ chat:
     format_rag:
        max_chars: 1200
        snippet_max: 400
+    graph_summary:
+       include_code_block_source: false
+       include_structure: true
     llm_agent:
       provider: ollama
       model_name: gemma4:31b-cloud
