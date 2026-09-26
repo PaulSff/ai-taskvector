@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from config.settings import (
 # Application types/settings — required. Do not hardcode defaults here.
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
 PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"
@@ -29,6 +31,10 @@ SAVE_WORKFLOW_OUTPUT_PORTS = [
     ("saved_at", "Any"),
     ("error", "Any"),
 ]
+
+logger = setup_colored_logging(logging.DEBUG)
+
+type GraphInput = ProcessGraph | Data
 
 @dataclass(frozen=True)
 class _SaveResult:
@@ -51,7 +57,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: ProcessGraph | None) -> Data:
+def _graph_to_payload(graph: GraphInput | None) -> Data:
     """
     Normalize graph into a dictionary suitable for saving.
 
@@ -69,7 +75,10 @@ def _graph_to_payload(graph: ProcessGraph | None) -> Data:
         if hasattr(ProcessGraph, "model_validate"):
             try:
                 validated = ProcessGraph.model_validate(graph)
-                result = validated.model_dump(by_alias=True)
+                result = validated.model_dump(
+                    by_alias=True,
+                    mode="json",
+                )
                 if isinstance(result, dict):
                     return result
             except ValidationError:
@@ -114,7 +123,7 @@ def _graph_to_payload(graph: ProcessGraph | None) -> Data:
     raise ValueError("invalid_graph")
 
 
-def _graph_json_bytes(graph: ProcessGraph | None) -> bytes:
+def _graph_json_bytes(graph: GraphInput | None) -> bytes:
     payload = _graph_to_payload(graph)
     order = (
         "environment_type",
@@ -165,7 +174,7 @@ def _dump_yaml_bytes(obj: Data) -> bytes:
 
 
 def _save_workflow_version(
-    graph: ProcessGraph | None,
+    graph: GraphInput | None,
     *,
     project_name: str | None = None,
     template: str | None = None,
@@ -235,7 +244,18 @@ def _save_workflow_step(
     dt: float,
 ):
     raw_graph = inputs.get("graph")
-    graph = raw_graph if isinstance(raw_graph, ProcessGraph) else None
+
+    if raw_graph is None:
+        graph: GraphInput | None = None
+        logger.warning("SaveWorkflow received no graph")
+    elif isinstance(raw_graph, (ProcessGraph, dict)):
+        graph = raw_graph
+    else:
+        graph = None
+        logger.warning(
+            "SaveWorkflow received unsupported graph type: %s",
+            type(raw_graph).__name__,
+        )
 
     raw_format = params.get("format")
     fmt = raw_format.lower() if isinstance(raw_format, str) else "json"
@@ -261,12 +281,26 @@ def _save_workflow_step(
         else None
     )
 
-    result = _save_workflow_version(
-        graph,
-        project_name=project_name_override,
-        template=template_override,
-        repo_root=repo_root_override,
-        fmt=fmt,
+    try:
+        result = _save_workflow_version(
+            graph,
+            project_name=project_name_override,
+            template=template_override,
+            repo_root=repo_root_override,
+            fmt=fmt,
+        )
+    except Exception:
+        logger.exception("SaveWorkflow crashed while saving")
+        return {
+            "saved_at": None,
+            "error": "save failed",
+        }, state
+
+    logger.info(
+        "SaveWorkflow completed: saved=%s, path=%s, reason=%s",
+        result.saved,
+        result.path,
+        result.reason,
     )
 
     if result.saved and result.path is not None:
