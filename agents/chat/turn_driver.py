@@ -320,8 +320,8 @@ async def handle_turn(
     pre_built_user_msg: Data | None = None,
     on_rename: Callable[[Path], None] | None = None,
     stream_callback: Callable[[str, str], Coroutine[object, object, None]] | None = None,
-    on_apply: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
-    on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
+    on_apply: Callable[[Data], Coroutine[object, object, None]] | None = None,
+    on_turn_status: Callable[[Data], Coroutine[object, object, None]] | None = None,
 ) -> Data | None:
     import logging
 
@@ -590,7 +590,7 @@ async def handle_turn(
     async def _apply_mid_run_if_present(
         inner_msg: Data,
         *,
-        apply_cb: Callable[[dict[str, object]], Awaitable[None]],
+        apply_cb: Callable[[Data], Awaitable[None]],
     ) -> None:
         """
         Best-effort graph/state apply during in-progress.
