@@ -7,8 +7,9 @@ from typing import Any
 
 import flet as ft
 
+from core.schemas.graph_edit_api import SetGraphCallback
 from core.schemas.primitives import Data
-from core.schemas.process_graph import ProcessGraph  # adjust import
+from core.schemas.process_graph import ProcessGraph
 
 GraphValidator = Callable[
     [ProcessGraph | None],
@@ -26,8 +27,8 @@ async def on_apply_hook(
     validate_graph_inline: GraphValidator,
     safe_page_update: Callable[[Any], None],
     scroll_chat_to_bottom: Callable[[], Awaitable[None]],
-    apply_fn_from_agent: Callable[[ProcessGraph], Any] | None,
-    set_graph: Callable[[ProcessGraph], None] | None,
+    apply_fn_from_agent: SetGraphCallback | None,
+    set_graph: SetGraphCallback | None,
     state: Data,
 ) -> None:
     if not is_current_run(token):
@@ -41,10 +42,10 @@ async def on_apply_hook(
 
         if not isinstance(graph, ProcessGraph):
             raise TypeError(
-                f"Expected graph to be ProcessGraph, got {type(graph).__name__}"
+                f"Expected graph to be ProcessGraph, "
+                f"got {type(graph).__name__}"
             )
 
-        # De-dupe by graph content.
         graph_key = json.dumps(
             graph.model_dump(by_alias=True),
             sort_keys=True,
@@ -54,13 +55,7 @@ async def on_apply_hook(
         if graph_key == state["last_graph_to_apply"]:
             return
 
-        state["last_graph_to_apply"] = graph_key
-
-        apply_fn = (
-            apply_fn_from_agent
-            if apply_fn_from_agent is not None
-            else set_graph
-        )
+        apply_fn = apply_fn_from_agent or set_graph
 
         if apply_fn is None:
             return
@@ -68,18 +63,22 @@ async def on_apply_hook(
         pg, v_err = await validate_graph_inline(graph)
 
         if v_err or pg is None:
-            state["graph_apply_error"] = (
-                f"Could not validate graph: {(v_err or '')[:120]}"
-            )
-            await toast(page, state["graph_apply_error"])
+            error = f"Could not validate graph: {(v_err or '')[:120]}"
+            state["graph_apply_error"] = error
+            await toast(page, error)
             return
 
         apply_fn(pg)
-        state["graph_applied"] = True
-        safe_page_update(page)
 
+        state["last_graph_to_apply"] = graph_key
+        state["graph_applied"] = True
+        state["graph_apply_error"] = None
+
+        safe_page_update(page)
+        await scroll_chat_to_bottom()
         await toast(page, "Applied")
 
-    except (KeyError, TypeError, json.JSONDecodeError) as ex:
-        state["graph_apply_error"] = str(ex).strip() or type(ex).__name__
-        await toast(page, state["graph_apply_error"])
+    except (KeyError, TypeError, ValueError) as ex:
+        error = str(ex).strip() or type(ex).__name__
+        state["graph_apply_error"] = error
+        await toast(page, error)
