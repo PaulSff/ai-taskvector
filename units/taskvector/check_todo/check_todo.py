@@ -84,21 +84,17 @@ If the graph is unavailable or graph loading fails, the unit returns:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from pydantic import ValidationError
 
 from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
-from agents.chat.utils.workflow_manager import import_latest_workflow_graph
 from core.schemas import ProcessGraph
 from core.schemas.primitives import (
     Data,
-    JsonObject,
-    JsonValue,
     Output,
-    is_json_value,
-    is_model_dumpable,
 )
 from units.registry import UnitSpec, register_unit
 
@@ -116,35 +112,23 @@ CHECK_TODO_OUTPUT_PORTS = [
 logger = logging.getLogger("CheckTodo")
 
 
-def _to_jsonable(value: object) -> JsonValue:
-    if is_model_dumpable(value):
-        dumped = value.model_dump(mode="json")
-
-        if not is_json_value(dumped):
-            raise TypeError(
-                "model_dump() returned a non-JSON-serializable value"
-            )
-
-        return dumped
-
-    if is_json_value(value):
+def _to_jsonable(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
         return value
 
-    if isinstance(value, tuple):
-        return [_to_jsonable(item) for item in value]
-
     if isinstance(value, dict):
-        result: JsonObject = {}
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
 
-        for key, item in value.items():
-            result[str(key)] = _to_jsonable(item)
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
 
-        return result
+    if hasattr(value, "model_dump"):
+        return _to_jsonable(value.model_dump(mode="json"))
 
-    raise TypeError(
-        "Value is not JSON-serializable: "
-        f"{type(value).__name__}"
-    )
+    if hasattr(value, "__dict__"):
+        return _to_jsonable(vars(value))
+
+    raise TypeError(f"Value is not JSON-serializable: {type(value).__name__}")
 
 
 def _check_todo_step(
@@ -182,44 +166,57 @@ def _check_todo_step(
         )
 
     try:
-        graph_input = inputs.get("graph")
+        graph_dict = None
 
-        if graph_input is not None:
+        graph_input = inputs.get("graph")
+        if isinstance(graph_input, dict):
             graph_dict = graph_input
             logger.debug("CheckTodo using graph from input port")
-
         else:
             graph_dict = get_live_graph_dict()
 
             if graph_dict is not None:
                 logger.debug("CheckTodo using live graph")
-
             else:
                 logger.debug(
                     "CheckTodo: No live graph available; importing latest workflow graph"
                 )
 
-                graph_result = import_latest_workflow_graph()
+                from agents.chat.utils.workflow_manager import (
+                    import_latest_workflow_graph_async,
+                )
+
+                graph_result = asyncio.run(import_latest_workflow_graph_async())
 
                 if graph_result.error:
                     logger.error(
                         "Failed to import latest workflow graph: %s",
                         graph_result.error,
                     )
-
                     return (
                         {
                             "tasks_todo": None,
                             "error": {
                                 "error": "graph_import_failed",
-                                "message": str(graph_result.error),
+                                "message": graph_result.error,
                             },
                         },
                         state,
                     )
 
-                graph_dict = graph_result.graph
+                if graph_result.graph is None:
+                    return (
+                        {
+                            "tasks_todo": None,
+                            "error": {
+                                "error": "graph_unavailable",
+                                "message": "No valid workflow graph is available.",
+                            },
+                        },
+                        state,
+                    )
 
+                graph_dict = graph_result.graph.model_dump(mode="json")
                 logger.debug(
                     "CheckTodo: Imported latest workflow graph from %s",
                     graph_result.picked_workflow_path,
@@ -237,9 +234,7 @@ def _check_todo_step(
                 state,
             )
 
-        graph_data = {
-            str(key): value for key, value in graph_dict.items()
-        }
+        graph_data = {str(key): value for key, value in graph_dict.items()}
 
         try:
             graph = ProcessGraph.model_validate(graph_data)
@@ -260,10 +255,7 @@ def _check_todo_step(
             task_matches=None,
         )
 
-        # Serialize todo tasks to JSON-compatible values.
-        incomplete_tasks_json = _to_jsonable(
-            list(incomplete_tasks or [])
-        )
+        incomplete_tasks_json = _to_jsonable(list(incomplete_tasks or []))
 
         if not isinstance(incomplete_tasks_json, list):
             raise TypeError("Expected incomplete tasks to serialize as a JSON array")
@@ -290,7 +282,6 @@ def _check_todo_step(
 
     except Exception as exc:
         logger.exception("CheckTodo failed")
-
         return (
             {
                 "tasks_todo": None,
