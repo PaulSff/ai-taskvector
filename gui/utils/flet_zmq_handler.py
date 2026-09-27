@@ -45,10 +45,14 @@ class FletZmqHandler(ft.Stack):
         self._rag_update_evt: asyncio.Event | None = None
         self._rag_update_task: asyncio.Task[None] | None = None
         self._rag_update_lock = asyncio.Lock()
-        self._rag_update_scheduled_for_turn: bool = False
 
         # Set graph from the update message
         self._set_graph_cb: SetGraphCallback | None = None
+
+        # Turn ids in progress to track
+        self._turn_seen_in_progress: set[str] = set()
+        self._turn_seen_final: set[str] = set()
+
 
     def set_graph_callback(self, cb: SetGraphCallback) -> None:
         self._set_graph_cb = cb
@@ -106,57 +110,55 @@ class FletZmqHandler(ft.Stack):
                     return None
             return payload
 
-        def extract_turn_state(msg: Data) -> tuple[str | None, str | None, str | None]:
-            # returns (msg_type, messenger, agent) only when:
-            # - msg_type is in_progress/final
-            # - messenger exists (same as original gating)
-            def maybe_from_msg_wrap(msg_wrap: object) -> tuple[str | None, str | None, str | None]:
+        def extract_turn_state(msg: Data) -> tuple[str | None, str | None, str | None, str | None]:
+            # returns (msg_type, messenger, agent, turn_id)
+
+            def maybe_from_msg_wrap(msg_wrap: object) -> tuple[str | None, str | None, str | None, str | None]:
                 if not isinstance(msg_wrap, dict):
-                    return None, None, None
+                    return None, None, None, None
 
                 msg_type = msg_wrap.get("type")
                 if msg_type not in ("in_progress", "final"):
-                    return None, None, None
+                    return None, None, None, None
 
                 inner = msg_wrap.get("message")
                 if not isinstance(inner, dict):
-                    return None, None, None
+                    return None, None, None, None
 
                 messenger = inner.get("messenger")
                 agent = inner.get("agent")
-                return msg_type, messenger, agent
+                turn_id = inner.get("turn_id")
+                return msg_type, messenger, agent, turn_id
 
-            # Case 1 (working on_update shape)
             outer_msg = msg.get("message")
-            msg_type, messenger, agent = maybe_from_msg_wrap(outer_msg)
+            msg_type, messenger, agent, turn_id = maybe_from_msg_wrap(outer_msg)
             if msg_type is not None and messenger is not None:
-                return msg_type, messenger, agent
+                return msg_type, messenger, agent, turn_id
 
-            # Orchestrator fallback
             orch = msg.get("orchestrator")
             if isinstance(orch, dict):
                 orch_msg = orch.get("message")
-                msg_type, messenger, agent = maybe_from_msg_wrap(orch_msg)
+                msg_type, messenger, agent, turn_id = maybe_from_msg_wrap(orch_msg)
                 if msg_type is not None and messenger is not None:
-                    return msg_type, messenger, agent
+                    return msg_type, messenger, agent, turn_id
 
                 if isinstance(orch_msg, dict):
                     inner = orch_msg.get("message")
-                    msg_type, messenger, agent = maybe_from_msg_wrap(inner)
+                    msg_type, messenger, agent, turn_id = maybe_from_msg_wrap(inner)
                     if msg_type is not None and messenger is not None:
-                        return msg_type, messenger, agent
+                        return msg_type, messenger, agent, turn_id
 
-            # Case 2 (final shape)
             outputs = msg.get("outputs")
             if isinstance(outputs, dict):
                 out_orch = outputs.get("orchestrator")
                 if isinstance(out_orch, dict):
                     out_orch_msg = out_orch.get("message")
-                    msg_type, messenger, agent = maybe_from_msg_wrap(out_orch_msg)
+                    msg_type, messenger, agent, turn_id = maybe_from_msg_wrap(out_orch_msg)
                     if msg_type is not None and messenger is not None:
-                        return msg_type, messenger, agent
+                        return msg_type, messenger, agent, turn_id
 
-            return None, None, None
+            return None, None, None, None
+
 
         async def handle_payload(payload: JsonObject) -> None:
             msg = ensure_dict(payload)
@@ -164,34 +166,40 @@ class FletZmqHandler(ft.Stack):
             if not isinstance(msg, dict):
                 return
 
-            msg_type, messenger, agent = extract_turn_state(msg)
+            msg_type, messenger, agent, turn_id = extract_turn_state(msg)
 
             logger.info(
-                "[FletZmqHandler] Turn state: type=%r, messenger=%r, agent=%r",
+                "[FletZmqHandler] Turn state: type=%r, messenger=%r, agent=%r, turn_id=%r",
                 msg_type,
                 messenger,
                 agent,
+                turn_id,
             )
 
-            if msg_type is None or messenger != "telegram":
+            if msg_type is None or messenger != "telegram" or turn_id is None:
                 return
-
-            if msg_type == "in_progress":
-                # New turn
-                self._rag_update_scheduled_for_turn = False
 
             agent_str = agent if agent else "Agent"
 
             if msg_type == "in_progress":
-                self._overlay_show(f"{agent_str}: working...")
-                self.update()
+                if turn_id in self._turn_seen_final:
+                    return
+
+                is_new_turn = turn_id not in self._turn_seen_in_progress
+                if is_new_turn:
+                    self._turn_seen_in_progress.add(turn_id)
+                    self._overlay_show(f"{agent_str}: working...")
+                    self.update()
+
                 return
 
+            # final
             self._overlay_hide()
             self.update()
 
-            if not self._rag_update_scheduled_for_turn:
-                self._rag_update_scheduled_for_turn = True
+            if turn_id not in self._turn_seen_final:
+                self._turn_seen_final.add(turn_id)
+                self._turn_seen_in_progress.discard(turn_id)
 
                 if self._rag_update_evt is not None:
                     self._rag_update_evt.set()
@@ -207,7 +215,7 @@ class FletZmqHandler(ft.Stack):
                 if not isinstance(msg, dict):
                     return
 
-                logger.info("[FletZmqHandler] update received: topic=%s", _topic)
+                logger.info("[FletZmqHandler] Update received: topic=%s", _topic)
 
                 await handle_payload(msg)
                 apply_graph_update(msg)
@@ -228,7 +236,7 @@ class FletZmqHandler(ft.Stack):
                 if not isinstance(msg, dict):
                     return
 
-                logger.info("[FletZmqHandler] result received: topic=%s", _topic)
+                logger.info("[FletZmqHandler] Result received: topic=%s", _topic)
 
                 await handle_payload(msg)
                 apply_graph_update(msg)
@@ -279,10 +287,8 @@ class FletZmqHandler(ft.Stack):
                 # avoid overlapping indexing
                 async with self._rag_update_lock:
                     # run only if still scheduled (defensive)
-                    if not self._rag_update_scheduled_for_turn:
-                        continue
                     try:
-                        await cb("telegram_final")
+                        await cb("turn_final")
                     except asyncio.CancelledError:
                         raise
                     except (TimeoutError, OSError, RuntimeError, ValueError, TypeError):
