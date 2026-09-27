@@ -8,11 +8,12 @@ import asyncio
 import json
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Literal
 
 import flet as ft
 
 from core.schemas.graph_edit_api import SetGraphCallback
+from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.dialogs import dict_to_graph
 from gui.utils.code_editor import build_code_editor
@@ -37,6 +38,12 @@ MERGE_GRAPH_KEYS_IF_MISSING: frozenset[str] = frozenset(
     }
 )
 
+type BlockTag = tuple[
+    Literal["comment_info", "comment_obj", "code_blocks", "metadata_field"],
+    str | int | None,
+]
+type BlockRange = tuple[int, int, BlockTag]
+
 
 def build_graph_code_view(
     page: ft.Page,
@@ -46,22 +53,22 @@ def build_graph_code_view(
     on_graph_saved: SetGraphCallback,
     show_graph_view: Callable[[], None],
     show_toast: Callable[[ft.Page, str], None],  # ← SYNCHRONOUS function (no await)
-    chat_panel_api: dict[str, Any] | None = None,
+    chat_panel_api: Data | None = None,
 ) -> ft.Control:
     try:
         try:
             raw_payload = graph_ref[0].model_dump(by_alias=True) if graph_ref[0] else {}
-        except Exception:
+        except AttributeError:
             raw_payload = {}
 
         full_json_ref = [raw_payload]
-        block_ranges_ref: list[list[tuple[int, int, Any]]] = [[]]
+        block_ranges_ref: list[list[BlockRange]] = [[]]
 
         def format_json_with_block_map(
-            data: dict[str, Any],
-        ) -> tuple[str, list[tuple[int, int, Any]]]:
+            data: Data,
+        ) -> tuple[str, list[BlockRange]]:
             parts: list[str] = []
-            block_ranges: list[tuple[int, int, Any]] = []
+            block_ranges: list[BlockRange] = []
             cursor = 0
 
             def add(txt: str) -> None:
@@ -136,7 +143,7 @@ def build_graph_code_view(
                                     block_ranges.append(
                                         (start, end, ("comment_obj", c.get("id")))
                                     )
-                            except Exception:
+                            except (TypeError, ValueError):
                                 block_ranges.append(
                                     (start, end, ("comment_obj", c.get("id")))
                                 )
@@ -184,7 +191,7 @@ def build_graph_code_view(
                             block_ranges.append(
                                 (start, end, ("comment_obj", value.get("id")))
                             )
-                    except Exception:
+                    except (TypeError, ValueError):
                         block_ranges.append(
                             (start, end, ("comment_obj", value.get("id")))
                         )
@@ -364,7 +371,7 @@ def build_graph_code_view(
                         )
                         btn.update()
                     last = has
-                except Exception:
+                except (TypeError, ValueError, IndexError):
                     pass
                 await asyncio.sleep(0.25)
 
@@ -381,7 +388,7 @@ def build_graph_code_view(
                         hint_container.visible = inside
                         hint_container.update()
                     last_inside = inside
-                except Exception:
+                except (TypeError, ValueError, IndexError):
                     pass
                 await asyncio.sleep(0.2)
 
@@ -417,7 +424,7 @@ def build_graph_code_view(
                 text = get_value() or ""
                 data = json.loads(text)
                 if not isinstance(data, dict):
-                    raise ValueError("Graph JSON must be a single object at the root")
+                    raise TypeError("Graph JSON must be a single object at the root")
 
                 base = graph_ref[0]
                 base_dump = base.model_dump(by_alias=True) if base else {}
@@ -448,7 +455,7 @@ def build_graph_code_view(
 
                 show_graph_view()
 
-            except Exception as ex:
+            except (json.JSONDecodeError, TypeError, ValueError) as ex:
                 snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
                 page.overlay.append(snack)
                 page.update()
