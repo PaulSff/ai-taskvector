@@ -8,6 +8,12 @@ from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from typing import cast
 
+from config.settings import (
+    get_turn_driver_job_pub_endpoint,
+    get_turn_driver_max_concurrent_calls,
+    get_turn_driver_response_endpoint,
+    get_turn_driver_update_endpoint,
+)
 from core.normalizer.shared import to_json_value
 from core.schemas.primitives import (
     Data,
@@ -15,12 +21,6 @@ from core.schemas.primitives import (
     JsonValue,
     WorkflowInputs,
     require_json_object_from_object,
-)
-from config.settings import (
-    get_turn_driver_job_pub_endpoint,
-    get_turn_driver_max_concurrent_calls,
-    get_turn_driver_response_endpoint,
-    get_turn_driver_update_endpoint,
 )
 from services.server import (
     RoundRobinSlotAllocator,
