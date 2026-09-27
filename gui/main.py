@@ -75,6 +75,7 @@ from rag.ragconf_loader import (
     rag_update_response_timeout_s_raw,
     rag_update_workflow_server_endpoint_raw,
 )
+from services.logging import setup_colored_logging
 from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
@@ -83,6 +84,8 @@ from services.workflows.core_workflows import (
     run_load_workflow_inline,
     run_runtime_label_inline,
 )
+
+logger = setup_colored_logging(logging.DEBUG)
 
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
 try:
@@ -119,10 +122,6 @@ RIGHT_PANEL_WIDTH_KEY_FALLBACK = RIGHT_PANEL_DEFAULT
 
 # Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
-
-
-logger = logging.getLogger(__name__)
-
 
 
 # --- Wrapper for async show_toast ---
@@ -963,58 +962,60 @@ async def main(page: ft.Page) -> None:
 
     async def _zmq_startup() -> None:
         nonlocal _zmq_handler
+
         from gui.utils.flet_zmq_handler import FletZmqHandler
 
-        # Mount once
-        if _zmq_handler is None:
-            logger.info("_zmq_startup: creating FletZmqHandler")
-            _zmq_handler = FletZmqHandler()
+        handler = FletZmqHandler()
+        _zmq_handler = handler
 
-            # Hook RAG update
-            async def _start_rag_update_callback(reason: str = "manual") -> None:
-                _start_rag_update(reason)
+        logger.info("_zmq_startup: creating FletZmqHandler")
 
-            _zmq_handler.set_rag_update_callback(_start_rag_update_callback)
+        handler.set_graph_callback(set_graph)
 
-            try:
-                # Prefer page.overlay if available (it's ideal for overlays)
-                if hasattr(page, "overlay") and isinstance(page.overlay, list):
-                    page.overlay.append(_zmq_handler)
-                else:
-                    page.controls.append(_zmq_handler)
-            except Exception:
-                # If mount fails, don't crash the whole task
-                logger.exception("_zmq_startup: failed to mount control; continuing")
+        async def _start_rag_update_callback(
+            reason: str = "manual",
+        ) -> None:
+            _start_rag_update(reason)
 
-            # Best-effort update; ignore if session is already tearing down
-            try:
-                page.update()
-            except RuntimeError:
-                logger.info("_zmq_startup: page.update after mount failed (session destroyed); ignoring")
+        handler.set_rag_update_callback(_start_rag_update_callback)
 
-        # Keep the task running so cancel() can trigger cleanup
         try:
+            if hasattr(page, "overlay") and isinstance(page.overlay, list):
+                page.overlay.append(handler)
+            else:
+                page.controls.append(handler)
+
+            page.update()
+
             while True:
                 await asyncio.sleep(3600)
 
         except asyncio.CancelledError:
-            # IMPORTANT: during shutdown, Flet session may already be destroyed.
-            logger.info("_zmq_startup: CancelledError (cleanup/unmount)")
+            logger.info("_zmq_startup: CancelledError")
 
-            # Unmount (best-effort, never fail shutdown)
+            # Do not return before stopping the subscribers.
+            await handler._shutdown_async()
+
+            raise
+
+        finally:
             try:
-                if _zmq_handler is not None:
-                    if (
-                        hasattr(page, "overlay")
-                        and isinstance(page.overlay, list)
-                        and _zmq_handler in page.overlay
-                    ):
-                        page.overlay.remove(_zmq_handler)
-                    elif _zmq_handler in getattr(page, "controls", []):
-                        page.controls.remove(_zmq_handler)
+                if (
+                    hasattr(page, "overlay")
+                    and isinstance(page.overlay, list)
+                    and handler in page.overlay
+                ):
+                    page.overlay.remove(handler)
+
+                if handler in getattr(page, "controls", []):
+                    page.controls.remove(handler)
+
             except Exception:
-                logger.exception("_zmq_startup: unmount failed; ignoring")
-            return
+                logger.exception("_zmq_startup: failed to remove handler")
+
+            if _zmq_handler is handler:
+                _zmq_handler = None
+
 
     async def _ollama_startup() -> None:
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
