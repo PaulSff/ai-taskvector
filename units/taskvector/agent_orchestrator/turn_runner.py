@@ -382,9 +382,19 @@ async def run_orchestrator_turn(
     try:
         _maybe_thinking_on()
 
+        _publish_in_progress(
+            stage="turn:starting",
+            kind=result_ref[0].kind
+        )
+
         await handler.run_turn(
             turn_ctx,
             message_for_workflow=user_message,
+        )
+
+        _publish_in_progress(
+            stage="turn:response_ready",
+            kind=result_ref[0].kind
         )
 
     except (asyncio.CancelledError, KeyboardInterrupt):
