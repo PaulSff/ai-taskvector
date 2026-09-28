@@ -96,7 +96,11 @@ from core.schemas.primitives import (
     Data,
     Output,
 )
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
+
+logger = setup_colored_logging(logging.DEBUG)
+
 
 CHECK_TODO_INPUT_PORTS = [
     ("check_todo", "Any"),
@@ -107,9 +111,6 @@ CHECK_TODO_OUTPUT_PORTS = [
     ("tasks_todo", "Any"),
     ("error", "Any"),
 ]
-
-
-logger = logging.getLogger("CheckTodo")
 
 
 def _to_jsonable(value):
@@ -178,7 +179,7 @@ def _check_todo_step(
             if graph_dict is not None:
                 logger.debug("CheckTodo using live graph")
             else:
-                logger.debug(
+                logger.warning(
                     "CheckTodo: No live graph available; importing latest workflow graph"
                 )
 
@@ -217,7 +218,7 @@ def _check_todo_step(
                     )
 
                 graph_dict = graph_result.graph.model_dump(mode="json")
-                logger.debug(
+                logger.info(
                     "CheckTodo: Imported latest workflow graph from %s",
                     graph_result.picked_workflow_path,
                 )
