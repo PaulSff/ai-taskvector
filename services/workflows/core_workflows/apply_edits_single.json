@@ -36,8 +36,8 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "edits", "type": "Any"},
+        {"name": "graph", "type": "ProcessGraph"},
+        {"name": "actions", "type": "ParsedActions"},
         {"name": "graph_origin", "type": "str"}
       ],
       "output_ports": [
