@@ -16,6 +16,7 @@ from core.schemas import ProcessGraph, TodoTask
 from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
 from core.schemas.primitives import safe_int
 from messengers_integrations.messenger_state import HistoryMessage
+from services.logging import setup_colored_logging
 
 from .helpers import (
     as_todo_params_sequential,
@@ -51,10 +52,10 @@ from .todo_state import (
     TodoParams,
 )
 
+logger = setup_colored_logging(logging.DEBUG)
+
 # Telegram conversation history directory
 MESSAGES_DIR = get_telegram_conversations_dir()
-
-logger = logging.getLogger("TodoListManager")
 
 
 # --- Add todo-lists if not present ---
@@ -393,7 +394,7 @@ async def add_tasks_for_unhandled_messages(
         )
         return None
 
-    logger.info(
+    logger.debug(
         "Todo_list_manager: Processing incoming message reply-to tracking "
         + "(dir=%r)...",
         messages_dir,
@@ -401,7 +402,7 @@ async def add_tasks_for_unhandled_messages(
 
     history: list[HistoryMessage] = load_tg_history(str(messages_dir))
 
-    logger.info(
+    logger.debug(
         "Todo_list_manager: TG history loaded for reply-to tracking: %d items",
         len(history),
     )
@@ -413,7 +414,7 @@ async def add_tasks_for_unhandled_messages(
         for chat_id in chat_map:
             blacklisted_chat_ids.add(str(chat_id))
 
-    logger.info(
+    logger.debug(
         "Todo_list_manager: blacklist filtering (all bots): "
         + "blacklisted_chat_ids=%d",
         len(blacklisted_chat_ids),
@@ -424,7 +425,7 @@ async def add_tasks_for_unhandled_messages(
         blacklisted_chat_ids=blacklisted_chat_ids,
     )
 
-    logger.info(
+    logger.debug(
         "Todo_list_manager: Reply-to detection: pending_chat_ids=%d "
         + "responded_chat_ids=%d",
         len(pending_chat_ids),
@@ -477,7 +478,7 @@ async def add_tasks_for_unhandled_messages(
 
             did_blacklist_removals = True
 
-            logger.info(
+            logger.debug(
                 "Todo_list_manager: Queuing blacklist removal: "
                 + "chat_id=%s task_id=%r",
                 chat_id,
@@ -510,7 +511,7 @@ async def add_tasks_for_unhandled_messages(
                 payload_str or "{}"
             )
         except (TypeError, ValueError, ValidationError):
-            logger.debug(
+            logger.warning(
                 "Todo_list_manager: Skipping task with invalid "
                 + "reply-to payload text=%r",
                 text,
@@ -520,7 +521,7 @@ async def add_tasks_for_unhandled_messages(
         chat_id = str(payload.chat_id)
         existing_reply_tasks_by_chat.setdefault(chat_id, []).append(task.id)
 
-    logger.info(
+    logger.debug(
         "Todo_list_manager: Reply-to detection: existing reply tasks "
         + "tracked for %d chats",
         len(existing_reply_tasks_by_chat),
@@ -644,7 +645,7 @@ async def add_tasks_for_unhandled_messages(
     edits_add_batch.extend(edits_to_apply)
 
     for task_text in pending_task_texts_to_queue:
-        logger.debug(
+        logger.info(
             "Todo_list_manager: Queueing reply-to pending task."
         )
 
