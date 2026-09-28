@@ -41,6 +41,21 @@ def _empty_send_message_chunk(hint: LanguageHintGetter) -> str:
         )
     )
 
+def _error_send_message_chunk(
+    error_text: str,
+    hint: LanguageHintGetter,
+) -> str:
+    language = hint()
+
+    return (
+        SEND_MESSAGE_FOLLOW_UP_PREFIX
+        + f"Error: {error_text}"
+        + SEND_MESSAGE_FOLLOW_UP_SUFFIX.format(
+            language=language,
+            session_language=language,
+        )
+    )
+
 
 def _format_workflow_error(errs: object) -> str:
     if not errs:
@@ -151,11 +166,13 @@ async def run_send_message_follow_up(
     hint = language_hint
     language = hint()
 
+    # Define these before the workflow loop so a timeout can preserve
+    # contributions from actions that completed earlier.
+    context_chunks: list[str] = []
+    any_empty = False
+
     try:
         raw_actions = _get_send_message_actions(po)
-
-        context_chunks: list[str] = []
-        any_empty = False
 
         for raw_action in raw_actions:
             payload = _normalize_send_message_action(raw_action)
@@ -163,7 +180,7 @@ async def run_send_message_follow_up(
             # Each message is intentionally executed in its own workflow run.
             initial_inputs: WorkflowInputs = {
                 "inject_send_message": {
-                    "template": payload,
+                    "template": payload
                 }
             }
 
@@ -185,6 +202,12 @@ async def run_send_message_follow_up(
                 except (AttributeError, TypeError):
                     pass
 
+                context_chunks.append(
+                    _error_send_message_chunk(error_text, hint)
+                )
+                any_empty = True
+                continue
+
             workflow_output: object = {}
 
             if isinstance(out, Mapping):
@@ -193,7 +216,9 @@ async def run_send_message_follow_up(
             result = _format_telegram_result(workflow_output)
 
             if not result:
-                context_chunks.append(_empty_send_message_chunk(hint))
+                context_chunks.append(
+                    _empty_send_message_chunk(hint)
+                )
                 any_empty = True
                 continue
 
@@ -218,14 +243,20 @@ async def run_send_message_follow_up(
         )
 
     except TimeoutError:
+        error_text = "Send message operation timed out"
+
         try:
             if ctx.is_current_run(ctx.token):
-                await ctx.toast("Send message operation timed out")
+                await ctx.toast(error_text)
         except (AttributeError, TypeError):
             pass
 
+        context_chunks.append(
+            _error_send_message_chunk(error_text, hint)
+        )
+
         return FollowUpContribution(
-            context_chunks=[_empty_send_message_chunk(hint)],
+            context_chunks=context_chunks,
             any_empty_tool=True,
         )
 

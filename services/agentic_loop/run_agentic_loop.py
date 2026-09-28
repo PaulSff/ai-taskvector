@@ -78,7 +78,7 @@ async def run_agentic_loop(
     else:
         if not incomplete_tasks:
             logger.info(
-                "session=%s: no incomplete tasks supplied; skipping agentic turn",
+                "[run_agentic_loop] session=%s: no incomplete tasks supplied; skipping agentic turn",
                 sess,
             )
             return
@@ -102,7 +102,7 @@ async def run_agentic_loop(
         )
 
     logger.info(
-        "Starting agentic turn: session=%s, messenger=%s, unread_chats=%s, incomplete_tasks=%s",
+        "[run_agentic_loop] Starting agentic turn: session=%s, messenger=%s, unread_chats=%s, incomplete_tasks=%s",
         sess,
         messenger,
         unread_chats is not None,
@@ -118,7 +118,7 @@ async def run_agentic_loop(
             graph = ProcessGraph.model_validate(graph_dict)
 
             logger.info(
-                "session=%s: using live canvas graph (units=%d todo_lists=%d)",
+                "[run_agentic_loop] session=%s: using live canvas graph (units=%d todo_lists=%d)",
                 sess,
                 len(graph.units),
                 len(graph.todo_lists),
@@ -128,7 +128,7 @@ async def run_agentic_loop(
 
             if graph_result.error:
                 logger.error(
-                    "session=%s: failed to import workflow graph: %s",
+                    "[run_agentic_loop] session=%s: failed to import workflow graph: %s",
                     sess,
                     graph_result.error,
                 )
@@ -137,7 +137,7 @@ async def run_agentic_loop(
                 graph = ProcessGraph.model_validate(graph_result.graph)
 
                 logger.info(
-                    "session=%s: imported graph from %s",
+                    "[run_agentic_loop] session=%s: imported graph from %s",
                     sess,
                     graph_result.picked_workflow_path,
                 )
@@ -168,7 +168,7 @@ async def run_agentic_loop(
                 save_result = save_workflow_version(graph)
             except (ValidationError, TypeError):
                 logger.exception(
-                    "session=%s: failed to save invalid workflow graph",
+                    "[run_agentic_loop] session=%s: failed to save invalid workflow graph",
                     sess,
                 )
                 save_result = None
@@ -176,19 +176,19 @@ async def run_agentic_loop(
             if save_result is not None:
                 if save_result.saved:
                     logger.info(
-                        "session=%s: workflow saved at %s",
+                        "[run_agentic_loop] session=%s: workflow saved at %s",
                         sess,
                         save_result.path,
                     )
                 elif save_result.reason == "no_changes":
                     logger.info(
-                        "session=%s: workflow unchanged; using %s",
+                        "[run_agentic_loop] session=%s: workflow unchanged; using %s",
                         sess,
                         save_result.path,
                     )
                 else:
                     logger.warning(
-                        "session=%s: workflow save skipped: %s",
+                        "[run_agentic_loop] session=%s: workflow save skipped: %s",
                         sess,
                         save_result.reason,
                     )
@@ -202,11 +202,11 @@ async def run_agentic_loop(
 
 
     except Exception:
-        logger.exception("session=%s: agentic turn failed", sess)
+        logger.exception("[run_agentic_loop] session=%s: agentic turn failed", sess)
         return
 
     if outputs is None:
-        logger.warning("session=%s: handle_turn returned None", sess)
+        logger.warning("[run_agentic_loop] session=%s: handle_turn returned None", sess)
         return
 
     out_session = sess
@@ -228,4 +228,4 @@ async def run_agentic_loop(
         MESSENGER=messenger,
     )
 
-    logger.info("session=%s: agentic turn completed", out_session)
+    logger.info("[run_agentic_loop] session=%s: agentic turn completed", out_session)

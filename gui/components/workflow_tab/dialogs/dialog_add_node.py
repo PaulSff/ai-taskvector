@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Callable
-from typing import Any
 
 import flet as ft
 
@@ -20,6 +19,9 @@ from config.settings import (
     get_workflow_project_name,
     get_workflow_save_path_template,
 )
+from core.schemas.graph_edit_api import GraphEdit, SetGraphCallback
+from core.schemas.primitives import Data, require_json_object_from_object
+from core.schemas.process_graph import EnvironmentType, ProcessGraph
 from gui.utils.notifications import show_toast
 from services.units_library_types import (
     get_add_node_type_lists,
@@ -27,6 +29,7 @@ from services.units_library_types import (
 from services.workflows.edit_workflows.runner import (
     apply_edit_via_workflow,
 )
+from units.registry import UnitSpec
 
 _DESC_MAX_LEN = 200
 _ADD_ROW_ICON_SIZE = 22
@@ -50,11 +53,25 @@ def _display_group_title(key: str) -> str:
     return str(key).replace("_", " ").title()
 
 
-def _material_icon_data(name: str | None, *, fallback: str = "widgets") -> Any:
-    """Map Material icon name string to ``ft.Icons`` (same rules as graph canvas nodes)."""
+def _material_icon_data(
+    name: str | None,
+    *,
+    fallback: str = "widgets",
+) -> ft.IconData:
+    """Map a Material icon name to ``ft.Icons``."""
     raw = (name or fallback).strip() or fallback
     key = raw.upper().replace("-", "_").replace(" ", "_")
-    return getattr(ft.Icons, key, getattr(ft.Icons, fallback.upper(), ft.Icons.WIDGETS))
+    fallback_key = fallback.upper()
+
+    icon = getattr(ft.Icons, key, None)
+    if isinstance(icon, ft.IconData):
+        return icon
+
+    fallback_icon = getattr(ft.Icons, fallback_key, None)
+    if isinstance(fallback_icon, ft.IconData):
+        return fallback_icon
+
+    return ft.Icons.WIDGETS
 
 
 def _leading_icon_for_add_row(type_name: str, *, is_pipeline: bool) -> ft.Icon:
@@ -82,8 +99,8 @@ def _leading_icon_for_add_row(type_name: str, *, is_pipeline: bool) -> ft.Icon:
 
 def _group_units_for_add_dialog(
     unit_entries: list[tuple[str, str]],
-    graph_summary: dict[str, Any],
-    get_unit_spec: Callable[[str], Any],
+    graph_summary: Data,
+    get_unit_spec: Callable[[str], UnitSpec | None],
 ) -> list[tuple[str, list[tuple[str, str]]]]:
     """Split library unit rows into environment groups (all known env tags, not just graph envs)."""
     env_raw = graph_summary.get("environments") or []
@@ -225,7 +242,7 @@ TYPE_RL_AGENT = "RLAgent"
 TYPE_LLM_AGENT = "LLMAgent"
 
 
-def _runtime_from_summary(graph_summary: dict[str, Any]) -> str | None:
+def _runtime_from_summary(graph_summary: Data) -> str | None:
     """Return runtime key from graph summary. None if canonical, else e.g. node_red."""
     origin = graph_summary.get("origin") or {}
     if isinstance(origin, dict) and origin.get("node_red"):
@@ -234,21 +251,39 @@ def _runtime_from_summary(graph_summary: dict[str, Any]) -> str | None:
 
 
 def _unit_ids_from_summary(
-    graph_summary: dict[str, Any], pipeline_type_names: set[str]
+    graph_summary: Data,
+    pipeline_type_names: set[str],
 ) -> list[str]:
-    """Return ordered list of unit ids for observation/action wiring (exclude pipelines and agents)."""
-    units = graph_summary.get("units") or []
-    exclude = set(pipeline_type_names) | {TYPE_RL_AGENT, TYPE_LLM_AGENT}
-    return [
-        u["id"] for u in units if isinstance(u, dict) and u.get("type") not in exclude
-    ]
+    """Return ordered list of unit IDs, excluding pipelines and agents."""
+    raw_units = graph_summary.get("units")
+
+    if not isinstance(raw_units, list):
+        return []
+
+    exclude = pipeline_type_names | {TYPE_RL_AGENT, TYPE_LLM_AGENT}
+    unit_ids: list[str] = []
+
+    for unit in raw_units:
+        if not isinstance(unit, dict):
+            continue
+
+        unit_id = unit.get("id")
+        unit_type = unit.get("type")
+
+        if (
+            isinstance(unit_id, str)
+            and unit_type not in exclude
+        ):
+            unit_ids.append(unit_id)
+
+    return unit_ids
 
 
 def open_add_node_dialog(
     page: ft.Page,
-    graph_summary: dict[str, Any],
-    current_graph: Any,
-    on_saved: Callable[[Any], None],
+    graph_summary: Data,
+    current_graph: ProcessGraph,
+    on_saved: SetGraphCallback,
 ) -> None:
     """Open dialog to add a new unit (node). On Save calls on_saved(new_graph).
 
@@ -256,8 +291,14 @@ def open_add_node_dialog(
     graph_summary: LLM-style summary dict (units, connections, origin, environments, etc.).
     current_graph: graph dict or ProcessGraph for applying the edit; can be None for new graph.
     """
+    graph_summary_json = require_json_object_from_object(
+        graph_summary,
+        field="graph_summary",
+    )
 
-    unit_entries, pipeline_entries = get_add_node_type_lists(graph_summary)
+    unit_entries, pipeline_entries = get_add_node_type_lists(
+        graph_summary_json
+    )
     if not unit_entries and not pipeline_entries:
         unit_entries = [
             ("Source", "Constant boundary / setpoint source for the process."),
@@ -282,14 +323,17 @@ def open_add_node_dialog(
 
         ensure_full_unit_registry()
 
-        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+        def _get_unit_spec(type_name: str) -> UnitSpec | None:
             return get_unit_spec_fn(type_name)
 
     except (ImportError, ModuleNotFoundError):
-        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+
+        def _get_unit_spec(type_name: str) -> UnitSpec | None:
             return None
+
     except (OSError, PermissionError, ValueError, TypeError):
-        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+
+        def _get_unit_spec(type_name: str) -> UnitSpec | None:
             return None
 
     grouped_units = _group_units_for_add_dialog(
@@ -375,9 +419,10 @@ def open_add_node_dialog(
             dlg.open = False
         page.update()
 
-    def _handle_new_graph(new_graph: Any) -> None:
+    async def _handle_new_graph(new_graph: ProcessGraph) -> None:
         _close_dlg()
-        on_saved(new_graph)
+        await on_saved(new_graph)
+
 
     def save(e: ft.ControlEvent | None = None) -> None:
         uid = (id_field.value or "").strip()
@@ -403,25 +448,35 @@ def open_add_node_dialog(
             params = _params_llmagent(extra_refs)
 
         if utype in pipeline_names:
-            edit = {
-                "action": "add_pipeline",
-                "pipeline": {"id": uid, "type": utype, "params": params},
-            }
+            edit = GraphEdit.model_validate(
+                {
+                    "action": "add_pipeline",
+                    "pipeline": {
+                        "id": uid,
+                        "type": utype,
+                        "params": params,
+                    },
+                }
+            )
         else:
-            edit = {
-                "action": "add_unit",
-                "unit": {
-                    "id": uid,
-                    "type": utype,
-                    "controllable": controllable_check.value
-                    if utype in unit_names
-                    else False,
-                    "params": params,
-                },
-            }
+            edit = GraphEdit.model_validate(
+                {
+                    "action": "add_unit",
+                    "unit": {
+                        "id": uid,
+                        "type": utype,
+                        "controllable": (
+                            controllable_check.value
+                            if utype in unit_names
+                            else False
+                        ),
+                        "params": params,
+                    },
+                }
+            )
 
-        graph_input: Any = (
-            {"environment_type": "thermodynamic", "units": [], "connections": []}
+        graph_input: ProcessGraph = (
+            ProcessGraph(environment_type=EnvironmentType.THERMODYNAMIC)
             if current_graph is None
             else current_graph
         )
@@ -463,7 +518,7 @@ def open_add_node_dialog(
                 _toast("Save failed")
 
             # close + callback
-            _handle_new_graph(new_graph)
+            await _handle_new_graph(new_graph)
 
         try:
             loop = asyncio.get_running_loop()

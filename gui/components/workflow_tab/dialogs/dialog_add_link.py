@@ -6,6 +6,7 @@ from typing import cast
 import flet as ft
 from flet import Control, Event
 
+from core.schemas.graph_edit_api import GraphEdit, SetGraphCallback
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -27,7 +28,7 @@ def _port_options_for_unit(
 def open_add_link_dialog(
     page: ft.Page,
     graph: ProcessGraph,
-    on_saved: Callable[[ProcessGraph], None],
+    on_saved: SetGraphCallback,
 ) -> None:
     from agents.chat.utils import save_workflow_version
     from config.settings import (
@@ -67,20 +68,32 @@ def open_add_link_dialog(
 
         page.run_task(_run)
 
-    async def _add_and_autosave(from_id: str, to_id: str, from_port: str, to_port: str) -> None:
-        edit = {
-            "action": "connect",
-            "from": from_id,
-            "to": to_id,
-            "from_port": from_port,
-            "to_port": to_port,
-        }
+    async def _add_and_autosave(
+        from_id: str,
+        to_id: str,
+        from_port: str,
+        to_port: str,
+    ) -> None:
+        edit = GraphEdit.model_validate(
+            {
+                "action": "connect",
+                "from": from_id,
+                "to": to_id,
+                "from_port": from_port,
+                "to_port": to_port,
+            }
+        )
+
         new_graph = await apply_edit_via_workflow(graph, edit)
         on_saved(new_graph)
 
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
-        result = save_workflow_version(new_graph, project_name=proj, template=template)
+        result = save_workflow_version(
+            new_graph,
+            project_name=proj,
+            template=template,
+        )
 
         if result.reason == "saved":
             _toast("Saved!")
@@ -90,6 +103,7 @@ def open_add_link_dialog(
             _toast("No workflow loaded")
         else:
             _toast("Save failed")
+
 
     from_id_init = unit_ids[0]
     to_id_init = unit_ids[1] if len(unit_ids) > 1 else unit_ids[0]

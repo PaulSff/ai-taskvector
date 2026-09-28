@@ -59,8 +59,8 @@ def build_workflow_tab(
     SetGraphCallback,
     SetGraphCallback,
     Callable[[], Awaitable[str | None]],
-    Callable[[], None],
-    Callable[[], None],
+    Callable[[], Awaitable[None]],
+    Callable[[], Awaitable[None]],
     Callable[[Data], None],
 ]:
     """
@@ -197,35 +197,47 @@ def build_workflow_tab(
             _drag_pushed[0] = True
         _update_undo_redo_buttons()
 
-    def set_graph(new_graph: ProcessGraph | None) -> None:
+    async def set_graph(new_graph: ProcessGraph | None) -> None:
         """Set graph_ref[0] and refresh the canvas/code views."""
+
         graph_ref[0] = new_graph
         refresh_process_tab()
-        # Code tab keeps a separate JSON editor; rebuild it so agent/canvas edits are not stale.
+
+        # Code tab keeps a separate JSON editor; rebuild it so
+        # agent/canvas edits are not stale.
         if view_mode[0] == "code":
             code_view_container.content = build_code_view_content()
+
             try:
                 code_view_container.update()
             except (AttributeError, RuntimeError):
                 pass
+
         _update_undo_redo_buttons()
-        if on_graph_changed is not None:
+
+        if on_graph_changed is not None and new_graph is not None:
             try:
-                on_graph_changed(new_graph)
+                await on_graph_changed(new_graph)
             except (ValueError, KeyError):
                 pass
 
-    def on_graph_saved(new_graph: ProcessGraph | None) -> None:
-        # Record previous state for undo, then apply (new_graph may be None to clear)
+
+    async def on_graph_saved(
+        new_graph: ProcessGraph | None,
+    ) -> None:
+        # Record previous state for undo, then apply
+        # (new_graph may be None to clear).
         if graph_ref[0] is not None:
             undo.push_undo(graph_ref[0])
         else:
             undo.push_undo(None)
+
         _drag_pushed[0] = False
-        set_graph(new_graph)
+        await set_graph(new_graph)
         _update_undo_redo_buttons()
 
-    def do_undo() -> None:
+
+    async def do_undo() -> None:
         if view_mode[0] != "graph" or not undo.can_undo():
             return
         try:
@@ -233,10 +245,10 @@ def build_workflow_tab(
         except IndexError:
             return
         _drag_pushed[0] = False
-        set_graph(restored)
+        await set_graph(restored)
         _update_undo_redo_buttons()
 
-    def do_redo() -> None:
+    async def do_redo() -> None:
         if view_mode[0] != "graph" or not undo.can_redo():
             return
         try:
@@ -244,17 +256,17 @@ def build_workflow_tab(
         except IndexError:
             return
         _drag_pushed[0] = False
-        set_graph(restored)
+        await set_graph(restored)
         _update_undo_redo_buttons()
 
-    def apply_from_agent(new_graph: ProcessGraph | None) -> None:
+    async def apply_from_agent(new_graph: ProcessGraph | None) -> None:
         """Apply graph from agent edits and push undo so future diffs work."""
         if graph_ref[0] is not None:
             undo.push_undo(graph_ref[0])
         else:
             undo.push_undo(None)
         _drag_pushed[0] = False
-        set_graph(new_graph)
+        await set_graph(new_graph)
         _update_undo_redo_buttons()
 
     async def get_recent_changes() -> str | None:
@@ -389,7 +401,7 @@ def build_workflow_tab(
                 show_msg(str(e))
                 return
 
-            on_graph_saved(graph)
+            await on_graph_saved(graph)
 
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
@@ -489,11 +501,11 @@ def build_workflow_tab(
         icon_color=INACTIVE_ICON_COLOR,
     )
 
-    def _on_toolbar_undo() -> None:
-        do_undo()
+    async def _on_toolbar_undo() -> None:
+        await do_undo()
 
-    def _on_toolbar_redo() -> None:
-        do_redo()
+    async def _on_toolbar_redo() -> None:
+        await do_redo()
 
     undo_btn = ft.IconButton(
         icon=ft.Icons.UNDO,

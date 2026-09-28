@@ -681,7 +681,7 @@ def open_view_graph_code_dialog(
             else:
                 return
 
-            on_graph_saved(new_graph)
+            await on_graph_saved(new_graph)
 
             from agents.chat.utils import save_workflow_version
             from config.settings import (

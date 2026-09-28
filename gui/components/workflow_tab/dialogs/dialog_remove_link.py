@@ -9,7 +9,7 @@ from typing import cast
 
 import flet as ft
 
-from core.schemas.graph_edit_api import GraphEdit
+from core.schemas.graph_edit_api import GraphEdit, SetGraphCallback
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.editor.graph_visual_editor.flow_layout import EdgeTuple
@@ -18,7 +18,7 @@ from gui.components.workflow_tab.editor.graph_visual_editor.flow_layout import E
 def open_remove_link_dialog(
     page: ft.Page,
     graph: ProcessGraph,
-    on_saved: Callable[[ProcessGraph], None],
+    on_saved: SetGraphCallback,
     *,
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:

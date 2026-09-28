@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import flet as ft
 
-from core.schemas.graph_edit_api import GraphEdit
+from core.schemas.graph_edit_api import GraphEdit, SetGraphCallback
 from core.schemas.process_graph import ProcessGraph
 
 
 def open_leave_comment_dialog(
     page: ft.Page,
     graph: ProcessGraph,
-    on_saved: Callable[[ProcessGraph], None],
+    on_saved: SetGraphCallback,
 ) -> None:
     """Open modal dialog: multiline comment → ``add_comment`` edit workflow → autosave + ``on_saved``."""
     from agents.chat.utils import save_workflow_version

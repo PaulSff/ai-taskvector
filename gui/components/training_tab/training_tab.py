@@ -17,18 +17,19 @@ from typing import Any, cast
 import flet as ft
 
 from agents.tools.workflow_path import get_tool_workflow_path
-from core.schemas.agent_node import (
-    # get_agent_action_output_ids
-    get_agent_observation_input_ids,
-    get_policy_node,
-)
-from core.schemas.process_graph import ProcessGraph
-from core.schemas.training_config import GoalConfig, RewardsConfig, TrainingConfig
 from config.settings import (
     get_best_model_path,
     get_training_config_path,
     save_settings,
 )
+from core.schemas.agent_node import (
+    # get_agent_action_output_ids
+    get_agent_observation_input_ids,
+    get_policy_node,
+)
+from core.schemas.primitives import Data
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig, RewardsConfig, TrainingConfig
 from gui.utils.code_editor import build_code_editor
 from gui.utils.keyboard_commands import create_keyboard_handler
 
@@ -366,7 +367,7 @@ def build_training_tab(
     graph_ref: list[ProcessGraph | None] | None = None,
     *,
     show_toast: Callable[[ft.Page, str], Any],
-    chat_panel_api: dict[str, Any] | None = None,
+    chat_panel_api: Data | None = None,
 ) -> ft.Container:
     graph_ref = graph_ref or [None]
     selection_watch_token_ref: list[int] = [0]

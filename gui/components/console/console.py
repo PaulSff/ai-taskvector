@@ -7,8 +7,13 @@ from dataclasses import dataclass
 
 import flet as ft
 
+from agents.chat.utils.workflow_manager import (
+    ImportResult,
+    import_latest_workflow_graph_async,
+)
 from config.settings import DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
 from core.normalizer import to_process_graph
+from core.schemas.graph_edit_api import SetGraphCallback
 from core.schemas.primitives import Data
 from core.schemas.process_graph import ProcessGraph
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
@@ -40,8 +45,10 @@ def build_workflow_run_console(
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], object] | None,
     *,
+    on_graph_update: SetGraphCallback | None = None,
     execution_timeout_s: float | None = DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
 ) -> WorkflowRunConsoleControls:
+
     """Build the collapsible workflow console and wire its controls."""
 
     console_height_fraction = 0.36
@@ -406,42 +413,101 @@ def build_workflow_run_console(
             await result
 
 
+    async def apply_graph_update() -> None:
+        """Import and publish the latest workflow graph after a result."""
+
+        try:
+            import_result: ImportResult = (
+                await import_latest_workflow_graph_async()
+            )
+
+        except (
+            ImportError,
+            ModuleNotFoundError,
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ):
+            logger.exception("Failed to import updated workflow graph")
+            append_console("")
+            append_console("Graph update failed.")
+            return
+
+        new_graph = import_result.graph
+
+        if new_graph is None:
+            if import_result.error:
+                logger.warning(
+                    "Workflow graph import returned no graph: %s",
+                    import_result.error,
+                )
+            return
+
+        graph_ref[0] = new_graph
+
+        if on_graph_update is not None:
+            try:
+                await on_graph_update(new_graph)
+            except (
+                OSError,
+                FileNotFoundError,
+                PermissionError,
+                TypeError,
+                ValueError,
+                RuntimeError,
+            ):
+                logger.exception("Graph update callback failed")
+
+        logger.debug(
+            "Updated workflow graph after result from %s",
+            import_result.picked_workflow_path or "<unknown path>",
+        )
+
+
     async def render_result(outputs: dict[str, object]) -> None:
         nonlocal token_buffer, run_state
 
-        if outputs.get("workflow_status") == "stopped":
-            logger.info("Console: Workflow stop confirmed by runtime")
+        try:
+            if outputs.get("workflow_status") == "stopped":
+                logger.info("Console: Workflow stop confirmed by runtime")
 
-            run_state = "idle"
-            set_inline_status("Stopped", flush=True)
+                run_state = "idle"
+                set_inline_status("Stopped", flush=True)
 
-            if stop_confirmation_event is not None:
-                stop_confirmation_event.set()
+                if stop_confirmation_event is not None:
+                    stop_confirmation_event.set()
 
-            if show_toast is not None:
-                result = show_toast(page, "Workflow stopped")
+                if show_toast is not None:
+                    result = show_toast(page, "Workflow stopped")
 
-                if asyncio.iscoroutine(result):
-                    await result
+                    if asyncio.iscoroutine(result):
+                        await result
 
-            append_console("")
+                append_console("")
+
+                if token_buffer:
+                    append_console(token_buffer)
+                    token_buffer = ""
+
+                append_console("Workflow stopped.")
+                update_console()
+                return
 
             if token_buffer:
                 append_console(token_buffer)
                 token_buffer = ""
 
-            append_console("Workflow stopped.")
+            append_console("")
+            append_console("--- Outputs (unit_id.port) ---")
+            append_console(format_run_outputs(outputs))
             update_console()
-            return
 
-
-        if token_buffer:
-            append_console(token_buffer)
-            token_buffer = ""
-
-        append_console("")
-        append_console("--- Outputs (unit_id.port) ---")
-        append_console(format_run_outputs(outputs))
+        finally:
+            # Update the current graph in case some changes were made during the execution
+            await apply_graph_update()
 
 
     # buffering tokens as they arrive

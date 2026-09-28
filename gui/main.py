@@ -286,8 +286,8 @@ async def main(page: ft.Page) -> None:
             refresh()
 
     # Workflow tab (process graph + code view + dialogs)
-    def _on_graph_changed(graph: ProcessGraph | None) -> None:
-        _ = asyncio.create_task(_set_page_title(graph))
+    async def _on_graph_changed(graph: ProcessGraph) -> None:
+        await _set_page_title(graph)
 
     (
         process_tab_column,
@@ -306,9 +306,9 @@ async def main(page: ft.Page) -> None:
         chat_panel_api=chat_panel_api,
     )
 
-    def set_graph(graph: ProcessGraph | None) -> None:
+    async def set_graph(graph: ProcessGraph) -> None:
         _set_graph_base(graph)
-        _ = asyncio.create_task(_set_page_title(graph))
+        await _set_page_title(graph)
 
    # --- Integrate the live graph_bridge to apply graph from external messengers ---
 
@@ -958,65 +958,6 @@ async def main(page: ft.Page) -> None:
         task.add_done_callback(_rag_tasks.discard)
 
 
-    _zmq_handler = None
-
-    async def _zmq_startup() -> None:
-        nonlocal _zmq_handler
-
-        from gui.utils.flet_zmq_handler import FletZmqHandler
-
-        handler = FletZmqHandler()
-        _zmq_handler = handler
-
-        logger.info("_zmq_startup: creating FletZmqHandler")
-
-        handler.set_graph_callback(set_graph)
-
-        async def _start_rag_update_callback(
-            reason: str = "manual",
-        ) -> None:
-            _start_rag_update(reason)
-
-        handler.set_rag_update_callback(_start_rag_update_callback)
-
-        try:
-            if hasattr(page, "overlay") and isinstance(page.overlay, list):
-                page.overlay.append(handler)
-            else:
-                page.controls.append(handler)
-
-            page.update()
-
-            while True:
-                await asyncio.sleep(3600)
-
-        except asyncio.CancelledError:
-            logger.info("_zmq_startup: CancelledError")
-
-            # Do not return before stopping the subscribers.
-            await handler._shutdown_async()
-
-            raise
-
-        finally:
-            try:
-                if (
-                    hasattr(page, "overlay")
-                    and isinstance(page.overlay, list)
-                    and handler in page.overlay
-                ):
-                    page.overlay.remove(handler)
-
-                if handler in getattr(page, "controls", []):
-                    page.controls.remove(handler)
-
-            except Exception:
-                logger.exception("_zmq_startup: failed to remove handler")
-
-            if _zmq_handler is handler:
-                _zmq_handler = None
-
-
     async def _ollama_startup() -> None:
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
         if msg and not ok:
@@ -1026,7 +967,6 @@ async def main(page: ft.Page) -> None:
 
     # register handlers once and store returned futures (could be concurrent.futures.Future or asyncio.Future)
     _tasks = [
-        page.run_task(_zmq_startup),
         page.run_task(_rag_startup),
         page.run_task(_ollama_startup),
     ]

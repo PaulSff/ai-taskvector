@@ -327,7 +327,7 @@ class AgenticLoopPoller:
                     continue
 
                 if not queued:
-                    logger.debug(
+                    logger.warning(
                         "AgenticLoopPoller: job ignored or dropped: "
                         + "session=%s",
                         session_id,
