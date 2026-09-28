@@ -525,7 +525,12 @@ def build_workflow_tab(
     redo_btn_ref[0] = redo_btn
     _update_undo_redo_buttons()
 
-    _run_console = build_workflow_run_console(page, graph_ref, show_toast)
+    _run_console = build_workflow_run_console(
+        page,
+        graph_ref,
+        show_toast,
+        on_graph_update=apply_from_agent,
+    )
     console_container = _run_console.console_container
     run_btn: ft.Control = _run_console.run_button
     show_console_with_run_output = _run_console.show_console_with_run_output

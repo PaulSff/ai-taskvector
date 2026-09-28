@@ -462,7 +462,7 @@ def build_workflow_run_console(
                 logger.exception("Graph update callback failed")
 
         logger.debug(
-            "Updated workflow graph after result from %s",
+            "[Console] Updated workflow graph after result from %s",
             import_result.picked_workflow_path or "<unknown path>",
         )
 
