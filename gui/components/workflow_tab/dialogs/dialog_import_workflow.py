@@ -241,7 +241,7 @@ def open_import_workflow_dialog(
             return
 
         _close_dlg(dlg)
-        on_imported(graph)
+        await on_imported(graph)
         await _auto_save_imported(graph)
 
     async def _pick_file_and_import(dlg: ft.AlertDialog) -> None:
