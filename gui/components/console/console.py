@@ -164,7 +164,7 @@ def build_workflow_run_console(
             try:
                 inline_status.update()
             except (RuntimeError, ValueError, TypeError) as exc:
-                logger.debug("Failed to update inline status: %s", exc)
+                logger.debug("Console: Failed to update inline status: %s", exc)
 
     def show_console() -> None:
         nonlocal console_visible
@@ -187,13 +187,13 @@ def build_workflow_run_console(
             )
 
         except (AttributeError, TypeError, ValueError) as exc:
-            logger.debug("Failed to calculate console height: %s", exc)
+            logger.debug("Console: Failed to calculate console height: %s", exc)
             console_container.height = console_height_fallback
 
         try:
             console_container.update()
         except (RuntimeError, ValueError, TypeError) as exc:
-            logger.debug("Failed to show console: %s", exc)
+            logger.debug("Console: Failed to show console: %s", exc)
 
     def close_console(_event: object = None) -> None:
         nonlocal console_visible
@@ -205,14 +205,14 @@ def build_workflow_run_console(
             console_container.update()
             page.update()
         except (RuntimeError, ValueError, TypeError) as exc:
-            logger.debug("Failed to close console: %s", exc)
+            logger.debug("Console: Failed to close console: %s", exc)
 
     def update_console() -> None:
         try:
             console_container.update()
             page.update()
         except (RuntimeError, ValueError, TypeError) as exc:
-            logger.debug("Failed to update console: %s", exc)
+            logger.debug("Console: Failed to update console: %s", exc)
 
     # --- timer ---
     timer_text = ft.Text(
@@ -308,7 +308,7 @@ def build_workflow_run_console(
         )
 
     except (AttributeError, TypeError, ValueError) as exc:
-        logger.debug("Failed to create console border: %s", exc)
+        logger.debug("Console: Failed to create console border: %s", exc)
 
         try:
             border_obj = ft.border.Border(
@@ -431,7 +431,7 @@ def build_workflow_run_console(
             ValueError,
             RuntimeError,
         ):
-            logger.exception("Failed to import updated workflow graph")
+            logger.exception("Console: Failed to import updated workflow graph")
             append_console("")
             append_console("Graph update failed.")
             return
@@ -441,7 +441,7 @@ def build_workflow_run_console(
         if new_graph is None:
             if import_result.error:
                 logger.warning(
-                    "Workflow graph import returned no graph: %s",
+                    "Console: Workflow graph import returned no graph: %s",
                     import_result.error,
                 )
             return
@@ -459,15 +459,21 @@ def build_workflow_run_console(
                 ValueError,
                 RuntimeError,
             ):
-                logger.exception("Graph update callback failed")
+                logger.exception("Console: Graph update callback failed")
 
         logger.debug(
-            "[Console] Updated workflow graph after result from %s",
+            "Console: Updated workflow after result from %s",
             import_result.picked_workflow_path or "<unknown path>",
         )
 
+        if show_toast is not None:
+            result = show_toast(page, "Workflow updated")
 
-    async def render_result(outputs: dict[str, object]) -> None:
+            if asyncio.iscoroutine(result):
+                await result
+
+
+    async def render_result(outputs: Data) -> None:
         nonlocal token_buffer, run_state
 
         try:
@@ -650,7 +656,7 @@ def build_workflow_run_console(
             ValueError,
             RuntimeError,
         ) as exc:
-            logger.exception("Workflow console run failed")
+            logger.exception("Console: Workflow console run failed")
 
             append_console("")
             append_console(f"Error: {exc}")
