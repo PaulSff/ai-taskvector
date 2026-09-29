@@ -364,7 +364,7 @@ def open_view_graph_code_dialog(
     show_json_editor = _overlay.show_json_editor
     open_code_editor = _overlay.open_code_editor
 
-    def trigger_edit_code_block():
+    async def trigger_edit_code_block():
         idx = get_block_index_from_cursor(
             get_selection_range, block_ranges_ref[0], active_editor
         )
@@ -387,7 +387,7 @@ def open_view_graph_code_dialog(
 
 
 
-    def save_click_like_apply():
+    async def save_click_like_apply():
         g = graph
         if g is None or on_graph_saved is None:
             return
@@ -461,7 +461,7 @@ def open_view_graph_code_dialog(
 
             new_graph = build_graph_from_editor_text(data_text)
 
-            on_graph_saved(new_graph)
+            await on_graph_saved(new_graph)
 
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
@@ -477,8 +477,8 @@ def open_view_graph_code_dialog(
 
     left_buttons: list[ft.Control] = []
 
-    def apply_click(_e):
-        save_click_like_apply()
+    async def apply_click(_e):
+        await save_click_like_apply()
 
 
     page.on_keyboard_event = create_keyboard_handler(

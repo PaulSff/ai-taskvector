@@ -4,10 +4,15 @@ All Cmd/Ctrl+key and Escape handling should use these so shortcuts stay consiste
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 import flet as ft
 
+KeyboardCallback = Callable[[], Awaitable[None]]
+KeyboardChainCallback = Callable[
+    [ft.KeyboardEvent],
+    Awaitable[None],
+]
 
 def is_save_shortcut(e: ft.KeyboardEvent) -> bool:
     """True if event is Cmd+S (macOS) or Ctrl+S (Windows/Linux)."""
@@ -51,15 +56,15 @@ def is_escape(e: ft.KeyboardEvent) -> bool:
 
 
 def create_keyboard_handler(
-    chain_to: Callable[[ft.KeyboardEvent], None] | None,
+    chain_to: KeyboardChainCallback | None,
     *,
-    on_save: Callable[[], None] | None = None,
-    on_undo: Callable[[], None] | None = None,
-    on_redo: Callable[[], None] | None = None,
-    on_find: Callable[[], None] | None = None,
-    on_escape: Callable[[], None] | None = None,
-    on_edit_code_block: Callable[[], None] | None = None,
-) -> Callable[[ft.KeyboardEvent], None]:
+    on_save: KeyboardCallback | None = None,
+    on_undo: KeyboardCallback| None = None,
+    on_redo: KeyboardCallback | None = None,
+    on_find: KeyboardCallback | None = None,
+    on_escape: KeyboardCallback | None = None,
+    on_edit_code_block: KeyboardCallback | None = None,
+) -> KeyboardChainCallback:
     """
     Build a keyboard handler that runs the given callbacks for shortcuts, then chains to chain_to.
 
@@ -67,7 +72,7 @@ def create_keyboard_handler(
     with on_find=show_find_bar, on_escape=hide_find_bar and chain_to=previous page.on_keyboard_event.
     """
 
-    def handler(e: ft.KeyboardEvent) -> None:
+    async def handler(e: ft.KeyboardEvent) -> None:
         if is_save_shortcut(e) and on_save is not None:
             on_save()
             return

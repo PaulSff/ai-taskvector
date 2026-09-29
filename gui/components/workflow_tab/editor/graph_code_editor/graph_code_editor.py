@@ -312,7 +312,7 @@ def build_graph_code_view(
         )
 
         # Keyboard handler
-        def trigger_edit_code_block():
+        async def trigger_edit_code_block():
             """Open the code editor for the block under the cursor, if any."""
             idx = get_block_index_from_cursor(
                 get_selection_range, block_ranges_ref[0], active_editor
@@ -419,7 +419,7 @@ def build_graph_code_view(
             set_editor_selection(m.start(), m.end())
 
         # --- apply_code ---
-        def apply_code(_e=None):
+        async def apply_code(_e=None):
             try:
                 text = get_value() or ""
                 data = json.loads(text)

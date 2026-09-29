@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 import flet as ft
@@ -133,40 +133,57 @@ def build_code_editor(
 ) -> tuple[
     ft.Control,
     Callable[[], str],
-    Callable[[], None],
-    Callable[[], None],
+    Callable[[], Awaitable[None]],
+    Callable[[], Awaitable[None]],
     Callable[[], tuple[int, int] | None],
     Callable[..., None],
 ]:
     """
-    Build an editable code field (syntax-highlighted when flet-code-editor is installed).
-    Returns (control, get_value, show_find_bar, hide_find_bar, get_selection_range, set_editor_selection).
-    get_selection_range() returns (start, end) for a non-empty selection, else None.
-    set_editor_selection(start, end=None) moves the caret / selection and focuses the editor (end=None → collapsed).
-    When page is set, focus is requested asynchronously (CodeEditor/TextField use async focus).
-    show_find_bar and hide_find_bar are no-ops (find/replace is provided by the code editor).
-    height/width: optional dimensions. expand: use for flexible layout (e.g. workflow tab).
-    page: optional; used by set_editor_selection to await focus so the caret scrolls into view.
-    language: syntax language when using flet-code-editor ("json", "python", etc.).
+    Build an editable code field.
+
+    Returns:
+        (
+            control,
+            get_value,
+            show_find_bar,
+            hide_find_bar,
+            get_selection_range,
+            set_editor_selection,
+        )
+
+    `show_find_bar` and `hide_find_bar` are asynchronous no-ops because
+    find/replace is provided by the code editor.
     """
+
     text_ref: list[str] = [code]
     _editable_ref: list[CodeFieldControl] = []
 
     if _HAS_FCE and fce is not None:
-        # Use flet-code-editor for syntax highlighting (JSON for graph editing)
         CodeLanguage = getattr(fce, "CodeLanguage", None)
         CustomCodeTheme = getattr(fce, "CustomCodeTheme", None)
         CodeTheme = getattr(fce, "CodeTheme", None)
+
         code_lang = None
+
         if CodeLanguage is not None:
-            # prefer explicit language string if supplied in 'language' param (e.g., "python")
-            # fall back to JSON for the main editor
-            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(
-                CodeLanguage, get_code_language(language), None
+            mapped = getattr(
+                CodeLanguage,
+                language.upper(),
+                None,
+            ) or getattr(
+                CodeLanguage,
+                get_code_language(language),
+                None,
             )
-            code_lang = mapped or getattr(CodeLanguage, "JSON", None)
-        # Use CustomCodeTheme with root.bgcolor so the editor body uses CODE_EDITOR_BODY_BG
+
+            code_lang = mapped or getattr(
+                CodeLanguage,
+                "JSON",
+                None,
+            )
+
         theme = None
+
         if CustomCodeTheme is not None:
             try:
                 theme = CustomCodeTheme(
@@ -176,109 +193,177 @@ def build_code_editor(
                         font_family="monospace",
                         size=13,
                     ),
-                    keyword=ft.TextStyle(color=ft.Colors.PURPLE_200),
-                    string=ft.TextStyle(color=ft.Colors.GREEN_200),
-                    number=ft.TextStyle(color=ft.Colors.AMBER_200),
-                    comment=ft.TextStyle(color=ft.Colors.GREY_500, italic=True),
-                    name=ft.TextStyle(color=ft.Colors.CYAN_200),
+                    keyword=ft.TextStyle(
+                        color=ft.Colors.PURPLE_200,
+                    ),
+                    string=ft.TextStyle(
+                        color=ft.Colors.GREEN_200,
+                    ),
+                    number=ft.TextStyle(
+                        color=ft.Colors.AMBER_200,
+                    ),
+                    comment=ft.TextStyle(
+                        color=ft.Colors.GREY_500,
+                        italic=True,
+                    ),
+                    name=ft.TextStyle(
+                        color=ft.Colors.CYAN_200,
+                    ),
                 )
             except (ValueError, RuntimeError):
                 theme = None
+
         if theme is None and CodeTheme is not None:
-            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(
-                CodeTheme, "ATOM_ONE_DARK", None
+            theme = (
+                getattr(CodeTheme, "MONOKAI_SUBLIME", None)
+                or getattr(CodeTheme, "ATOM_ONE_DARK", None)
             )
+
         kwargs = {
             "value": code,
             "expand": expand,
             "read_only": False,
-            "text_style": ft.TextStyle(font_family="monospace", size=13),
+            "text_style": ft.TextStyle(
+                font_family="monospace",
+                size=13,
+            ),
         }
+
         if code_lang is not None:
             kwargs["language"] = code_lang
+
         if theme is not None:
             kwargs["code_theme"] = theme
+
         inner_editor = fce.CodeEditor(**kwargs)
+
         if height is not None:
             inner_editor.height = height
+
         if width is not None:
             inner_editor.width = width
 
-        def _on_fce_change(e: ft.Event[FceCodeEditor]) -> None:
-            text_ref[0] = (e.control.value if e.control.value is not None else "") or ""
+        def _on_fce_change(
+            e: ft.Event[FceCodeEditor],
+        ) -> None:
+            text_ref[0] = (
+                e.control.value
+                if e.control.value is not None
+                else ""
+            ) or ""
 
         inner_editor.on_change = _on_fce_change
+
         code_editor = ft.Container(
             content=inner_editor,
             border_radius=4,
             expand=expand,
         )
+
         _editable_ref.append(inner_editor)
+
     else:
-        # Fallback: plain TextField (body background matches CODE_EDITOR_BODY_BG)
         code_editor = ft.TextField(
             value=code,
             multiline=True,
             expand=expand,
             bgcolor=CODE_EDITOR_BODY_BG,
-            text_style=ft.TextStyle(font_family="monospace", size=13),
+            text_style=ft.TextStyle(
+                font_family="monospace",
+                size=13,
+            ),
             border=ft.InputBorder.NONE,
             content_padding=ft.Padding.all(12),
             cursor_color=ft.Colors.CYAN_200,
         )
+
         if height is not None:
             code_editor.height = height
+
         if width is not None:
             code_editor.width = width
 
-        def _on_tf_change(e: ft.Event[ft.TextField]) -> None:
-            text_ref[0] = e.control.value if e.control.value is not None else ""
+        def _on_tf_change(
+            e: ft.Event[ft.TextField],
+        ) -> None:
+            text_ref[0] = (
+                e.control.value
+                if e.control.value is not None
+                else ""
+            )
 
         code_editor.on_change = _on_tf_change
+
         _editable_ref.append(code_editor)
 
     def get_value() -> str:
-        # Read from the actual editable control so Apply always gets current content
-        # (e.g. when code_editor is a Container around flet-code-editor, it has no .value)
+        """
+        Read the current value from the editable control.
+        """
         if not _editable_ref:
             return text_ref[0]
-        v = _editable_ref[0].value
-        return v if v is not None else text_ref[0]
+
+        value = _editable_ref[0].value
+
+        return value if value is not None else text_ref[0]
 
     def get_selection_range() -> tuple[int, int] | None:
+        """
+        Return the selected character range, or None if there is no selection.
+        """
         if not _editable_ref:
             return None
-        sel = _editable_ref[0].selection
-        if sel is None:
+
+        selection = _editable_ref[0].selection
+
+        if selection is None:
             return None
-        start, end = sel.start, sel.end
+
+        start = selection.start
+        end = selection.end
+
         if start >= end:
             return None
-        return (start, end)
 
-    def set_editor_selection(start: int, end: int | None = None) -> None:
+        return start, end
+
+    def set_editor_selection(
+        start: int,
+        end: int | None = None,
+    ) -> None:
+        """
+        Move the caret or select a range and focus the editor.
+        """
         if not _editable_ref:
             return
-        ctrl = _editable_ref[0]
+
+        control = _editable_ref[0]
 
         text = get_value()
-        n = len(text)
+        text_length = len(text)
 
-        a = max(0, min(start, n))
-        b = a if end is None else max(0, min(end, n))
+        a = max(0, min(start, text_length))
+        b = (
+            a
+            if end is None
+            else max(0, min(end, text_length))
+        )
+
         if b < a:
             a, b = b, a
 
         async def _apply() -> None:
-            # Focus first, then set selection while focused (reduces selection loss during scroll).
             try:
-                await ctrl.focus()
+                await control.focus()
             except (ValueError, RuntimeError):
                 pass
 
             try:
-                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
-                ctrl.update()
+                control.selection = ft.TextSelection(
+                    base_offset=a,
+                    extent_offset=b,
+                )
+                control.update()
             except (ValueError, RuntimeError):
                 return
 
@@ -294,21 +379,36 @@ def build_code_editor(
             except (ValueError, RuntimeError):
                 pass
         else:
-            # Best-effort fallback if no page context exists.
             try:
-                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
-                ctrl.update()
+                control.selection = ft.TextSelection(
+                    base_offset=a,
+                    extent_offset=b,
+                )
+                control.update()
             except (ValueError, RuntimeError):
-                return
+                pass
+
+    async def show_find_bar() -> None:
+        """
+        Find/replace is provided by the code editor.
+        """
+        return
+
+    async def hide_find_bar() -> None:
+        """
+        Find/replace is provided by the code editor.
+        """
+        return
 
     return (
-            code_editor,
-            get_value,
-            lambda: None,
-            lambda: None,
-            get_selection_range,
-            set_editor_selection,
-        )
+        code_editor,
+        get_value,
+        show_find_bar,
+        hide_find_bar,
+        get_selection_range,
+        set_editor_selection,
+    )
+
 
 def build_code_display(
     code: str = "",
