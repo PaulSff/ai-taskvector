@@ -25,11 +25,11 @@ PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"
 PLACEHOLDER_TIMESTAMP = "$YY-MM-DD-HHMMSS$"
 
 SAVE_WORKFLOW_INPUT_PORTS = [
-    ("graph", "Any"),
+    ("graph", "ProcessGraph"),
 ]
 SAVE_WORKFLOW_OUTPUT_PORTS = [
-    ("saved_at", "Any"),
-    ("error", "Any"),
+    ("saved_at", "str"),
+    ("error", "str"),
 ]
 
 logger = setup_colored_logging(logging.DEBUG)
@@ -44,7 +44,7 @@ class _SaveResult:
 
 
 def _now_timestamp() -> str:
-    return datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+    return datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
 
 
 def resolve_workflow_save_path(
