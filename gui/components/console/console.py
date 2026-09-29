@@ -728,7 +728,7 @@ def build_workflow_run_console(
         """Update the Run button appearance during workflow execution."""
 
         run_button.icon_color = (
-            ft.Colors.GREEN_600
+            ft.Colors.GREEN_400
             if is_running
             else None
         )
