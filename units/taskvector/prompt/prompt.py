@@ -10,9 +10,9 @@ import datetime
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 from agents.tools.registry import list_tool_ids
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 PROMPT_INPUT_PORTS = [("data", "Any")]
@@ -22,7 +22,7 @@ PROMPT_OUTPUT_PORTS = [("system_prompt", "str"), ("user_message", "str")]
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 
-def _section_content(item: Any) -> str:
+def _section_content(item: object) -> str:
     """Extract content from a section: string or dict with 'content' key."""
     if isinstance(item, str):
         return item
@@ -32,13 +32,13 @@ def _section_content(item: Any) -> str:
     return ""
 
 
-def _template_from_sections(sections: list[Any], join_with: str = "\n\n") -> str:
+def _template_from_sections(sections: list[object], join_with: str = "\n\n") -> str:
     """Build a single template string from a list of sections (strings or {content: string})."""
     parts = [_section_content(s).strip() for s in sections if _section_content(s).strip()]
     return join_with.join(parts)
 
 
-def _load_template(params: dict[str, Any]) -> tuple[str, list[str]]:
+def _load_template(params: Data) -> tuple[str, list[str]]:
     """Return (template_string, format_keys). Template from params['template'], params['sections'], or params['template_path'] (file)."""
     format_keys = params.get("format_keys")
     if isinstance(format_keys, list):
@@ -54,10 +54,12 @@ def _load_template(params: dict[str, Any]) -> tuple[str, list[str]]:
     if isinstance(sections, list) and sections:
         return _template_from_sections(sections), format_keys
 
-    path = params.get("template_path")
-    if not path:
+    path_value = params.get("template_path")
+    if not isinstance(path_value, str) or not path_value.strip():
         return "", format_keys
-    path = Path(path)
+
+    path = Path(path_value)
+
     if not path.exists():
         return "", format_keys
     try:
@@ -86,7 +88,7 @@ def _load_template(params: dict[str, Any]) -> tuple[str, list[str]]:
     return (template if isinstance(template, str) else ""), format_keys
 
 
-def _substitute(template: str, data: dict[str, Any], format_keys: list[str]) -> str:
+def _substitute(template: str, data: Data, format_keys: list[str]) -> str:
     """Replace every {key} in template with data[key]. Keys in format_keys are json.dumps'd (dict/list)."""
     if not template:
         return ""
@@ -106,11 +108,11 @@ def _substitute(template: str, data: dict[str, Any], format_keys: list[str]) -> 
 
 
 def _prompt_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     data = inputs.get("data")
     if not isinstance(data, dict):
         data = {}
