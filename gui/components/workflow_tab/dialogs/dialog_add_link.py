@@ -85,7 +85,7 @@ def open_add_link_dialog(
         )
 
         new_graph = await apply_edit_via_workflow(graph, edit)
-        on_saved(new_graph)
+        await on_saved(new_graph)
 
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
