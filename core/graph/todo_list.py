@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Sequence
-from typing import cast
 from uuid import uuid4
 
 from core.schemas import TodoList, TodoTask
-from core.schemas.primitives import JsonValue
+from core.schemas.primitives import JsonObject, JsonValue, is_json_array, is_json_object
 
 
 def default_todo_list_dict(
@@ -230,23 +229,22 @@ def _todo_task_to_dict(
 
 def todo_list_to_dict(
     todo_list: TodoList | JsonValue,
-) -> dict[str, JsonValue] | None:
+) -> JsonObject | None:
     """Ensure todo_list is a plain dict with ``tasks`` as plain dictionaries."""
     if isinstance(todo_list, TodoList):
         todo_list_dict = todo_list.model_dump(mode="json", by_alias=True)
-    elif isinstance(todo_list, dict):
+    elif is_json_object(todo_list):
         todo_list_dict = dict(todo_list)
     else:
         return None
 
     raw_tasks = todo_list_dict.get("tasks")
-    if not isinstance(raw_tasks, list):
+    if not is_json_array(raw_tasks):
         return todo_list_dict
 
-    tasks = cast(list[JsonValue], raw_tasks)
     out_tasks: list[JsonValue] = []
 
-    for task in tasks:
+    for task in raw_tasks:
         task_dict = _todo_task_to_dict(task)
         if task_dict is not None:
             out_tasks.append(task_dict)
@@ -271,6 +269,7 @@ def todo_lists_to_list(
 
     return out
 
+
 def normalize_tasks(value: object) -> list[TodoTask]:
     if value is None:
         return []
@@ -280,7 +279,7 @@ def normalize_tasks(value: object) -> list[TodoTask]:
 
     normalized: list[TodoTask] = []
 
-    for item in cast(list[object], value):
+    for item in value:
         if isinstance(item, TodoTask):
             normalized.append(item)
             continue
@@ -288,12 +287,10 @@ def normalize_tasks(value: object) -> list[TodoTask]:
         if not isinstance(item, dict):
             raise TypeError(f"Invalid task value: {item!r}")
 
-        task_data = cast(dict[str, object], item)
-
         try:
-            normalized.append(TodoTask.model_validate(task_data))
+            normalized.append(TodoTask.model_validate(item))
         except Exception as exc:
-            raise ValueError(f"Invalid task: {task_data!r}") from exc
+            raise ValueError(f"Invalid task: {item!r}") from exc
 
     return normalized
 
@@ -307,10 +304,8 @@ def normalize_todo_lists(value: object) -> list[TodoList]:
 
     try:
         return [
-            item
-            if isinstance(item, TodoList)
-            else TodoList.model_validate(cast(dict[str, object], item))
-            for item in cast(list[object], value)
+            item if isinstance(item, TodoList) else TodoList.model_validate(item)
+            for item in value
         ]
     except Exception as exc:
         raise ValueError("Invalid todo_lists value") from exc
