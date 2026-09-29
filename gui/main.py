@@ -839,7 +839,7 @@ async def main(page: ft.Page) -> None:
         spacing=0,
     )
 
-    progress_overlay, show_overlay, hide_overlay = build_progress_overlay()
+    progress_overlay, _show_overlay, _hide_overlay = build_progress_overlay()
 
     page.add(
         ft.Stack(
