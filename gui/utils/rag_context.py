@@ -6,9 +6,11 @@ Index update at startup runs via rag_update workflow (RagUpdate unit), not direc
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+from core.schemas.primitives import Data, WorkflowInputs, WorkflowOutputs
+from core.schemas.process_graph import ProcessGraph
 
 
 def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
@@ -24,7 +26,7 @@ def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
         return False
 
 
-async def rag_query_from_graph_origin(graph: Any) -> str:
+async def rag_query_from_graph_origin(graph: ProcessGraph) -> str:
     """
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
     """
@@ -50,7 +52,7 @@ def _run_rag_context_query_workflow(
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
-) -> dict[str, Any] | None:
+) -> WorkflowOutputs | None:
     """
     Run rag context workflow for a text query (rag_search -> rag_filter -> format_rag).
     Returns raw unit outputs, or None on failure / empty query.
@@ -85,7 +87,7 @@ def _run_rag_context_query_workflow(
 
     top_k_val = max(1, min(50, int(top_k_val)))
 
-    overrides: dict[str, dict[str, Any]] = {"rag_search": {"top_k": top_k_val}}
+    overrides: WorkflowInputs = {"rag_search": {"top_k": top_k_val}}
     if max_chars is not None or snippet_max is not None:
         fc = get_rag_format_max_chars()
         fs = get_rag_format_snippet_max()
@@ -95,7 +97,7 @@ def _run_rag_context_query_workflow(
             fs = max(1, min(2000, int(snippet_max)))
         overrides["format_rag"] = {"max_chars": fc, "snippet_max": fs}
 
-    initial_inputs = {"rag_search": {"query": query}}
+    initial_inputs: WorkflowInputs = {"rag_search": {"query": query}}
 
     try:
         return run_workflow(
@@ -107,6 +109,11 @@ def _run_rag_context_query_workflow(
         return None
 
 
+def _as_mapping(value: object) -> Mapping[str, object]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
 
 def get_rag_context_via_workflow(
     query: str,
@@ -115,18 +122,15 @@ def get_rag_context_via_workflow(
     max_chars: int | None = None,
     snippet_max: int | None = None,
 ) -> str:
-    """
-    Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
-    Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
-    Workflow binds RAG caps via ``tool.rag_search.rag.*``; optional call-time ``max_chars`` /
-    ``snippet_max`` override ``format_rag`` with integer literals.
-    """
     outputs = _run_rag_context_query_workflow(
         query, agent, top_k, max_chars, snippet_max
     )
-    if not outputs:
-        return ""
-    return (outputs.get("format_rag") or {}).get("data") or ""
+
+    output_map = _as_mapping(outputs)
+    format_rag_map = _as_mapping(output_map.get("format_rag"))
+    data = format_rag_map.get("data")
+
+    return data if isinstance(data, str) else ""
 
 
 def get_rag_search_formatted_and_rows(
@@ -135,21 +139,24 @@ def get_rag_search_formatted_and_rows(
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
-) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Same query workflow as ``get_rag_context_via_workflow``; returns the formatted block plus
-    score-filtered table rows ``[{text, metadata, score}, ...]`` from ``rag_filter`` (for UI per-hit actions).
-    """
+) -> tuple[str, list[Data]]:
     outputs = _run_rag_context_query_workflow(
         query, agent, top_k, max_chars, snippet_max
     )
-    if not outputs:
-        return "", []
-    formatted = (outputs.get("format_rag") or {}).get("data") or ""
-    rows_raw = (outputs.get("rag_filter") or {}).get("table")
-    rows: list[dict[str, Any]] = rows_raw if isinstance(rows_raw, list) else []
-    return formatted, rows
 
+    output_map = _as_mapping(outputs)
+
+    format_rag = _as_mapping(output_map.get("format_rag"))
+    formatted_raw = format_rag.get("data")
+    formatted = formatted_raw if isinstance(formatted_raw, str) else ""
+
+    rag_filter = _as_mapping(output_map.get("rag_filter"))
+    rows_raw = rag_filter.get("table")
+    rows: list[Data] = (
+        rows_raw if isinstance(rows_raw, list) else []
+    )
+
+    return formatted, rows
 
 def get_rag_context_by_path(
     file_path: str,
@@ -179,7 +186,7 @@ def get_rag_context_by_path(
     if not wf_path.exists():
         return ""
 
-    overrides: dict[str, dict[str, Any]] = {
+    overrides: WorkflowInputs = {
         "rag_filter": {"value": "tool.rag_search.rag.min_score"},
         "format_rag": {
             "max_chars": f"tool.{tool_id}.rag.max_chars",
@@ -202,7 +209,7 @@ def get_rag_context_by_path(
         )
         overrides["format_rag"] = {"max_chars": max(1, fc), "snippet_max": max(1, fs)}
 
-    initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}
+    initial_inputs: WorkflowInputs = {"rag_search": {"query": "", "file_path": path_str}}
 
     try:
         outputs = run_workflow(
@@ -213,7 +220,12 @@ def get_rag_context_by_path(
     except (FileNotFoundError, PermissionError, TimeoutError, OSError, ValueError):
         return ""
 
-    return (outputs or {}).get("format_rag", {}).get("data") or ""
+    output_map = outputs if isinstance(outputs, Mapping) else {}
+    format_rag = output_map.get("format_rag")
+    format_rag_map = format_rag if isinstance(format_rag, Mapping) else {}
+
+    data = format_rag_map.get("data")
+    return data if isinstance(data, str) else ""
 
 
 def get_rag_context(
