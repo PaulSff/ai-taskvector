@@ -4,7 +4,6 @@ Dialog to remove a link (connection) from the process graph.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import cast
 
 import flet as ft
