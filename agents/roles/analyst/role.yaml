@@ -21,10 +21,10 @@ llm:
   provider_host: http://127.0.0.1:11434
   provider_model: gemma4:31b-cloud
   temperature: 0.3
-  num_predict: 1024
+  num_predict: 2048
   generation_options:
     temperature: 0.3
-    num_predict: 1024
+    num_predict: 2048
     num_ctx: 128000
   report:
   output_dir: mydata/reports
@@ -47,7 +47,7 @@ chat:
       host: http://127.0.0.1:11434
       options:
         temperature: 0.3
-        num_predict: 1024
+        num_predict: 2048
         num_ctx: 128000
     prompt_llm:
       template_path: config/prompts/analyst.json

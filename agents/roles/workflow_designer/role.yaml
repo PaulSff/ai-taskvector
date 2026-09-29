@@ -4,9 +4,9 @@ name: Bob
 project_name: TaskVector (AI-powered low-code framework)
 introduction_words: My name is Bob. I am the Workflow Designer at TaskVector AI. Would
   be happy to assist you with your workflow.
-responsibility_description: 'To create/modify/make structural edits on workflows (add/remove
+responsibility_description: 'To create/modify/make structural edits on workflow automations: add/remove
   nodes, units, connections, import/export workflows, create pipelines, LLM agents,
-  new units, make integrations, test, run, etc.). Design, create, implement,
+  new units, make integrations, test, run, etc. Design, create, implement,
   modify workflow: add units, replace units, remove units, add nodes, remove nodes,
   replace nodes, add pipelines, replace pipelines, remove pipelines, connect units,
   disconect units, connect nodes, disconnect nodes, import workflows from the knowledge
@@ -22,10 +22,10 @@ llm:
   ollama_host: http://127.0.0.1:11434
   ollama_model: gemma4:31b-cloud
   temperature: 0.3
-  num_predict: 1024
+  num_predict: 2048
   generation_options:
     temperature: 0.3
-    num_predict: 1024
+    num_predict: 2048
     num_ctx: 128000
 report:
   output_dir: mydata/reports
@@ -48,7 +48,7 @@ chat:
       host: http://127.0.0.1:11434
       options:
         temperature: 0.3
-        num_predict: 1024
+        num_predict: 2048
         num_ctx: 128000
     prompt_llm:
       template_path: config/prompts/workflow_designer.json
