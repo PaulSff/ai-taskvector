@@ -68,7 +68,7 @@ async def on_apply_hook(
             await toast(page, error)
             return
 
-        apply_fn(pg)
+        await apply_fn(pg)
 
         state["last_graph_to_apply"] = graph_key
         state["graph_applied"] = True
