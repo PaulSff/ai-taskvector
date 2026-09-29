@@ -194,17 +194,17 @@
       "input_ports": [
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         }
       ],
       "output_ports": [
         {
           "name": "saved_at",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "error",
-          "type": "Any"
+          "type": "str"
         }
       ]
     },
