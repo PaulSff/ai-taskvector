@@ -74,24 +74,30 @@ def create_keyboard_handler(
 
     async def handler(e: ft.KeyboardEvent) -> None:
         if is_save_shortcut(e) and on_save is not None:
-            on_save()
+            await on_save()
             return
+
         if is_undo_shortcut(e) and on_undo is not None:
-            on_undo()
+            await on_undo()
             return
+
         if is_redo_shortcut(e) and on_redo is not None:
-            on_redo()
+            await on_redo()
             return
+
         if is_find_shortcut(e) and on_find is not None:
-            on_find()
+            await on_find()
             return
+
         if is_edit_code_block_shortcut(e) and on_edit_code_block is not None:
-            on_edit_code_block()
+            await on_edit_code_block()
             return
+
         if is_escape(e) and on_escape is not None:
-            on_escape()
+            await on_escape()
             return
+
         if chain_to is not None:
-            chain_to(e)
+            await chain_to(e)
 
     return handler
