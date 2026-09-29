@@ -4,6 +4,7 @@ Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yie
 """
 
 import datetime
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -62,11 +63,13 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
+from services.logging import setup_colored_logging
 from units.n8n import get_n8n_template, get_n8n_types
 from units.node_red import get_node_red_template, get_node_red_types
 from units.pyflow import get_pyflow_template, get_pyflow_types
 from units.registry import get_unit_spec
 
+logger = setup_colored_logging(logging.DEBUG)
 # Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Not graph "units" — they describe a training/serving pipeline.
 # Use add_pipeline with "pipeline" payload. Unit types (Source, Valve, RLAgent, LLMAgent, etc.) use add_unit.
 PIPELINE_TYPES: frozenset[str] = frozenset(
@@ -1261,7 +1264,7 @@ def apply_graph_edit(
     elif edit.action == "add_todo_list":
         existing_ids = {
             todo_list.id
-            for todo_list in current.todo_lists
+            for todo_list in todo_lists
         }
 
         raw_list_id: object = getattr(edit, "id", None)
@@ -1286,7 +1289,7 @@ def apply_graph_edit(
             else None
         )
 
-        current.todo_lists.append(
+        todo_lists.append(
             TodoList(
                 id=list_id,
                 title=title,
