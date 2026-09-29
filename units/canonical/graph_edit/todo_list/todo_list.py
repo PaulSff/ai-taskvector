@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import NotRequired, TypedDict, cast
+from collections.abc import Callable, Sequence
+from typing import cast
 
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.todo_list import (
@@ -19,7 +19,14 @@ from core.graph.todo_list import (
 )
 from core.schemas import TodoList
 from core.schemas.graph_edit_api import GraphEdit, MultipleEditsSequential
-from core.schemas.primitives import JsonValue
+from core.schemas.primitives import (
+    Data,
+    JsonObject,
+    JsonValue,
+    Output,
+    is_json_array,
+    is_object_list,
+)
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
 
@@ -38,21 +45,6 @@ _ACTIONS = frozenset(
         "set_curator",
     }
 )
-
-GraphDict = dict[str, JsonValue]
-
-
-class WorkflowEditResult(TypedDict):
-    success: bool
-    graph: NotRequired[GraphDict]
-    error: NotRequired[str | None]
-
-
-Params = dict[str, object]
-Inputs = dict[str, object]
-State = dict[str, object]
-StepResult = dict[str, object]
-
 
 def _require_edit_string(
     edit: GraphEdit,
@@ -113,7 +105,7 @@ def _replace_todo_list(
 
 
 def _apply_single_edit(
-    todo_lists: list[TodoList | JsonValue] | None,
+    todo_lists: Sequence[TodoList | JsonValue] | None,
     edit: GraphEdit,
 ) -> list[JsonValue]:
     """
@@ -264,80 +256,41 @@ def _parse_graph_edit(value: object) -> GraphEdit:
     return GraphEdit.model_validate(value)
 
 
-def _single_edit_params(params: Params) -> dict[str, object]:
+def _single_edit_params(params: Data) -> Data:
     return {
         key: value
         for key, value in params.items()
         if key != "Multiple_edits_sequential"
     }
 
-def _as_workflow_edit_result(value: object) -> WorkflowEditResult:
-    if not isinstance(value, dict):
-        raise TypeError("Invalid workflow edit result")
-
-    result_value = cast(dict[str, object], value)
-
-    success = result_value.get("success")
-    if not isinstance(success, bool):
-        raise TypeError(
-            "Invalid workflow edit result: success must be bool"
-        )
-
-    result: WorkflowEditResult = {"success": success}
-
-    graph = result_value.get("graph")
-    if graph is not None:
-        if not isinstance(graph, dict):
-            raise TypeError(
-                "Invalid workflow edit result: graph must be a dictionary"
-            )
-
-        result["graph"] = cast(GraphDict, graph)
-
-    error = result_value.get("error")
-    if error is not None and not isinstance(error, str):
-        raise TypeError(
-            "Invalid workflow edit result: error must be string or None"
-        )
-
-    result["error"] = error
-    return result
-
 
 def _step(
-    params: Params,
-    inputs: Inputs,
-    state: State,
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[StepResult, State]:
+) -> Output:
     del dt
 
     error: str | None = None
-    p: Params = params
+    p: Data = params
 
     current = get_graph_from_inputs(inputs)
-    result: GraphDict = dict(current)
+    result: JsonObject = dict(current)
 
     try:
         raw_todo_lists = result.get("todo_lists")
-
-        if raw_todo_lists is not None and not isinstance(raw_todo_lists, list):
-            todo_lists: list[JsonValue] | None = None
-        else:
-            todo_lists = cast(
-                list[JsonValue] | None,
-                raw_todo_lists,
-            )
+        todo_lists = (
+            raw_todo_lists if is_json_array(raw_todo_lists) else None
+        )
 
         raw_batch = p.get("Multiple_edits_sequential")
 
-        if isinstance(raw_batch, list) and raw_batch:
-            batch_items = cast(list[object], raw_batch)
-            parsed_edits: list[GraphEdit] = []
-
-            for item in batch_items:
-                parsed_edits.append(_parse_graph_edit(item))
-
+        if is_object_list(raw_batch) and raw_batch:
+            parsed_edits = [
+                _parse_graph_edit(item)
+                for item in raw_batch
+            ]
             batch = MultipleEditsSequential(edits=parsed_edits)
 
             batch_result = apply_workflow_edits(
@@ -348,28 +301,21 @@ def _step(
 
             if not batch_result.success:
                 raise ValueError(
-                    batch_result.error
-                    or "Batch todo edit failed"
+                    batch_result.error or "Batch todo edit failed"
                 )
 
             current = batch_result.graph_after
             result = dict(current)
 
-            todo_lists = cast(
-                list[JsonValue] | None,
-                result.get("todo_lists"),
+            raw_todo_lists = result.get("todo_lists")
+            todo_lists = (
+                raw_todo_lists
+                if is_json_array(raw_todo_lists)
+                else None
             )
-
         else:
             edit = _parse_graph_edit(_single_edit_params(p))
-
-            todo_lists = _apply_single_edit(
-                cast(
-                    list[TodoList | JsonValue] | None,
-                    todo_lists,
-                ),
-                edit,
-            )
+            todo_lists = _apply_single_edit(todo_lists, edit)
 
         result["todo_lists"] = todo_lists
 
