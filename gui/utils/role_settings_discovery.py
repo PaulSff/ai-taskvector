@@ -62,9 +62,9 @@ def discover_role_llm_ui_entries(
         return ()
 
     try:
-        from agents.roles.registry import CHAT_MAIN_agent_ROLE_IDS
+        from agents.roles.registry import CHAT_MAIN_AGENT_ROLE_IDS
     except (ImportError, RuntimeError):
-        CHAT_MAIN_agent_ROLE_IDS = ()
+        CHAT_MAIN_AGENT_ROLE_IDS = ()
 
     candidates: list[str] = []
     try:
@@ -82,8 +82,8 @@ def discover_role_llm_ui_entries(
     except OSError:
         return ()
 
-    order_map = {rid: i for i, rid in enumerate(CHAT_MAIN_agent_ROLE_IDS)}
-    main = [rid for rid in CHAT_MAIN_agent_ROLE_IDS if rid in candidates]
+    order_map = {rid: i for i, rid in enumerate(CHAT_MAIN_AGENT_ROLE_IDS)}
+    main = [rid for rid in CHAT_MAIN_AGENT_ROLE_IDS if rid in candidates]
     rest = sorted(rid for rid in candidates if rid not in order_map)
     ordered = main + rest
 
