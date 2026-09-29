@@ -1,6 +1,6 @@
 # AgentOrchestrator
 
-An AI agent orchestration unit designed to manage the complete lifecycle of an agent's turn. It handles context management, language localization, TODO list tracking, tool execution loops, and integration with external messengers or chat interfaces. 
+An AI agent orchestration unit that manages the execution of an agent's turn. It acts as a bridge between the synchronous unit runtime and the asynchronous agent handlers, managing session state, role resolution, and the orchestration of the agent's response pipeline. 
 
 ## Input ports
 
@@ -15,7 +15,7 @@ An AI agent orchestration unit designed to manage the complete lifecycle of an a
 |---|---|---|
 | `status` | Any | `{"type":"status","status":"..."}` |
 | `token` | Any | `{"type":"token","token":"<full reply>"}` |
-| `message` | Any | `{"type":"final","message":{...}}` — complete message dict including `graph` (applied graph dict for canvas), `last_apply_result`, `session_language`, `run_output`, `llm_system_prompt`, `llm_user_message` |
+| `message` | Any | Either `{"type":"final","message":{...}}` (complete response) or `{"type":"delegate","delegate_to":"..."}` (request to hand over to another agent role) |
 | `role` | Any | `{"role_id":"...","name":"..."}` — resolved role |
 | `error` | Any | `{"type":"error","error":"..."}` or `null` |
 
@@ -29,7 +29,7 @@ An AI agent orchestration unit designed to manage the complete lifecycle of an a
 
 ## Streaming & Execution
 
-The unit operates an internal loop: it calls the LLM, processes tool requests, and repeats until a final answer is reached or a timeout occurs. 
+The unit resolves the appropriate `RoleChatHandler` for the given `role_id` and executes the turn asynchronously. It provides the agent with a `TurnRuntimeProxy` allowing it to interact with the workflow graph, append messages to history, and run nested workflows. 
 
 LLM token chunks are streamed via the `_stream_callback` provided in the params, allowing the UI/messenger to render responses in real-time as they are generated.
 
