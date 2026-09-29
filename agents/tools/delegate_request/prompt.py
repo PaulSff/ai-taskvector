@@ -2,6 +2,6 @@
 
 TOOL_ACTION_PROMPT_LINE = (
     "- delegate_request: Hand over the current request to the best suitable role, output the following JSON block: "
-    '{ "action": "delegate_request", "delegate_to": "<the role-delegatee>", "message": "User wants to ...<brief follow-up" } '
+    '{ "action": "delegate_request", "delegate_to": "<the role-delegatee>", "message": "User wants to ...<brief follow-up>. Target sources: <any useful URLs, Paths, addresses, etc.>" } '
     ' where the "message" must be in {language}'
 )

@@ -750,6 +750,7 @@ async def handle_turn(
             "contribution_is_allowed": get_contribution_is_allowed(),
             "training_config_path": get_training_config_path(),
             "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
+            # "dispatcher_follow_up_message": "will be added to the context by the orchestrator's workflow"
         }
 
         assistant_message_id = new_id()

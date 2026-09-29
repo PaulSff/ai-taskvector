@@ -19,12 +19,15 @@ from agents.chat.handlers.chat_turn_context import (
 from agents.chat.role_turns.registry import get_role_chat_handler
 from agents.chat.session.state import AgentChatHistory, ChatSessionState
 from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
+from core.graph.batch_edits import apply_workflow_edits
 from core.normalizer.normalizer import graph_to_json_object
 from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph
 from core.schemas.graph_edit_api import (
     AgentApplyWorkflowEditsResult,
     ApplyWorkflowEditsResult,
+    GraphEdit,
+    MultipleEditsSequential,
 )
 from core.schemas.primitives import Data
 from runtime.executor import GraphStreamCallback
@@ -60,12 +63,52 @@ async def run_orchestrator_turn(
 
     run_output: Data = {}
 
+    # Extract the graph form the context received on input
     raw_graph = context.get("graph")
     if raw_graph is None:
         raise ValueError("Missing process graph")
 
     graph = ProcessGraph.model_validate(raw_graph)
 
+    # Get the Dispatcher's follow-up message and put it on a comment
+    # for the executor Agent to keep in mind during the execution.
+    # E.g. dispatcher_follow_up_message: 'User wants to...'.
+    raw_dispatcher_message = context.get(
+        "dispatcher_follow_up_message",
+    )
+
+    dispatcher_follow_up_message = (
+        raw_dispatcher_message.strip()
+        if isinstance(raw_dispatcher_message, str)
+        else ""
+    )
+
+    if dispatcher_follow_up_message:
+        comment_edits = MultipleEditsSequential(
+            edits=[
+                GraphEdit(
+                    action="add_comment",
+                    info=dispatcher_follow_up_message,
+                    commenter="Dispatcher",
+                ),
+            ],
+        )
+
+        comment_result = apply_workflow_edits(
+            graph,
+            comment_edits,
+            allowed_actions=frozenset({"add_comment"}),
+        )
+
+        if not comment_result.success:
+            raise ValueError(
+                comment_result.error
+                or "Failed to add dispatcher follow-up comment",
+            )
+
+        graph = comment_result.graph_after
+
+    # Get the user's message from the input context Data
     user_message = normalize_user_message_for_workflow(
         context.get("user_message") or "",
     )

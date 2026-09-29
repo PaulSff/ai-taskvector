@@ -103,6 +103,7 @@
               "user_message": { "_raw": "context.user_message" },
               "messenger": { "_raw": "context.messenger" },
               "role_id": "{dispatcher_out.delegate_req.data.delegate_to}",
+              "dispatcher_follow_up_message": "{dispatcher_out.delegate_req.data.message}",
               "graph": { "_raw": "context.graph" },
               "last_apply_result": { "_raw": "context.last_apply_result" },
               "recent_changes": { "_raw": "context.recent_changes" },
