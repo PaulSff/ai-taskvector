@@ -667,9 +667,12 @@ def build_workflow_run_console(
             stop_timer()
             update_console()
 
+            set_run_button_running(False)
+
             active_run_task = None
             active_workflow_run = None
             stop_confirmation_event = None
+            run_state = "idle"
 
 
 
@@ -704,6 +707,7 @@ def build_workflow_run_console(
         set_inline_status("Running...", flush=True)
 
         run_state = "running"
+        set_run_button_running(True)
 
         task = page.run_task(run_async)
 
@@ -713,8 +717,34 @@ def build_workflow_run_console(
     run_button = ft.IconButton(
         icon=ft.Icons.PLAY_ARROW,
         tooltip="Run workflow",
+        badge=ft.Badge(
+            label="1",
+            label_visible=False,
+        ),
         on_click=on_run_click,
     )
+
+    def set_run_button_running(is_running: bool) -> None:
+        """Update the Run button appearance during workflow execution."""
+
+        run_button.icon_color = (
+            ft.Colors.GREEN_600
+            if is_running
+            else None
+        )
+
+        run_button.badge = ft.Badge(
+            label="1",
+            label_visible=is_running,
+        )
+
+        try:
+            run_button.update()
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.debug(
+                "Console: Failed to update Run button state: %s",
+                exc,
+            )
 
     def show_console_with_run_output(
         run_output: Data,
