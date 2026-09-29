@@ -18,6 +18,7 @@ from agents.chat.handlers.chat_turn_context import (
 )
 from agents.chat.role_turns.registry import get_role_chat_handler
 from agents.chat.session.state import AgentChatHistory, ChatSessionState
+from agents.chat.utils.save_workflow import save_workflow_version
 from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 from core.graph.batch_edits import apply_workflow_edits
 from core.normalizer.normalizer import graph_to_json_object
@@ -103,10 +104,25 @@ async def run_orchestrator_turn(
         if not comment_result.success:
             raise ValueError(
                 comment_result.error
-                or "Failed to add dispatcher follow-up comment",
+                or "[run_orchestrator_turn] Failed to add dispatcher follow-up comment",
             )
 
         graph = comment_result.graph_after
+
+        # Save the the workflow after the modification
+        save_result = save_workflow_version(graph)
+
+        logger.info(
+            "[run_orchestrator_turn] Workflow saved after Dispatcher's comments: saved=%s path=%s reason=%s",
+            save_result.saved,
+            save_result.path,
+            save_result.reason,
+        )
+
+        if not save_result.saved and save_result.reason == "error":
+            raise RuntimeError(
+                f"[run_orchestrator_turn] Failed to save workflow version: {save_result.path}"
+            )
 
     # Get the user's message from the input context Data
     user_message = normalize_user_message_for_workflow(
@@ -380,6 +396,7 @@ async def run_orchestrator_turn(
 
     turn_context: Data = {
         **context,
+        "graph": graph_ref[0],
         "state": state,
         "user_message": user_message,
         "recent_changes": recent_changes,
