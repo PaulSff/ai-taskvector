@@ -436,7 +436,7 @@ def build_graph_code_view(
                 full_json_ref[0] = data
 
                 new_graph = dict_to_graph(data)
-                on_graph_saved(new_graph)
+                await on_graph_saved(new_graph)
 
                 from agents.chat.utils import save_workflow_version
                 from config.settings import (
