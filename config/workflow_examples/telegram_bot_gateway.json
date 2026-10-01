@@ -388,9 +388,8 @@
       "connection_type": null
     }
   ],
-  "code_blocks": [
-  ],
-  "layout": {},
+  "code_blocks": [],
+  "layout": null,
   "origin": {
     "canonical": true,
     "node_red": null,
@@ -403,25 +402,8 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "New workflow template"
+    "description": "This workflow serves a one-way gateway from Telegram Bot to the Agent handling incoming messages. It starts checking for new incoming Telegram trafic as well as incomplete tasks todo once in a while. It will push both ones discovered to the agentic loop via zmq to hanlde. The Agent uses tools (e.g. send_message) to respond."
   },
-  "comments": [
-    {
-      "id": "comment_system_canonical",
-      "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
-      "commenter": "System",
-      "created_at": "2025-01-01T00:00:00Z",
-      "x": 69.36701965332031,
-      "y": 287.58103942871094
-    }
-  ],
-  "todo_lists": [
-    {
-      "id": "todo_list_default",
-      "title": "Current workflow TODOs",
-      "tasks": [],
-      "x": 1345.296875,
-      "y": 309.7823791503906
-    }
-  ]
+  "comments": [],
+  "todo_lists": []
 }
