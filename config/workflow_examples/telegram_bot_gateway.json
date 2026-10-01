@@ -27,38 +27,38 @@
       "name": null,
       "input_ports": [
         {
-          "name": "tg_start",
-          "type": "Any"
+          "name": "start",
+          "type": "Data"
         },
         {
-          "name": "tg_stop",
-          "type": "Any"
+          "name": "stop",
+          "type": "Data"
         },
         {
           "name": "get_unread",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "send_message",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "raw",
-          "type": "Any"
+          "type": "Data"
         }
       ],
       "output_ports": [
         {
           "name": "update",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "status",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "error",
-          "type": "Any"
+          "type": "Data"
         }
       ]
     },

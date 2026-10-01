@@ -18,13 +18,13 @@ Requirements
 Ports
 -----
 Inputs (single dict per port):
-- `tg_start`: 
+- `start`: 
 ```json 
-{"action": "tg_start"} 
+{"action": "start"} 
 ```
-- `tg_stop`: 
+- `stop`: 
  ```json 
-{"action": "tg_stop"} 
+{"action": "stop"} 
 ```
 - `get_unread`: 
 ```json 
@@ -52,9 +52,9 @@ Outputs:
 
 Behavior / Actions
 ------------------
-- Action selection: The unit examines inputs in this priority order: `tg_start`, `tg_stop`, `get_unread`, `send_message`, `raw`. The first `non-None` input is used.
-- `tg_start`: Initializes (if needed) and logs in the `TDLib` client. Returns a status update ```json {"type":"status","status":"started"}```.
-- `tg_stop`: Stops the `TDLib` client. Returns ```json {"type":"status","status":"stopped"}```.
+- Action selection: The unit examines inputs in this priority order: `start`, `stop`, `get_unread`, `send_message`, `raw`. The first `non-None` input is used.
+- `start`: Initializes (if needed) and logs in the `TDLib` client. Returns a status update ```json {"type":"status","status":"started"}```.
+- `stop`: Stops the `TDLib` client. Returns ```json {"type":"status","status":"stopped"}```.
 - `get_unread`: Logs in if needed, pages `get_chats`, and for each chat with `unread_count > 0` loads history, filters messages newer than `last_read` (tracked in unit state), optionally marks inbox read via `readChatInbox`. Returns ```{"type":"update","update":{"chats":[...],"last_read":{...}}}``` where each chat entry includes `chat_id`, `unread_count`, `chat`, and `messages` (with optional `text` for `messageText`).
 - `send_message`: Requires a dict payload with `chat_id` and `message`. Follows the [official python-telegram send_message example](https://github.com/alexander-akhmetov/python-telegram/blob/main/examples/send_message.py): logs in if needed, preloads chats via `get_chats()` (required so TDLib knows the chat), sends the message, waits on the AsyncResult, and optionally waits for `updateMessageSendSucceeded` (unit params `wait_for_delivery`, `delivery_timeout_s`).
 - raw payload handling:

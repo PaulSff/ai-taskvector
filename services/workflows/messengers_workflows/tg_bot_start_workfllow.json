@@ -68,12 +68,12 @@
       "name": null,
       "input_ports": [
         {
-          "name": "tg_start",
-          "type": "Any"
+          "name": "start",
+          "type": "Data"
         },
         {
-          "name": "tg_stop",
-          "type": "Any"
+          "name": "stop",
+          "type": "Data"
         },
         {
           "name": "get_unread",
@@ -104,12 +104,12 @@
       ]
     },
     {
-      "id": "inject_tg_start",
+      "id": "inject_start",
       "type": "Inject",
       "controllable": false,
       "params": {
         "data": {
-          "action": "tg_start"
+          "action": "start"
         }
       },
       "name": null,
@@ -138,7 +138,7 @@
       "connection_type": null
     },
     {
-      "from": "inject_tg_start",
+      "from": "inject_start",
       "to": "tg_bot",
       "from_port": "0",
       "to_port": "0",

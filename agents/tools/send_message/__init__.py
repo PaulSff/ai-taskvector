@@ -25,6 +25,7 @@ from agents.tools.types import (
     ParserOutput,
 )
 from core.schemas.primitives import WorkflowInputs
+from runtime.run import WorkflowTimeoutError
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -158,6 +159,7 @@ async def run_send_message_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
+
     try:
         ctx.set_inline_status("Sending message…")
     except (AttributeError, TypeError):
@@ -184,12 +186,47 @@ async def run_send_message_follow_up(
                 }
             }
 
-            out, errs = await run_workflow_with_errors(
-                SEND_MESSAGE_WORKFLOW_PATH,
-                initial_inputs=initial_inputs,
-                format="dict",
-                execution_timeout_s=EXECUTION_TIMEOUT_S,
-            )
+            try:
+                out, errs = await run_workflow_with_errors(
+                    SEND_MESSAGE_WORKFLOW_PATH,
+                    initial_inputs=initial_inputs,
+                    format="dict",
+                    execution_timeout_s=EXECUTION_TIMEOUT_S,
+                )
+
+            except WorkflowTimeoutError as exc:
+                error_text = str(exc) or "Send message operation timed out"
+
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"Send message error: {error_text}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                context_chunks.append(
+                    _error_send_message_chunk(error_text, hint)
+                )
+                any_empty = True
+                continue
+
+            except RuntimeError as exc:
+                error_text = str(exc) or "Send message workflow failed"
+
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"Send message error: {error_text}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+
+                context_chunks.append(
+                    _error_send_message_chunk(error_text, hint)
+                )
+                any_empty = True
+                continue
 
             if errs:
                 error_text = _format_workflow_error(errs)

@@ -16,6 +16,7 @@
         "_needs_executor": true,
         "bot_token": "tool.get_chats.telegram.bot_token",
         "wait_for_delivery": true,
+        "keep_bot_alive": true,
         "delivery_timeout_s": 60,
         "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
         "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
@@ -23,10 +24,10 @@
         "workflow_path": "tool.get_chats.workflow"
       },
       "input_ports": [
-        { "name": "tg_start", "type": "Any" },
-        { "name": "tg_stop", "type": "Any" },
-        { "name": "get_unread", "type": "Any" },
-        { "name": "send_message", "type": "Any" },
+        { "name": "start", "type": "Data" },
+        { "name": "stop", "type": "Data" },
+        { "name": "get_unread", "type": "Data" },
+        { "name": "send_message", "type": "Data" },
         { "name": "raw", "type": "Any" }
       ],
       "output_ports": [

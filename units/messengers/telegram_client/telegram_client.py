@@ -6,8 +6,8 @@
 Receives commands on the "data" input port.
 
 Inputs (dict):
-tg_start: {"action": "tg_start"}
-tg_stop: {"action": "tg_stop"}
+start: {"action": "start"}
+stop: {"action": "stop"}
 get_unread: {"action": "get_unread", "messenger": "telegram", "account": "<phone_or_bot>"}
 send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": ""}
 raw: any payload dict from supported tg API methods (forwarded to client.handle_update)
@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 
 # Input ports: one port per requested command
 TELEGRAM_CLIENT_INPUT_PORTS = [
-    ("tg_start", "Any"),
-    ("tg_stop", "Any"),
+    ("start", "Data"),
+    ("stop", "Any"),
     ("get_unread", "Any"),
     ("send_message", "Any"),
     (
@@ -165,7 +165,7 @@ def _ensure_telegram_session(tg_client: Telegram, state: dict[str, Any]) -> None
     if auth != AuthorizationState.READY:
         raise RuntimeError(
             f"Telegram login not ready ({getattr(auth, 'name', auth)}); "
-            "complete auth via tg_start or interactive login"
+            "complete auth via start or interactive login"
         )
     state["telegram_logged_in"] = True
 
@@ -412,7 +412,7 @@ def _telegram_client_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     TelegramClient unit step. Dedicated input ports:
-      - tg_start, tg_stop, get_unread, send_message, raw
+      - start, stop, get_unread, send_message, raw
     Raw payloads are forwarded to tg_client.call_method when payload is a dict
     with keys: {"method": "<TDLibMethodName>", "params": {...}}; otherwise they are
     forwarded to tg_client.handle_update if available.
@@ -422,7 +422,7 @@ def _telegram_client_step(
     # Determine which action port was used (priority order)
     action_payload = None
     action_name = None
-    for port_name in ("tg_start", "tg_stop", "get_unread", "send_message", "raw"):
+    for port_name in ("start", "stop", "get_unread", "send_message", "raw"):
         if port_name in inputs and inputs[port_name] is not None:
             raw_in = inputs[port_name]
             if isinstance(raw_in, dict):
@@ -609,9 +609,9 @@ def _telegram_client_step(
             if isinstance(action_payload, dict) and "action" in action_payload
             else action_name
         )
-        if act == "tg_start":
+        if act == "start":
             coro = _start_client()
-        elif act == "tg_stop":
+        elif act == "stop":
             coro = _stop_client()
         elif act in ("get_unread", "get_chats"):
             coro = _get_unread()
@@ -683,7 +683,7 @@ def register_telegram_client() -> None:
             environment_tags=["messengers"],
             environment_tags_are_agnostic=False,
             description=(
-                "Interact with local python-telegram (tdlib) client. Input ports: tg_start, tg_stop, get_unread, send_message, raw. "
+                "Interact with local python-telegram (tdlib) client. Input ports: start, stop, get_unread, send_message, raw. "
                 "get_unread fetches chats with unread messages and their message bodies (tracks last_read in unit state). "
                 "Raw dicts with {'method': '<name>', 'params': {...}} are executed with tg_client.call_method(...). "
                 "Schedules async operations on executor background loop; requires params['_needs_executor']=True "

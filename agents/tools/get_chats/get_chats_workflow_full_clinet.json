@@ -25,10 +25,10 @@
         "chat_list_limit": 100
       },
       "input_ports": [
-        { "name": "tg_start", "type": "Any" },
-        { "name": "tg_stop", "type": "Any" },
-        { "name": "get_unread", "type": "Any" },
-        { "name": "send_message", "type": "Any" },
+        { "name": "start", "type": "Data" },
+        { "name": "stop", "type": "Data" },
+        { "name": "get_unread", "type": "Data" },
+        { "name": "send_message", "type": "Data" },
         { "name": "raw", "type": "Any" }
       ],
       "output_ports": [

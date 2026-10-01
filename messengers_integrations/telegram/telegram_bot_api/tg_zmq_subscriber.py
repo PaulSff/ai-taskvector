@@ -257,7 +257,7 @@ async def main() -> None:
                 await poller.start()
 
             try:
-                if action == "tg_start":
+                if action == "start":
                     poller = await _ensure_poller_started(bot_token)
                     ue = update_endpoint_by_run_id.get(run_id)
                     if ue:
@@ -279,7 +279,7 @@ async def main() -> None:
                     return
 
 
-                if action == "tg_stop":
+                if action == "stop":
                     await poller.stop(force=True)
                     poller = None
 

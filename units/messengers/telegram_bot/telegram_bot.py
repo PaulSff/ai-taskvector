@@ -3,8 +3,8 @@
 Receives commands on the "data" input port.
 
 Inputs (dict):
-tg_start: {"action": "tg_start"}
-tg_stop: {"action": "tg_stop"}
+start: {"action": "start"}
+stop: {"action": "stop"}
 get_unread: {"action": "get_unread", "messenger": "telegram"}
 send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": "<text>"}
 raw: any payload dict from supported Telegram Bot API methods
@@ -35,8 +35,12 @@ import concurrent.futures
 import logging
 import time
 import uuid
-from typing import Any
+from collections.abc import Coroutine
+from typing import SupportsInt, TypeGuard
 
+from pydantic.types import JsonValue
+
+from core.schemas.primitives import Data, JsonObject, Output
 from runtime.executor import GraphWakeupCallback, GraphWakeupEvent
 from services.logging import setup_colored_logging
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig
@@ -45,23 +49,23 @@ from units.registry import UnitSpec, register_unit
 logger = setup_colored_logging(logging.DEBUG)
 
 TELEGRAM_BOT_INPUT_PORTS = [
-    ("tg_start", "Any"),
-    ("tg_stop", "Any"),
-    ("get_unread", "Any"),
-    ("send_message", "Any"),
-    ("raw", "Any"),
+    ("start", "Data"),
+    ("stop", "Data"),
+    ("get_unread", "Data"),
+    ("send_message", "Data"),
+    ("raw", "Data"),
 ]
 
 TELEGRAM_BOT_OUTPUT_PORTS = [
-    ("update", "Any"),
-    ("status", "Any"),
-    ("error", "Any"),
+    ("update", "Data"),
+    ("status", "Data"),
+    ("error", "Data"),
 ]
 
 MESSENGER = "telegram"
 
 # Runtime-only resources. These must not be placed in serialized state.
-_TELEGRAM_LISTENER_TASKS: dict[str, asyncio.Task[Any]] = {}
+_TELEGRAM_LISTENER_TASKS: dict[str, asyncio.Task[object]] = {}
 _TELEGRAM_LISTENER_STOPS: dict[str, asyncio.Event] = {}
 _TELEGRAM_SUBSCRIBERS: dict[str, ZmqSubscriber] = {}
 _TELEGRAM_UPDATE_SUBSCRIBERS: dict[str, ZmqSubscriber] = {}
@@ -69,11 +73,10 @@ _TELEGRAM_UPDATE_SUBSCRIBERS: dict[str, ZmqSubscriber] = {}
 # unit_id -> run_id -> future
 _TELEGRAM_PENDING: dict[
     str,
-    dict[str, asyncio.Future[dict[str, Any]]],
+    dict[str, asyncio.Future[Data]],
 ] = {}
 
-
-def _param_bool(value: Any, *, default: bool) -> bool:
+def _param_bool(value: object, *, default: bool) -> bool:
     if value is None:
         return default
 
@@ -84,41 +87,44 @@ def _param_bool(value: Any, *, default: bool) -> bool:
         return bool(value)
 
     if isinstance(value, str):
-        return value.strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "y",
-            "on",
-        }
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
     return default
 
 
 def _int_param(
-    value: Any,
+    value: object,
     *,
     default: int,
     minimum: int = 1,
     maximum: int = 1000,
 ) -> int:
-    try:
-        number = int(value if value is not None else default)
-    except (TypeError, ValueError):
+    if value is None:
+        number = default
+    elif isinstance(value, (int, str, bytes, bytearray, SupportsInt)):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            number = default
+    else:
         number = default
 
     return max(minimum, min(number, maximum))
 
 
-def _topic_name(topic: Any) -> str:
+def _topic_name(topic: object) -> str:
     if isinstance(topic, (bytes, bytearray)):
         return topic.decode(errors="replace")
 
     return str(topic)
 
+def is_graph_wakeup_callback(
+    value: object,
+) -> TypeGuard[GraphWakeupCallback]:
+    return callable(value)
 
 def _get_background_loop(
-    params: dict[str, Any],
+    params: Data,
 ) -> asyncio.AbstractEventLoop:
     executor = params.get("_executor")
 
@@ -147,31 +153,27 @@ def _get_background_loop(
     return loop
 
 
-def _schedule_coroutine(
-    coroutine: Any,
+def _schedule_coroutine[T, S, R](
+    coroutine: Coroutine[T, S, R],
     loop: asyncio.AbstractEventLoop,
-) -> concurrent.futures.Future[Any]:
+) -> concurrent.futures.Future[R]:
     future = asyncio.run_coroutine_threadsafe(coroutine, loop)
 
-    def _done(done_future: Any) -> None:
+    def _done(done_future: concurrent.futures.Future[R]) -> None:
         try:
             done_future.result()
         except asyncio.CancelledError:
-            logger.debug(
-                "TelegramBot background operation cancelled"
-            )
+            logger.debug("TelegramBot background operation cancelled")
         except Exception:
-            logger.exception(
-                "TelegramBot background operation failed"
-            )
+            logger.exception("TelegramBot background operation failed")
 
     future.add_done_callback(_done)
     return future
 
 
 def _result_from_result_topic(
-    payload: dict[str, Any],
-) -> dict[str, Any]:
+    payload: JsonObject,
+) -> Data:
     status = payload.get("status") or payload.get("payload_status")
     response = payload.get("response")
 
@@ -264,9 +266,7 @@ async def _response_listener(
     _TELEGRAM_SUBSCRIBERS[unit_id] = subscriber
     _ = _TELEGRAM_PENDING.setdefault(unit_id, {})
 
-    async def _handler(topic: Any, payload: Any) -> None:
-        if not isinstance(payload, dict):
-            return
+    async def _handler(topic: str, payload: JsonObject) -> None:
 
         topic_name = _topic_name(topic)
 
@@ -309,12 +309,6 @@ async def _response_listener(
     await subscriber.start()
     ready_event.set()
 
-    # logger.debug(
-    #    "TelegramBot response listener started: unit=%s endpoint=%s",
-    #    unit_id,
-    #    response_endpoint,
-    # )
-
     try:
         _ = await stop_event.wait()
     finally:
@@ -344,9 +338,7 @@ async def _update_listener(
 
     _TELEGRAM_UPDATE_SUBSCRIBERS[unit_id] = subscriber
 
-    async def _handler(topic: Any, payload: Any) -> None:
-        if not isinstance(payload, dict):
-            return
+    async def _handler(topic: str, payload: JsonObject) -> None:
 
         if _topic_name(topic) != "update_batch":
             return
@@ -365,12 +357,6 @@ async def _update_listener(
     subscriber.on_any(_handler)
     await subscriber.start()
     ready_event.set()
-
-    # logger.debug(
-    #    "TelegramBot update listener started: unit=%s endpoint=%s",
-    #    unit_id,
-    #    update_endpoint,
-    # )
 
     try:
         _ = await stop_event.wait()
@@ -506,9 +492,9 @@ async def _wait_for_response(
     unit_id: str,
     run_id: str,
     timeout_s: int,
-) -> dict[str, Any]:
+) -> Data:
     loop = asyncio.get_running_loop()
-    future: asyncio.Future[dict[str, Any]] = loop.create_future()
+    future: asyncio.Future[Data] = loop.create_future()
 
     pending = _TELEGRAM_PENDING.setdefault(unit_id, {})
     pending[str(run_id)] = future
@@ -523,20 +509,42 @@ async def _wait_for_response(
 
 
 def _publish_job_zmq_only(
-    params: dict[str, Any],
+    params: Data,
     *,
     act: str,
-    action_payload: Any,
-) -> dict[str, Any]:
+    action_payload: JsonValue,
+) -> Data:
     unit_id = params.get("_unit_id")
-    workflow_path = params.get("workflow_path")
-    zmq_pub_endpoint = params.get("zmq_sub_endpoint")
-    response_endpoint = params.get("response_endpoint")
-    update_endpoint = params.get("update_endpoint")
+    workflow_path_obj = params.get("workflow_path")
+    zmq_pub_endpoint_obj = params.get("zmq_sub_endpoint")
+    response_endpoint_obj = params.get("response_endpoint")
+    update_endpoint_obj = params.get("update_endpoint")
 
-    callback: GraphWakeupCallback | None = params.get(
-        "_graph_wakeup_callback"
+    unit_param_overrides_obj = params.get("unit_param_overrides")
+    format_obj = params.get("format")
+
+    workflow_path = workflow_path_obj if isinstance(workflow_path_obj, str) else None
+    zmq_pub_endpoint = (
+        zmq_pub_endpoint_obj if isinstance(zmq_pub_endpoint_obj, str) else None
     )
+    response_endpoint = (
+        response_endpoint_obj if isinstance(response_endpoint_obj, str) else None
+    )
+    update_endpoint = update_endpoint_obj if isinstance(update_endpoint_obj, str) else None
+    format_ = format_obj if isinstance(format_obj, str) else None
+    unit_param_overrides = (
+        unit_param_overrides_obj
+        if isinstance(unit_param_overrides_obj, dict)
+        else None
+    )
+
+    callback_obj = params.get("_graph_wakeup_callback")
+
+    if is_graph_wakeup_callback(callback_obj):
+        callback = callback_obj
+    else:
+        callback = None
+
 
     if not isinstance(unit_id, str) or not unit_id:
         return {
@@ -568,13 +576,13 @@ def _publish_job_zmq_only(
 
     loop = _get_background_loop(params)
 
-    if act == "tg_stop":
+    if act == "stop":
         try:
             _schedule_coroutine(
                 _stop_telegram_listeners(unit_id),
                 loop,
             ).result(timeout=5)
-        except Exception as exc:
+        except (TimeoutError, RuntimeError, ValueError) as exc:
             return {
                 "type": "error",
                 "messenger": MESSENGER,
@@ -587,7 +595,7 @@ def _publish_job_zmq_only(
             "status": "stopped",
         }
 
-    raw: dict[str, Any] = {"action": act}
+    raw: JsonObject = {"action": act}
 
     if isinstance(action_payload, dict):
         raw.update(action_payload)
@@ -626,10 +634,7 @@ def _publish_job_zmq_only(
         maximum=3600,
     )
 
-    unit_param_overrides = params.get("unit_param_overrides")
-    format_ = params.get("format")
-
-    def _thread_main() -> dict[str, Any]:
+    def _thread_main() -> Data:
         if not isinstance(response_endpoint, str) or not response_endpoint:
             raise ValueError("response_endpoint must be a non-empty string")
 
@@ -669,7 +674,7 @@ def _publish_job_zmq_only(
             initial_inputs={
                 "raw": raw,
             },
-            unit_param_overrides=unit_param_overrides,
+            unit_param_overrides=(unit_param_overrides),
             format=format_,
             response_endpoint=response_endpoint,
             update_endpoint=update_endpoint,
@@ -688,7 +693,7 @@ def _publish_job_zmq_only(
             }
 
     result_future: concurrent.futures.Future[
-        dict[str, Any]
+        Data
     ] = concurrent.futures.Future()
 
     def _run() -> None:
@@ -724,22 +729,19 @@ def _publish_job_zmq_only(
 
 
 def _ptb_unit_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     del dt
 
-    if state is None:
-        state = {}
-
-    action_payload: Any = None
+    action_payload: JsonValue = None
     action_name: str | None = None
 
     for port_name in (
-        "tg_start",
-        "tg_stop",
+        "start",
+        "stop",
         "get_unread",
         "send_message",
         "raw",
@@ -850,6 +852,144 @@ def _ptb_unit_step(
         state,
     )
 
+def _cleanup_telegram_bot(
+    params: Data,
+    state: Data,
+) -> None:
+    del state
+
+    unit_id = params.get("_unit_id")
+    workflow_path = params.get("workflow_path")
+    response_endpoint = params.get("response_endpoint")
+    update_endpoint = params.get("update_endpoint")
+    zmq_pub_endpoint = params.get("zmq_sub_endpoint")
+    keep_bot_alive = bool(params.get("keep_bot_alive", False))
+
+    if not isinstance(unit_id, str) or not unit_id:
+        return
+    if not isinstance(workflow_path, str) or not workflow_path:
+        return
+    if not isinstance(response_endpoint, str) or not response_endpoint:
+        return
+    if not isinstance(update_endpoint, str) or not update_endpoint:
+        return
+    if not isinstance(zmq_pub_endpoint, str) or not zmq_pub_endpoint:
+        return
+
+    try:
+        loop = _get_background_loop(params)
+    except (TypeError, RuntimeError) as exc:
+        logger.error(
+            "TelegramBot cleanup could not get background loop: %s",
+            exc,
+        )
+        return
+
+    timeout_s = _int_param(
+        params.get("delivery_timeout_s"),
+        default=60,
+        minimum=1,
+        maximum=3600,
+    )
+
+    run_id = str(uuid.uuid4())
+    publisher = ZmqPublisher(pub_endpoint=zmq_pub_endpoint)
+    sent_stop = False
+
+    try:
+        _schedule_coroutine(
+            _start_telegram_listeners(
+                unit_id=unit_id,
+                response_endpoint=response_endpoint,
+                update_endpoint=update_endpoint,
+                callback=None,
+            ),
+            loop,
+        ).result(timeout=6)
+
+        response_future = asyncio.run_coroutine_threadsafe(
+            _wait_for_response(
+                unit_id=unit_id,
+                run_id=run_id,
+                timeout_s=timeout_s,
+            ),
+            loop,
+        )
+
+        if not keep_bot_alive:
+            publisher.publish_job(
+                run_id=run_id,
+                workflow_path=workflow_path,
+                initial_inputs={
+                    "raw": {
+                        "action": "stop",
+                        "messenger": MESSENGER,
+                    },
+                },
+                response_endpoint=response_endpoint,
+                update_endpoint=update_endpoint,
+            )
+            sent_stop = True
+            logger.info("TelegramBot stop command sent for unit_id=%s", unit_id)
+        else:
+            logger.info("TelegramBot keep_bot_alive=True, skipping stop for unit_id=%s", unit_id)
+
+        if sent_stop:
+            try:
+                result = response_future.result(timeout=timeout_s + 1)
+            except concurrent.futures.TimeoutError:
+                _ = response_future.cancel()
+                logger.error(
+                    "TelegramBot cleanup stop timed out after %ss: unit_id=%s",
+                    timeout_s,
+                    unit_id,
+                )
+            else:
+                if result.get("type") == "error":
+                    logger.error(
+                        "TelegramBot cleanup stop failed: unit_id=%s result=%r",
+                        unit_id,
+                        result,
+                    )
+                else:
+                    logger.info(
+                        "TelegramBot cleanup stop completed: unit_id=%s result=%r",
+                        unit_id,
+                        result,
+                    )
+
+    except (
+        TimeoutError,
+        concurrent.futures.TimeoutError,
+        RuntimeError,
+        ValueError,
+        OSError,
+    ) as exc:
+        logger.error(
+            "TelegramBot cleanup stop failed for unit_id=%s: %s",
+            unit_id,
+            exc,
+        )
+    finally:
+        publisher.close()
+
+        if sent_stop:
+            try:
+                _schedule_coroutine(
+                    _stop_telegram_listeners(unit_id),
+                    loop,
+                ).result(timeout=5)
+            except (
+                TimeoutError,
+                concurrent.futures.TimeoutError,
+                RuntimeError,
+                ValueError,
+            ) as exc:
+                logger.debug(
+                    "TelegramBot cleanup listener shutdown failed: %s",
+                    exc,
+                )
+
 
 def register_ptb_telegram_bot() -> None:
     register_unit(
@@ -858,6 +998,7 @@ def register_ptb_telegram_bot() -> None:
             input_ports=TELEGRAM_BOT_INPUT_PORTS,
             output_ports=TELEGRAM_BOT_OUTPUT_PORTS,
             step_fn=_ptb_unit_step,
+            cleanup_fn=_cleanup_telegram_bot,
             environment_tags=["messengers"],
             environment_tags_are_agnostic=False,
             supports_graph_wakeup=True,
@@ -865,7 +1006,7 @@ def register_ptb_telegram_bot() -> None:
                 "Telegram bot wrapper using persistent ZMQ subscribers. "
                 "The response endpoint receives result and error topics. "
                 "The update endpoint receives update_batch topics. "
-                "The listeners remain active until tg_stop."
+                "The listeners remain active until stop."
             ),
         )
     )

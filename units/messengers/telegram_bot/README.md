@@ -9,13 +9,13 @@ Visit https://core.telegram.org/bots to create a bot and obtain `bot_token`.
 Ports
 -----
 Inputs (single dict per port):
-- `tg_start`: 
+- `start`: 
 ```json 
-{"action": "tg_start"} 
+{"action": "start"} 
 ```
-- `tg_stop`: 
+- `stop`: 
  ```json 
-{"action": "tg_stop"} 
+{"action": "stop"} 
 ```
 - `get_unread`: 
 ```json 
@@ -43,9 +43,9 @@ Outputs:
 
 Behavior / Actions
 ------------------
-- Action selection: inputs are inspected in this priority order: `tg_start`, `tg_stop`, `get_unread`, `send_message`, `raw`. The first non-None input is used.
-- `tg_start`: Initializes the Application (if needed) and starts long-polling in a background executor; returns a status update {"type":"status","status":"started"} or already_started.
-- `tg_stop`: Decrements refcount and stops the Application when refcount reaches zero; returns {"type":"status","status":"stopped"} or stop_deferred.
+- Action selection: inputs are inspected in this priority order: `start`, `stop`, `get_unread`, `send_message`, `raw`. The first non-None input is used.
+- `start`: Initializes the Application (if needed) and starts long-polling in a background executor; returns a status update {"type":"status","status":"started"} or already_started.
+- `stop`: Decrements refcount and stops the Application when refcount reaches zero; returns {"type":"status","status":"stopped"} or stop_deferred.
 - `get_unread`: If needed, starts the app, then returns a snapshot of unread messages tracked in unit state in shape:
 ```json
 {"type":"update", "update": {"chats": [{"chat_id": 123, "unread_count": 2, "chat": {"id": 123},"messages": [...]}], "last_read": {"123": 456}}}
@@ -80,7 +80,7 @@ Examples
 
 Start the bot:
 ```json
-{"tg_start": {"action":"tg_start"}}
+{"start": {"action":"start"}}
 ```
 
 Send a message:
