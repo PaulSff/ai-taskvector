@@ -42,6 +42,9 @@ class MultipartSender(Protocol):
     ) -> object:
         ...
 
+    def close(self, linger: int | None = None) -> None:
+            ...
+
 class ZmqPublisher:
     topics: ZmqTopics
     sock: MultipartSender
@@ -71,6 +74,9 @@ class ZmqPublisher:
 
         self.sock = sock
         self.pub_endpoint = pub_endpoint
+
+    def close(self, linger: int | None = None) -> None:
+            self.sock.close(linger)
 
     def publish(self, topic: str, payload: JsonObject) -> None:
         import logging

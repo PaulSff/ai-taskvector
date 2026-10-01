@@ -1,12 +1,13 @@
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from core.schemas import ProcessGraph
+from core.schemas.primitives import JsonObject
 
 T = TypeVar("T")
 
 
 def required[T](
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
     expected_type: type[T],
 ) -> T:
@@ -21,7 +22,7 @@ def required[T](
 
 
 def optional[T](
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
     expected_type: type[T],
 ) -> T | None:
@@ -40,28 +41,28 @@ def optional[T](
 
 
 def required_str(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
 ) -> str:
     return required(payload, key, str)
 
 
 def optional_str(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
 ) -> str | None:
     return optional(payload, key, str)
 
 
 def optional_bool(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
 ) -> bool | None:
     return optional(payload, key, bool)
 
 
 def optional_float(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
 ) -> float | None:
     value = payload.get(key)
@@ -78,7 +79,7 @@ def optional_float(
     return float(value)
 
 def bool_or_default(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
     default: bool = False,
 ) -> bool:
@@ -92,7 +93,7 @@ def bool_or_default(
     return value
 
 def optional_process_graph(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
 ) -> ProcessGraph | None:
     value = payload.get(key)
@@ -108,9 +109,9 @@ def optional_process_graph(
     return value
 
 def optional_dict(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
-) -> dict[str, Any] | None:
+) -> JsonObject | None:
     value = payload.get(key)
 
     if value is None:
@@ -124,9 +125,9 @@ def optional_dict(
     return value
 
 def required_dict(
-    payload: dict[str, object],
+    payload: JsonObject,
     key: str,
-) -> dict[str, Any]:
+) -> JsonObject:
     value = payload.get(key)
 
     if not isinstance(value, dict):
@@ -137,7 +138,7 @@ def required_dict(
     return value
 
 
-def is_empty_value(value: Any) -> bool:
+def is_empty_value(value: object) -> bool:
     if value is None:
         return True
 

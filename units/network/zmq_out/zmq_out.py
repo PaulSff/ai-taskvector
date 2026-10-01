@@ -7,6 +7,7 @@ from collections.abc import Coroutine
 from copy import deepcopy
 from typing import Any
 
+from core.schemas.primitives import Data, JsonObject, Output
 from services.logging import setup_colored_logging
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 from units.network.zmq_out.helpers import (
@@ -49,7 +50,7 @@ _PAYLOAD_INPUT_NAMES = (
 
 
 def _get_background_loop(
-    params: dict[str, object],
+    params: Data,
 ) -> asyncio.AbstractEventLoop:
     executor = params.get("_executor")
 
@@ -78,7 +79,7 @@ def _get_background_loop(
     return background_loop
 
 
-def _topics_from_params(params: dict[str, object]) -> ZmqTopics:
+def _topics_from_params(params: Data) -> ZmqTopics:
     injected = params.get("topics")
 
     if isinstance(injected, ZmqTopics):
@@ -87,7 +88,7 @@ def _topics_from_params(params: dict[str, object]) -> ZmqTopics:
     return ZmqTopics()
 
 
-def _close_publisher(state: dict[str, object]) -> None:
+def _close_publisher(state: Data) -> None:
     publisher = state.pop("_publisher", None)
 
     if publisher is None:
@@ -99,7 +100,7 @@ def _close_publisher(state: dict[str, object]) -> None:
         )
 
     try:
-        publisher.sock.close()
+        publisher.close()
     except Exception:
         logger.exception("Failed closing ZmqOut publisher")
 
@@ -120,8 +121,8 @@ def _as_float(value: object, default: float) -> float:
 
 def _get_or_create_publisher(
     *,
-    params: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    state: Data,
     endpoint: str,
     topics: ZmqTopics,
 ) -> ZmqPublisher:
@@ -155,7 +156,7 @@ def _get_or_create_publisher(
 
 
 def _validate_job_payload(
-    payload: dict[str, object],
+    payload: JsonObject,
 ) -> None:
     run_id = payload.get("run_id")
 
@@ -231,19 +232,15 @@ def _validate_job_payload(
             "job 'keep_alive' must be a boolean"
         )
 
-def _dedupe_enabled(params: dict[str, Any]) -> bool:
+def _dedupe_enabled(params: Data) -> bool:
     value = params.get("dedupe", False)
     return value if isinstance(value, bool) else False
 
 
 def _validate_payload(
     output_name: str,
-    payload: Any,
-) -> dict[str, object]:
-    if not isinstance(payload, dict):
-        raise TypeError(
-            f"ZmqOut input '{output_name}' must be a dict"
-        )
+    payload: JsonObject,
+) -> JsonObject:
 
     if is_empty_value(payload):
         raise ValueError(
@@ -310,10 +307,10 @@ def _validate_payload(
 
 def _publish(
     *,
-    params: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    state: Data,
     output_name: str,
-    payload: dict[str, object],
+    payload: JsonObject,
 ) -> None:
     logger.info(
         "ZmqOut publishing: output_name=%r endpoint=%r",
@@ -399,10 +396,10 @@ def _publish(
 
 async def _publish_async(
     *,
-    params: dict[str, object],
-    state: dict[str, object],
+    params: Data,
+    state: Data,
     output_name: str,
-    payload: dict[str, Any],
+    payload: JsonObject,
 ) -> None:
     await asyncio.to_thread(
         _publish,
@@ -438,18 +435,19 @@ def _fire_and_forget(
 
 
 def _zmq_out_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, object],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, object]]:
+) -> Output:
     del dt
 
-    provided = [
-        (name, inputs[name])
-        for name in _PAYLOAD_INPUT_NAMES
-        if name in inputs and inputs[name] is not None
-    ]
+    provided: list[tuple[str, JsonObject]] = []
+    for name in _PAYLOAD_INPUT_NAMES:
+        value = inputs.get(name)
+        if isinstance(value, dict):
+            provided.append((name, value))
+
 
     if not provided:
         return {
@@ -530,8 +528,8 @@ def _zmq_out_step(
 
 
 def _zmq_out_cleanup(
-    params: dict[str, Any],
-    state: dict[str, object],
+    params: Data,
+    state: Data,
 ) -> None:
     del params
     _close_publisher(state)
