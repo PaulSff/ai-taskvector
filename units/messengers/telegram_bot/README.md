@@ -2,7 +2,7 @@
 
 Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
 
-A unit that integrates a bot-mode Telegram client using python-telegram-bot (v20+, long-polling) via the TelegramBotPoller. It can start/stop the bot, fetch unread messages, send messages, and forward raw Bot API calls to the underlying client.
+A unit that acts as a ZMQ proxy to an external Telegram Bot Poller service. It publishes commands via ZMQ and subscribes to response and update channels to interact with the Telegram Bot API asynchronously.
 
 Visit https://core.telegram.org/bots to create a bot and obtain `bot_token`.
 
@@ -19,7 +19,7 @@ Inputs (single dict per port):
 ```
 - `get_unread`: 
 ```json 
-{"action": "get_unread", "messenger": "telegram", "account": "<phone_or_bot>"} 
+{"action": "get_unread", "messenger": "telegram"} 
 ```
 - `send_message`: 
 ```json 
@@ -28,52 +28,36 @@ Inputs (single dict per port):
 - `raw`: any payload dict from supported BotAPI methods
 
 Outputs:
-- `update`: 
-```json 
-{"type":"update","update": <payload>} # result of operations or forwarded payloads
-```
-- `status`: 
-```json 
-{"type":"status","status":"<started|stopped|no_result|...>"} # lifecycle/status messages 
-```
-- `error`: 
-```json 
-{"type":"error","error":"<message>"} # on failures
-```
+- `update`: `{"type":"update", "messenger": "telegram", "update": <payload>}`
+- `status`: `{"type":"status", "messenger": "telegram", "status": "..."}`
+- `error`: `{"type":"error", "messenger": "telegram", "error": "..."}`
 
 Behavior / Actions
 ------------------
-- Action selection: inputs are inspected in this priority order: `start`, `stop`, `get_unread`, `send_message`, `raw`. The first non-None input is used.
-- `start`: Initializes the Application (if needed) and starts long-polling in a background executor; returns a status update {"type":"status","status":"started"} or already_started.
-- `stop`: Decrements refcount and stops the Application when refcount reaches zero; returns {"type":"status","status":"stopped"} or stop_deferred.
-- `get_unread`: If needed, starts the app, then returns a snapshot of unread messages tracked in unit state in shape:
-```json
-{"type":"update", "update": {"chats": [{"chat_id": 123, "unread_count": 2, "chat": {"id": 123},"messages": [...]}], "last_read": {"123": 456}}}
-```
-By default the unit marks chats as read up to the highest fetched message id (configurable by `mark_read`).
-- `send_message`: Requires a dict payload with `chat_id` and `message`. Accepts integer IDs, numeric strings, or username/channel strings (pass-through). Sends via `Application.bot.send_message` and returns message send result (send completion, not delivery/read receipt). If `wait_for_delivery` is true, the unit waits for send to complete and returns `delivered` and `new_message_id`.
-- `raw`: If input is ``` json {"method":"<name>", "params": {...}} ``` the unit will attempt to call the `corresponding bot.<name>(**params)` method if safe and available, otherwise attempt bot.request`(...)` as a fallback.
+- **Action selection**: Inputs are inspected in this priority order: `start`, `stop`, `get_unread`, `send_message`, `raw`. The first non-None input is used.
+- **ZMQ Communication**: The unit does not run the bot itself. It publishes a job to the `zmq_sub_endpoint` and waits for a response on the `response_endpoint` using a unique `run_id`.
+- `start`/`stop`: Manages the lifecycle of the local ZMQ listeners and sends stop commands to the remote poller.
+- `get_unread`: Requests unread messages from the poller. Supports `mark_read` and `wait_for_delivery` parameters.
+- `send_message`: Sends a message via the poller. Supports `wait_for_delivery` to block until the poller confirms the action.
+- `raw`: Forwards any dictionary payload directly to the poller as a raw Bot API request.
 
 Params (must be provided in params dict)
 ----------------------------------------
-- `bot_token` (str) - required
-- `wait_for_delivery` (bool) — default `true` (send_message)
-- `delivery_timeout_s` (int) — default `60` (send_message)
-- `mark_read` (bool) — default `true`, whether to set new messages as read
-- `chat_list_limit` (int) — default `100` (get_unread pagination page size)
-- `_needs_executor` (bool) — must be `true` to indicate background loop usage
-- `zmq_sub_endpoint` (str) - e.g. `tcp://127.0.0.1:5557` Telegram bot poller's subscription endpoint for the jobs to publish,
-- `update_endpoint` (str) - e.g. `tcp://127.0.0.1:5556` Telegram bot poller's updates channel (fans out tg updates),
-- `response_endpoint` (str) - e.g. `tcp://127.0.0.1:5558` The unit's endpoint to receive responses from Telegram bot poller,
-- `workflow_path` (str)  - e.g. `tool.send_message.workflow`
+- `bot_token` (str) - The bot token (usually configured on the poller service, but can be passed via params).
+- `wait_for_delivery` (bool) — default `true`
+- `delivery_timeout_s` (int) — default `60`
+- `mark_read` (bool) — default `true`
+- `keep_bot_alive` (bool) — default `false`. If `true`, the unit will not send a stop command to the poller during cleanup, keeping the bot active.
+- `zmq_sub_endpoint` (str) - The ZMQ endpoint where the unit publishes jobs to the Telegram bot poller.
+- `update_endpoint` (str) - The ZMQ endpoint the unit subscribes to for receiving `update_batch` notifications.
+- `response_endpoint` (str) - The ZMQ endpoint the unit subscribes to for receiving `result` and `error` responses.
+- `workflow_path` (str) - The workflow path identifier used by the poller to route responses.
 
 Notes and Design Decisions
 --------------------------
-- The unit requires a background asyncio event loop (passed via params) to schedule long-polling and other async operations. It validates the loop at step invocation and returns a structured error on missing/invalid loop.
-- `send_message` accepts non-numeric chat identifiers and passes them to PTB to allow usernames or channel names (e.g., "@channelname").
-- `wait_for_delivery` indicates waiting for the send call to complete; Telegram does not provide guaranteed delivery/read receipts via this call.
-- `Raw` method invocation disallows private/dunder method names for safety and attempts to call public bot methods first.
-- On operation timeout the unit attempts to cancel the running coroutine to avoid orphaned tasks and returns a structured timeout error to the `error` port.
+- **Background Loop**: The unit requires a background asyncio event loop (via `_executor`, `_executor_loop`, or `_background_loop`) to manage ZMQ subscribers.
+- **Persistence**: ZMQ listeners for responses and updates remain active until the unit is stopped or cleaned up.
+- **Wakeup**: The unit supports `graph_wakeup`. When an `update_batch` is received on the `update_endpoint`, it triggers a `get_unread` wakeup to notify the graph of new messages.
 
 Examples
 --------
