@@ -360,6 +360,8 @@ def _apply_edits_step(
 
     raw_actions = inputs.get("actions")
     graph_origin = inputs.get("graph_origin")
+    # Get role_id from the Unit params
+    role_id = params.get("role_id")
 
     try:
         graph = graph_to_json_object(inputs.get("graph"))
@@ -389,7 +391,7 @@ def _apply_edits_step(
             },
             state,
         )
-
+    # Extract edits
     edits, extraction_error = _extract_edits(raw_actions)
 
     result["edits"] = to_json_value(edits)
@@ -432,29 +434,45 @@ def _apply_edits_step(
             state,
         )
 
-    # Add graph origin to import_workflow edits when needed.
-    if isinstance(graph_origin, str) and graph_origin.strip():
-        origin = graph_origin.strip()
+    # Add graph origin and commenter (role_id) metadata where needed.
+    origin = (
+        graph_origin.strip()
+        if isinstance(graph_origin, str) and graph_origin.strip()
+        else None
+    )
+
+    commenter = (
+        role_id.strip()
+        if isinstance(role_id, str) and role_id.strip()
+        else None
+    )
+
+    if origin is not None or commenter is not None:
         patched_edits: list[JsonObject] = []
 
         for edit in edits:
-            action = edit.get("action")
-            existing_origin = edit.get("origin")
+            patched_edit = edit.copy()
 
-            has_origin = (
-                isinstance(existing_origin, str)
-                and bool(existing_origin.strip())
-            )
-
-            if action == "import_workflow" and not has_origin:
-                patched_edits.append(
-                    {
-                        **edit,
-                        "origin": origin,
-                    }
+            if (
+                origin is not None
+                and edit.get("action") == "import_workflow"
+            ):
+                existing_origin = edit.get("origin")
+                has_origin = (
+                    isinstance(existing_origin, str)
+                    and bool(existing_origin.strip())
                 )
-            else:
-                patched_edits.append(edit)
+
+                if not has_origin:
+                    patched_edit["origin"] = origin
+
+            if (
+                commenter is not None
+                and edit.get("action") == "add_comment"
+            ):
+                patched_edit["commenter"] = commenter
+
+            patched_edits.append(patched_edit)
 
         edits = patched_edits
         result["edits"] = to_json_value(edits)

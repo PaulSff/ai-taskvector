@@ -745,17 +745,18 @@
           "add_task",
           "remove_task",
           "mark_completed"
-        ]
+        ],
+        "role_id": "planner"
       },
       "name": null,
       "input_ports": [
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         },
         {
           "name": "actions",
-          "type": "Any"
+          "type": "ParsedActions"
         },
         {
           "name": "graph_origin",
@@ -765,15 +766,15 @@
       "output_ports": [
         {
           "name": "result",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "status",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         },
         {
           "name": "error",

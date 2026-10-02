@@ -736,16 +736,18 @@
       "id": "process",
       "type": "ApplyEdits",
       "controllable": false,
-      "params": {},
+      "params": {
+        "role_id": "workflow_designer"
+      },
       "name": null,
       "input_ports": [
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         },
         {
           "name": "actions",
-          "type": "Any"
+          "type": "ParsedActions"
         },
         {
           "name": "graph_origin",
@@ -755,15 +757,15 @@
       "output_ports": [
         {
           "name": "result",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "status",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         },
         {
           "name": "error",
