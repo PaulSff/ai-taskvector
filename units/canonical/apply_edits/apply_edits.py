@@ -434,7 +434,7 @@ def _apply_edits_step(
             state,
         )
 
-    # Add graph origin and commenter (role_id) metadata where needed.
+    # Add graph origin and role_id metadata where needed.
     origin = (
         graph_origin.strip()
         if isinstance(graph_origin, str) and graph_origin.strip()
@@ -449,10 +449,11 @@ def _apply_edits_step(
 
     if origin is not None or commenter is not None:
         patched_edits: list[JsonObject] = []
+        extra_edits: list[JsonObject] = []
 
         for edit in edits:
             patched_edit = edit.copy()
-
+            # Set graph origin if missing
             if (
                 origin is not None
                 and edit.get("action") == "import_workflow"
@@ -465,16 +466,33 @@ def _apply_edits_step(
 
                 if not has_origin:
                     patched_edit["origin"] = origin
-
+            # Set commenter (role_id operating) form Unit params
             if (
                 commenter is not None
                 and edit.get("action") == "add_comment"
             ):
                 patched_edit["commenter"] = commenter
+            # Set implementer (role_id) for each task claimed
+            # to be completed by the current role operating
+            if (
+                commenter is not None
+                and edit.get("action") == "mark_completed"
+                and edit.get("completed") is True
+            ):
+                task_id = edit.get("task_id")
+                todo_list_id = edit.get("todo_list_id")
+
+                if task_id and todo_list_id:
+                    extra_edits.append({
+                        "action": "set_implementer",
+                        "task_id": task_id,
+                        "implementer": commenter,
+                        "todo_list_id": todo_list_id,
+                    })
 
             patched_edits.append(patched_edit)
 
-        edits = patched_edits
+        edits = patched_edits + extra_edits
         result["edits"] = to_json_value(edits)
 
     try:
@@ -638,7 +656,6 @@ def _apply_edits_step(
         },
         state,
     )
-
 
 
 def register_apply_edits() -> None:

@@ -744,7 +744,8 @@
           "remove_todo_list",
           "add_task",
           "remove_task",
-          "mark_completed"
+          "mark_completed",
+          "set_implementer"
         ],
         "role_id": "coder"
       },
