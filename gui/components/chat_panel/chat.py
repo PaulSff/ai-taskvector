@@ -66,6 +66,7 @@ from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.hooks import on_apply_hook
 from gui.utils import safe_page_update, safe_update
 from gui.utils.ids import new_id
+from gui.utils.keyboard_commands import KeyboardCallback
 from gui.utils.time import now_ts
 from gui.utils.ui_utils import _toast
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
@@ -90,8 +91,8 @@ def build_agents_chat_panel(
     set_graph: SetGraphCallback,
     apply_from_agent: SetGraphCallback | None = None,
     get_recent_changes: Callable[[], Awaitable[str | None]] | None = None,
-    on_undo: Callable[[], None] | None = None,
-    on_redo: Callable[[], None] | None = None,
+    on_undo: KeyboardCallback| None = None,
+    on_redo: KeyboardCallback | None = None,
     on_show_run_console: Callable[[Data], None] | None = None,
     chat_panel_api: Data | None = None,
     on_turn_status: Callable[[Data], Coroutine[object, object, None]] | None = None
@@ -326,14 +327,21 @@ def build_agents_chat_panel(
     refs_chips_row = refs_controller.row
 
     def _row_builder(msg: Data) -> ft.Row:
-        # bubble_width=None makes bubbles expand to available chat column width (responsive).
+        def _undo_wrapper() -> None:
+            if on_undo:
+                page.run_task(on_undo)
+
+        def _redo_wrapper() -> None:
+            if on_redo:
+                page.run_task(on_redo)
+
         return build_message_row(
             page=page,
             msg=msg,
             persist=_persist_session_debounced,
             toast=_toast_now,
-            on_undo=on_undo,
-            on_redo=on_redo,
+            on_undo=_undo_wrapper if on_undo else None,
+            on_redo=_redo_wrapper if on_redo else None,
             bubble_width=None,
             key=str(msg.get("id")),
         )
@@ -824,10 +832,17 @@ def build_agents_chat_panel(
 
             _ = page.run_task(_restore_now)
 
-
             # Streaming callback: turn_driver calls this with the accumulated buffer
             # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
             async def _stream_cb(session_id: str, chunk: str) -> None:
+                def _undo_wrapper() -> None:
+                    if on_undo:
+                        page.run_task(on_undo)
+
+                def _redo_wrapper() -> None:
+                    if on_redo:
+                        page.run_task(on_redo)
+
                 if chunk.startswith(INLINE_STATUS_PREFIX):
                     rest = chunk[len(INLINE_STATUS_PREFIX) :]
                     _set_inline_status(rest if rest else None)
@@ -844,8 +859,8 @@ def build_agents_chat_panel(
                         build_agent_streaming_body(
                             page=page,
                             toast=_toast_now,
-                            on_undo=on_undo,
-                            on_redo=on_redo,
+                            on_undo=_undo_wrapper if on_undo else None,
+                            on_redo=_redo_wrapper if on_redo else None,
                             content=chunk,
                             bubble_width=None,
                         )

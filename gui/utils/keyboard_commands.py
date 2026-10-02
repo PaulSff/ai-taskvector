@@ -59,7 +59,7 @@ def create_keyboard_handler(
     chain_to: KeyboardChainCallback | None,
     *,
     on_save: KeyboardCallback | None = None,
-    on_undo: KeyboardCallback| None = None,
+    on_undo: KeyboardCallback | None = None,
     on_redo: KeyboardCallback | None = None,
     on_find: KeyboardCallback | None = None,
     on_escape: KeyboardCallback | None = None,

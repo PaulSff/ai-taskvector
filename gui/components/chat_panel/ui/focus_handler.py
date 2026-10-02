@@ -45,22 +45,17 @@ class ChatFocusHandler:
     # ------------------------------------------------------------------
 
     def schedule_restore(self) -> None:
-        """Restore focus to the preferred field if UI is not busy."""
-        if self._is_busy():
+        if self._page.session is None or self._is_busy():
             return
 
         if self._pref == "bottom":
-
             async def _focus_bottom() -> None:
                 await self._focus_field(self._bottom_field)
-
             self._page.run_task(_focus_bottom)
 
         elif self._pref == "first":
-
             async def _focus_first() -> None:
                 await self._focus_field(self._first_field)
-
             self._page.run_task(_focus_first)
 
     # ------------------------------------------------------------------
@@ -120,14 +115,12 @@ class ChatFocusHandler:
     # ------------------------------------------------------------------
 
     async def _focus_field(self, field: ft.TextField) -> None:
-        """
-        Retry focus a few times because resize/layout updates
-        can temporarily steal focus.
-        """
         for delay_s in (0.0, 0.05, 0.2, 0.5):
             try:
                 await asyncio.sleep(delay_s)
+                if self._page.session is None:
+                    return
                 await field.focus()
                 return
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError, RuntimeError):
+                return
