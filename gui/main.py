@@ -391,7 +391,7 @@ async def main(page: ft.Page) -> None:
     )
     resizing: list[bool] = [False]
 
-    def do_save_and_toast() -> None:
+    async def do_save_and_toast() -> None:
         result = save_workflow_version(graph_ref[0])
 
         async def _toast() -> None:
@@ -408,13 +408,13 @@ async def main(page: ft.Page) -> None:
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
 
-    def _undo_if_workflow() -> None:
+    async def _undo_if_workflow() -> None:
         if active_tab_idx[0] == 0:
-            workflow_undo()
+            await workflow_undo()
 
-    def _redo_if_workflow() -> None:
+    async def _redo_if_workflow() -> None:
         if active_tab_idx[0] == 0:
-            workflow_redo()
+            await workflow_redo()
 
     on_keyboard = create_keyboard_handler(
         _prev_keyboard,
