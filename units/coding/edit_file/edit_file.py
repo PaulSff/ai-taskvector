@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import logging
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from unidiff.patch import PatchSet
 
 from core.schemas.primitives import Data, Output
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
-EDIT_FILE_INPUT_PORTS = [("parser_output", "Any")]
-EDIT_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+logger = setup_colored_logging(logging.DEBUG)
+
+
+EDIT_FILE_INPUT_PORTS = [("parser_output", "dict")]
+EDIT_FILE_OUTPUT_PORTS = [("data", "Data"), ("error", "str")]
+
 
 DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
@@ -40,6 +47,17 @@ class _ApplyMismatch:
     original_index: int
 
 
+class FilePayload(TypedDict, total=False):
+    patch: str
+    output_format: str
+    file_name: str
+
+
+class NormalizedEditFile(TypedDict):
+    output_dir: object
+    file: object
+
+
 def _sanitize_extension(ext: str) -> str:
     ext = (ext or "").strip().lower()
     if not ext:
@@ -51,42 +69,37 @@ def _sanitize_extension(ext: str) -> str:
 
 def _extract_file_payload_and_output_dir(
     parser_output: object,
-) -> tuple[dict[str, object] | None, Path | None]:
-    if isinstance(parser_output, list):
-        parser_output = {}
-
-    if not isinstance(parser_output, dict):
+) -> tuple[FilePayload | None, Path | None]:
+    if not isinstance(parser_output, Mapping):
         return None, None
 
-    typed_parser_output = cast(
-        dict[str, object],
-        cast(object, parser_output),
-    )
-
-    raw_output_dir = typed_parser_output.get("output_dir")
-    if raw_output_dir is None:
+    payload_raw = parser_output.get("file")
+    if not isinstance(payload_raw, Mapping):
         return None, None
 
-    try:
-        output_dir = Path(str(raw_output_dir).strip()).expanduser().resolve()
-    except (OSError, RuntimeError, ValueError, TypeError):
+    patch = payload_raw.get("patch")
+    if not isinstance(patch, str):
         return None, None
 
-    payload = typed_parser_output.get("file")
-    if not isinstance(payload, dict):
-        return None, None
+    payload: FilePayload = {"patch": patch}
 
-    typed_payload = cast(
-        dict[str, object],
-        cast(object, payload),
-    )
+    output_format = payload_raw.get("output_format")
+    if isinstance(output_format, str):
+        payload["output_format"] = output_format
 
-    return typed_payload, output_dir
+    file_name = payload_raw.get("file_name")
+    if isinstance(file_name, str):
+        payload["file_name"] = file_name
 
+    output_dir: Path | None = None
+    output_dir_raw = parser_output.get("output_dir")
+    if isinstance(output_dir_raw, str):
+        try:
+            output_dir = Path(output_dir_raw.strip()).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError, TypeError):
+            output_dir = None
 
-class NormalizedEditFile(TypedDict):
-    output_dir: object
-    file: object
+    return payload, output_dir
 
 
 def _normalize_input_wrapper(parser_output: object) -> object:
@@ -99,25 +112,19 @@ def _normalize_input_wrapper(parser_output: object) -> object:
         "file": {...},
     }
     """
-    if not isinstance(parser_output, dict):
+    if not isinstance(parser_output, Mapping):
         return parser_output
 
-    typed_parser_output = cast(dict[str, object], parser_output)
-
-    if typed_parser_output.get("action") == "edit_file":
-        normalized: NormalizedEditFile = {
-            "output_dir": typed_parser_output.get("output_dir"),
-            "file": typed_parser_output.get("file"),
+    if parser_output.get("action") == "edit_file":
+        return {
+            "output_dir": parser_output.get("output_dir"),
+            "file": parser_output.get("file"),
         }
-        return normalized
 
-    return cast(
-        dict[str, object],
-        {
-            "output_dir": typed_parser_output.get("output_dir"),
-            "file": typed_parser_output.get("file"),
-        },
-    )
+    return {
+        "output_dir": parser_output.get("output_dir"),
+        "file": parser_output.get("file"),
+    }
 
 
 class PatchApplyError(ValueError):
@@ -134,14 +141,16 @@ class PatchApplyError(ValueError):
 
 
 def _extract_patch_target_basename(patched_file: object) -> str:
-    # unidiff: patched_file.source_file and patched_file.target_file
-    # are FileHeader objects/strings.
     for attr in ("target_file", "source_file"):
-        value = cast(object, getattr(patched_file, attr, None))
+        value = getattr(patched_file, attr, None)
 
-        if value:
+        if isinstance(value, str) and value:
+            return value.rsplit("/", 1)[-1]
+
+        if value is not None:
             path = str(value)
-            return path.rsplit("/", 1)[-1]
+            if path:
+                return path.rsplit("/", 1)[-1]
 
     return ""
 
@@ -401,9 +410,8 @@ def _edit_file_step(
         out_obj.error = "missing or invalid file payload (expected parser_output['file'])"
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
-    if not isinstance(output_dir, Path):
-        out_obj.error = "output_dir is required in parser_output"
-        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
+    if output_dir is None:
+        output_dir = Path("")
 
     patch = payload.get("patch")
     if not isinstance(patch, str) or not patch.strip():
@@ -470,16 +478,23 @@ def _edit_file_step(
         # compute MD5 on the file modified
         md5_after = hashlib.md5(updated.encode("utf-8")).hexdigest()
     except OSError as e:
+        logger.exception("Failed to save edited file: %s", target_path)
         out_obj.error = f"cannot write updated file: {e}"
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
-    # Collect the output items:
     out_obj.ok = True
     out_obj.output_path = str(target_path)
     out_obj.changes_applied = patch
     out_obj.md5_before = md5_before
     out_obj.md5_after = md5_after
     out_obj.timestamp_utc = datetime.datetime.now(datetime.UTC).isoformat()
+
+    logger.info(
+        "Edited file saved successfully: path=%s md5_before=%s md5_after=%s",
+        out_obj.output_path,
+        out_obj.md5_before,
+        out_obj.md5_after,
+    )
 
     return ({"data": asdict(out_obj), "error": None}, state)
 

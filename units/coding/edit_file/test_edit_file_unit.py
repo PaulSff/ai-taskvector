@@ -216,7 +216,7 @@ def test_edit_file_step_missing_output_dir_returns_error():
     # Current behavior errors earlier as "missing or invalid file payload"
     # because output_dir missing makes
     # _extract_file_payload_and_output_dir return (None, None).
-    assert "missing or invalid file payload" in error
+    assert "file payload must contain 'patch' as a non-empty string" in error
 
 
 def test_edit_file_step_output_dir_wrong_type_returns_error():

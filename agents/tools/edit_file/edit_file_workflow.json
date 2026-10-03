@@ -14,13 +14,13 @@
       "input_ports": [
         {
           "name": "parser_output",
-          "type": "Any"
+          "type": "dict"
         }
       ],
       "output_ports": [
         {
           "name": "data",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "error",
