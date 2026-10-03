@@ -82,7 +82,6 @@ from core.schemas.training_config import (
     RunConfig,
     TrainingConfig,
 )
-from units.registry import get_unit_spec
 
 TODO_TASK_DEADLINE = 320  # default deadline (will be converted to str)
 
@@ -333,6 +332,9 @@ def to_process_graph(
             canonical_type = canonical_unit_type(str(unit_type_value))
 
             if not input_ports and not output_ports:
+
+                from units.registry import get_unit_spec
+
                 spec = get_unit_spec(canonical_type)
 
                 if spec:
@@ -500,6 +502,9 @@ def to_process_graph(
                 output_ports = parse_port_specs(unit_raw.get("output_ports"))
 
                 if not input_ports and not output_ports:
+
+                    from units.registry import get_unit_spec
+
                     spec = get_unit_spec(unit_type)
                     if spec is not None:
                         input_ports = [

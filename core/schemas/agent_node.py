@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import cast
 
 from core.schemas.process_graph import ProcessGraph, Unit
-from units.registry import get_unit_spec
 
 # Canonical unit types for agent nodes. Aliases (e.g. rl_agent, llm_agent) are
 # normalized to these by the normalizer on input; the rest of the system uses only these.
@@ -141,6 +140,9 @@ def has_llm_agent_node(graph: ProcessGraph) -> bool:
 
 def get_unit_by_role(graph: ProcessGraph, role: str) -> Unit | None:
     """First unit whose registered spec has the given role, or None. Type-agnostic."""
+
+    from units.registry import get_unit_spec
+
     for u in graph.units:
         spec = get_unit_spec(u.type)
         if spec is not None and spec.role == role:
