@@ -21,10 +21,10 @@ from core.schemas.primitives import Data, Output
 from runtime.executor import GraphStreamCallback, ObservationInfo
 from units.registry import UnitSpec, get_unit_spec, register_unit
 
-CHAMELEON_INPUT_PORTS = [("actions", "Any"), ("data", "Any")]
+CHAMELEON_INPUT_PORTS = [("actions", "dict"), ("data", "list")]
 CHAMELEON_OUTPUT_PORTS = [
-    ("data", "Any"),
-    ("last", "Any"),
+    ("data", "list"),
+    ("last", "dict"),
     ("error", "str"),
 ]
 
@@ -110,50 +110,6 @@ def _schedule_on_background_loop(
     fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
     return fut.result()
 
-
-async def _maybe_run_child_async_step(
-    spec: UnitSpec,
-    params: Data,
-    inputs: Data,
-    loop_dt: float,
-) -> Output:
-    """Call spec.step_fn (sync or async).
-
-    Normalize the return value to ``(outputs_dict, state_dict)``.
-    Raises whatever the underlying step function raises.
-    """
-    step_fn = getattr(spec, "step_fn", None)
-
-    if not callable(step_fn):
-        raise TypeError("spec.step_fn is not callable")
-
-    # Each child gets its own empty state dict.
-    child_state: Data = {}
-
-    res = step_fn(params, inputs, child_state, loop_dt)
-
-    if asyncio.iscoroutine(res):
-        res = await res
-
-    # Normalize results: accept dict or (dict, dict).
-    if isinstance(res, dict):
-        return res, child_state
-
-    if (
-        isinstance(res, (list, tuple))
-        and len(res) >= 1
-        and isinstance(res[0], dict)
-    ):
-        out = res[0]
-        st = (
-            res[1]
-            if len(res) > 1 and isinstance(res[1], dict)
-            else child_state
-        )
-        return out, st
-
-    # Fallback: return empty outputs and the child state.
-    return {}, child_state
 
 
 def _chameleon_step(

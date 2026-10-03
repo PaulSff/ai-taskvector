@@ -6,8 +6,8 @@ Runs a **list of action dicts** in one `step_fn` call, each through a registered
 
 | Port | Type | Description |
 |------|------|-------------|
-| **actions** | Any | List of dicts, or dict `{"actions": [...] }`. |
-| **data** | Any | Same accepted shapes as **actions** if that port is unwired. |
+| **actions** | dict | List of dicts, or dict `{"actions": [...] }`. |
+| **data** | list | Same accepted shapes as **actions** if that port is unwired. |
 
 Each item:
 
@@ -21,8 +21,8 @@ Each item:
 
 | Port | Type | Description |
 |------|------|-------------|
-| **data** | Any | List of `{ "type", "outputs", "error" }` per item. |
-| **last** | Any | Output dict from the **last** successful step (empty if none). |
+| **data** | list | List of `{ "type", "outputs", "error" }` per item. |
+| **last** | dict | Output dict from the **last** successful step (empty if none). |
 | **error** | str | `None` if every step succeeded; else short joined messages from failed steps. |
 
 ## Params
