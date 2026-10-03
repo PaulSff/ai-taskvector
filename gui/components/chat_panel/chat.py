@@ -73,9 +73,6 @@ from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
-
-agentDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
-
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
 MESSENGER = "taskvector"
