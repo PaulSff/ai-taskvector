@@ -1242,24 +1242,23 @@ def apply_graph_edit(
 
         comment_id = str(raw_comment_id).strip()
 
-        if current.comments is None:
+        if not comments:
             raise ValueError(
                 f"remove_comment: comment_id not found: {comment_id}"
             )
 
-        before_len = len(current.comments)
-
-        current.comments[:] = [
+        filtered_comments = [
             comment
-            for comment in current.comments
+            for comment in comments
             if comment.id.strip() != comment_id
         ]
 
-        if len(current.comments) == before_len:
+        if len(filtered_comments) == len(comments):
             raise ValueError(
                 f"remove_comment: comment_id not found: {comment_id}"
             )
 
+        comments = filtered_comments
 
     elif edit.action == "add_todo_list":
         existing_ids = {
