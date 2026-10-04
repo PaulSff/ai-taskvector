@@ -115,7 +115,7 @@ def build_workflow_tab(
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)
 
-    def c() -> None:
+    def refresh_process_tab() -> None:
         process_content.content = build_process_tab_content()
         safe_update(process_content)
         safe_page_update(page)
