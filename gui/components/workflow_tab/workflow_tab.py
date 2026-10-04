@@ -47,7 +47,7 @@ from services.workflows.core_workflows import (
 )
 
 
-def build_workflow_tab(
+async def build_workflow_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], None],
@@ -526,15 +526,17 @@ def build_workflow_tab(
     redo_btn_ref[0] = redo_btn
     _update_undo_redo_buttons()
 
-    _run_console = build_workflow_run_console(
+    _run_console = await build_workflow_run_console(
         page,
         graph_ref,
         show_toast,
         on_graph_update=apply_from_agent,
     )
+
     console_container = _run_console.console_container
     run_btn: ft.Control = _run_console.run_button
     show_console_with_run_output = _run_console.show_console_with_run_output
+
 
     # toolbar buttons (explicitly typed)
     import_btn: ft.IconButton = ft.IconButton(

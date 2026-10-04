@@ -297,7 +297,7 @@ async def main(page: ft.Page) -> None:
         workflow_undo,
         workflow_redo,
         show_console_with_run_output,
-    ) = build_workflow_tab(
+    ) = await build_workflow_tab(
         page,
         graph_ref,
         show_toast_sync,

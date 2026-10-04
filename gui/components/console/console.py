@@ -40,7 +40,7 @@ class WorkflowRunConsoleControls:
     show_console_with_run_output: Callable[[dict[str, object]], None]
 
 
-def build_workflow_run_console(
+async def build_workflow_run_console(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], object] | None,
