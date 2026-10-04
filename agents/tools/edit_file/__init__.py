@@ -141,70 +141,66 @@ async def run_edit_file_follow_up(
                 "edit_file action was found"
             )
 
-        if len(edit_file_actions) != 1:
-            raise ValueError(
-                "Edit-file follow-up expected exactly one edit_file action, "
-                f"got {len(edit_file_actions)}"
+        chunks: list[str] = []
+
+        for raw_action in edit_file_actions:
+            # Validate and normalize parser output using the authoritative schema.
+            try:
+                action = EditFileActionBlock.model_validate(raw_action)
+            except ValidationError as exc:
+                raise ValueError(
+                    "Invalid edit_file action block: "
+                    f"errors={exc.errors()!r}"
+                ) from exc
+
+            # Pass the complete normalized action to the workflow. The workflow
+            # needs output_dir, file_name, and the replacement definitions.
+            payload = TypeAdapter(JsonValue).validate_json(
+                action.model_dump_json()
             )
 
-        raw_action = edit_file_actions[0]
-
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = EditFileActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
-            raise ValueError(
-                "Invalid edit_file action block: "
-                f"errors={exc.errors()!r}"
-            ) from exc
-
-        # Pass the complete normalized action to the workflow. The workflow
-        # needs output_dir, file_name, and the replacement definitions.
-        payload = TypeAdapter(JsonValue).validate_json(
-            action.model_dump_json()
-        )
-
-        initial_inputs: WorkflowInputs = {
-            "inject_payload": {
-                "template": payload,
+            initial_inputs: WorkflowInputs = {
+                "inject_payload": {
+                    "template": payload,
+                }
             }
-        }
 
-        out, errs = await run_workflow_with_errors(
-            EDIT_FILE_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
+            out, errs = await run_workflow_with_errors(
+                EDIT_FILE_WORKFLOW_PATH,
+                initial_inputs=initial_inputs,
+                format="dict",
+                execution_timeout_s=EXECUTION_TIMEOUT_S,
+            )
 
-        if errs:
-            error_text = _format_workflow_error(errs)
+            if errs:
+                error_text = _format_workflow_error(errs)
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Edit file error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(f"Edit file error: {error_text}")
+                except (AttributeError, TypeError):
+                    pass
 
-        edit_file_data, edit_file_error = _extract_edit_file_result(out)
+            edit_file_data, edit_file_error = _extract_edit_file_result(out)
 
-        # Prefer the explicit error prompt from the workflow output.
-        result = edit_file_error or edit_file_data
+            # Prefer the explicit error prompt from the workflow output.
+            result = edit_file_error or edit_file_data
 
-        if not result:
+            if result:
+                chunks.append(
+                    EDIT_FILE_FOLLOW_UP_PREFIX
+                    + result
+                    + EDIT_FILE_FOLLOW_UP_SUFFIX.format(
+                        language=hint(),
+                        session_language=hint(),
+                    )
+                )
+
+        if not chunks:
             return _empty_edit_file_contribution(hint)
 
-        chunk = (
-            EDIT_FILE_FOLLOW_UP_PREFIX
-            + result
-            + EDIT_FILE_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
-            )
-        )
-
         return FollowUpContribution(
-            context_chunks=[chunk],
+            context_chunks=chunks,
             any_empty_tool=False,
         )
 

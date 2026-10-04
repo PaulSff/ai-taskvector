@@ -165,9 +165,12 @@ def _apply_unified_diff_with_unidiff(
     orig_lines = original.split("\n")
 
     try:
-        patchset = PatchSet(patch.splitlines(True))  # keepends semantics
+        patchset = PatchSet(patch.splitlines(True))
     except Exception as e:
-        raise PatchApplyError(message=f"patch application failed: unable to parse unified diff: {e}") from e
+        logger.exception("Failed to parse unified diff")
+        raise PatchApplyError(
+            message=f"patch application failed: unable to parse unified diff: {e}"
+        ) from e
 
     if len(patchset) != 1:
         raise PatchApplyError(
@@ -196,175 +199,92 @@ def _apply_unified_diff_with_unidiff(
             )
         )
 
-    # main loop
+    def apply_hunk_at(current: list[str], hunk, hunk_index: int, start_idx: int) -> list[str]:
+        new_chunk: list[str] = []
+        cursor = start_idx
+
+        for line in hunk:
+            if line.line_type == " ":
+                expected = line.value.removesuffix("\n")
+                actual = current[cursor] if cursor < len(current) else "<EOF>"
+                if actual != expected:
+                    mismatch = _ApplyMismatch(
+                        hunk_index=hunk_index,
+                        old_start=hunk.source_start,
+                        new_start=hunk.target_start,
+                        expected=expected,
+                        actual=actual,
+                        original_index=cursor,
+                    )
+                    raise PatchApplyError(
+                        message="patch application failed: context mismatch while applying patch",
+                        mismatch=mismatch,
+                    )
+                new_chunk.append(actual)
+                cursor += 1
+
+            elif line.line_type == "-":
+                expected = line.value.removesuffix("\n")
+                actual = current[cursor] if cursor < len(current) else "<EOF>"
+                if actual != expected:
+                    raise PatchApplyError(
+                        message="patch application failed: deletion mismatch while applying patch"
+                    )
+                cursor += 1
+
+            elif line.line_type == "+":
+                new_chunk.append(line.value.removesuffix("\n"))
+
+            else:
+                raise PatchApplyError(
+                    message=f"patch application failed: unknown diff line type: {line.line_type!r}"
+                )
+
+        return current[:start_idx] + new_chunk + current[cursor:]
+
     current = orig_lines
 
     for hunk_index, hunk in enumerate(patched_file):
-        expected_idx = hunk.source_start - 1  # convert 1-based to 0-based
+        expected_idx = hunk.source_start - 1
+        expected_idx = max(expected_idx, 0)
 
-        if expected_idx < 0 or expected_idx > len(current):
-            raise PatchApplyError(
-                message="patch application failed: context mismatch while applying patch (hunk starts out of range: idx={expected_idx})"
-            )
-
-        # First try strict application at expected_idx.
+        # First try exact placement.
         try:
-            new_chunk: list[str] = []
-            cursor = expected_idx
-
-            for line in hunk:
-                if line.line_type == " ":
-                    expected = line.value
-                    expected_no_nl = expected.removesuffix("\n")
-                    actual = current[cursor] if cursor < len(current) else "<EOF>"
-
-                    if actual != expected_no_nl:
-                        mismatch = _ApplyMismatch(
-                            hunk_index=hunk_index,
-                            old_start=hunk.source_start,
-                            new_start=hunk.target_start,
-                            expected=expected_no_nl,
-                            actual=actual,
-                            original_index=cursor,
-                        )
-                        raise PatchApplyError(
-                            message="patch application failed: context mismatch while applying patch",
-                            mismatch=mismatch,
-                        )
-
-                    new_chunk.append(actual)
-                    cursor += 1
-
-                elif line.line_type == "-":
-                    expected = line.value
-                    expected_no_nl = expected.removesuffix("\n")
-                    actual = current[cursor] if cursor < len(current) else "<EOF>"
-
-                    if actual != expected_no_nl:
-                        raise PatchApplyError(
-                            message="patch application failed: deletion mismatch while applying patch"
-                        )
-
-                    cursor += 1
-
-                elif line.line_type == "+":
-                    added = line.value
-                    added_no_nl = added.removesuffix("\n")
-                    new_chunk.append(added_no_nl)
-
-                else:
-                    raise PatchApplyError(
-                        message=f"patch application failed: unknown diff line type: {line.line_type!r}"
-                    )
-
-            # Replace [expected_idx:cursor] with new_chunk
-            current = current[:expected_idx] + new_chunk + current[cursor:]
+            current = apply_hunk_at(current, hunk, hunk_index, expected_idx)
             continue
-
         except PatchApplyError as e:
-            # Fuzzy retry: only for context mismatch (not for deletion mismatch / parse / etc.)
             if getattr(e, "mismatch", None) is None:
                 raise
 
-            # Build contiguous context sequence from the hunk (lines with ' ')
-            context_values: list[str] = [
-                line.value.removesuffix("\n")
-                for line in hunk
-                if line.line_type == " "
-            ]
-            if len(context_values) < 3:
-                # Not enough context to fuzzy-match
-                raise
+        # Fuzzy retry: search nearby for the first context line.
+        context_lines = [
+            line.value.removesuffix("\n")
+            for line in hunk
+            if line.line_type == " "
+        ]
+        if not context_lines:
+            raise PatchApplyError(
+                message="patch application failed: cannot fuzzy-match a hunk with no context lines"
+            )
 
-            # Find how many source lines occur before the first context line in the hunk
-            # (only ' ' and '-' consume source; '+' does not)
-            lines_before_first_context = 0
-            for line in hunk:
-                if line.line_type == " ":
-                    break
-                if line.line_type in {"-", " "}:
-                    lines_before_first_context += 1
-                elif line.line_type == "+":
-                    pass
+        anchor = context_lines[0]
+        window = 50
+        lower = max(0, expected_idx - window)
+        upper = min(len(current), expected_idx + window + 1)
 
-            first_context_line_value = context_values[0]
+        retry_idx = None
+        for idx in range(lower, upper):
+            if current[idx] == anchor:
+                retry_idx = idx
+                break
 
-            window = DEFAULT_FUZZY_CONTEXT_WINDOW
-            start_search = max(0, expected_idx - window)
-            end_search = min(len(current), expected_idx + window)
+        if retry_idx is None:
+            raise PatchApplyError(
+                message="patch application failed: context mismatch while applying patch"
+            )
 
-            fuzzy_idx = expected_idx
-            found = False
-
-            for j in range(start_search, end_search):
-                if current[j] != first_context_line_value:
-                    continue
-
-                # check full contiguous context match
-                k = 0
-                while k < len(context_values):
-                    cj = j + k
-                    if cj >= len(current) or current[cj] != context_values[k]:
-                        break
-                    k += 1
-
-                if k == len(context_values):
-                    candidate = j - lines_before_first_context
-                    if 0 <= candidate <= len(current):
-                        fuzzy_idx = candidate
-                        found = True
-                        break
-
-            if not found or fuzzy_idx == expected_idx:
-                raise
-
-            # Apply again at fuzzy_idx (same logic as strict path)
-            new_chunk = []
-            cursor = fuzzy_idx
-
-            for line in hunk:
-                if line.line_type == " ":
-                    expected = line.value.removesuffix("\n")
-                    actual = current[cursor] if cursor < len(current) else "<EOF>"
-
-                    if actual != expected:
-                        mismatch = _ApplyMismatch(
-                            hunk_index=hunk_index,
-                            old_start=hunk.source_start,
-                            new_start=hunk.target_start,
-                            expected=expected,
-                            actual=actual,
-                            original_index=cursor,
-                        )
-                        raise PatchApplyError(
-                            message="patch application failed: context mismatch while applying patch",
-                            mismatch=mismatch,
-                        )
-
-                    new_chunk.append(actual)
-                    cursor += 1
-
-                elif line.line_type == "-":
-                    expected = line.value.removesuffix("\n")
-                    actual = current[cursor] if cursor < len(current) else "<EOF>"
-
-                    if actual != expected:
-                        raise PatchApplyError(
-                            message="patch application failed: deletion mismatch while applying patch"
-                        )
-
-                    cursor += 1
-
-                elif line.line_type == "+":
-                    added_no_nl = line.value.removesuffix("\n")
-                    new_chunk.append(added_no_nl)
-
-                else:
-                    raise PatchApplyError(
-                        message=f"patch application failed: unknown diff line type: {line.line_type!r}"
-                    )
-
-            current = current[:fuzzy_idx] + new_chunk + current[cursor:]
+        # Re-apply from the shifted context location.
+        current = apply_hunk_at(current, hunk, hunk_index, retry_idx)
 
     return "\n".join(current)
 
@@ -408,6 +328,7 @@ def _edit_file_step(
 
     if not payload:
         out_obj.error = "missing or invalid file payload (expected parser_output['file'])"
+        logger.error(out_obj.error)
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     if output_dir is None:
@@ -416,6 +337,7 @@ def _edit_file_step(
     patch = payload.get("patch")
     if not isinstance(patch, str) or not patch.strip():
         out_obj.error = "file payload must contain 'patch' as a non-empty string"
+        logger.error(out_obj.error)
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     raw_output_format = payload.get("output_format")
@@ -443,6 +365,7 @@ def _edit_file_step(
 
     if not target_path.exists() or not target_path.is_file():
         out_obj.error = f"target file does not exist: {target_path}"
+        logger.error(out_obj.error)
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     try:
@@ -451,6 +374,7 @@ def _edit_file_step(
         # compute MD5 of the original file
         md5_before = hashlib.md5(original.encode("utf-8")).hexdigest()
     except OSError as e:
+        logger.exception("Cannot read target file: %s", target_path)
         out_obj.error = f"cannot read target file: {e}"
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
@@ -463,6 +387,7 @@ def _edit_file_step(
             expected_target_basename=expected_target_basename,
         )
     except PatchApplyError as e:
+        logger.exception("Patch application failed for %s", target_path)
         out_obj.error = _format_context_error(e)
         return ({"data": asdict(out_obj), "error": out_obj.error}, state)
     except ValueError as e:
