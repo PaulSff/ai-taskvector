@@ -141,7 +141,10 @@ class RecentChatsMenu:
                     height=self.item_height,
                     padding=ft.Padding.symmetric(horizontal=10),
                 )
-                item.on_click = (lambda _e, _p=p: self.on_select(_p))
+                async def _handle_select(_e, _p=p):
+                    await self.on_select(_p)
+
+                item.on_click = _handle_select
                 items.append(item)
 
         self.menu_top.items = items
