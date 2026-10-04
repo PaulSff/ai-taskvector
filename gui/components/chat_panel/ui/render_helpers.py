@@ -72,6 +72,7 @@ _TODO_MUTATOR_ONLY_ACTIONS = frozenset(
 # The content inside fenced blocks containing the actions below
 # is going to be hidden for UI performace
 # (e.g. edit file content is not required to be displayed to the user).
+# TODO: sync the actions with the tools registry instead of hardcoding
 HIDE_ACTIONS = {
     "edit_file",
     "delegate_request",
@@ -80,10 +81,32 @@ HIDE_ACTIONS = {
     "no_action",
     "web_search",
     "browse",
+    "search",
+    "calendar",
+    "add_comment",
+    "remove_comment",
+    "list_dir",
+    "report",
+    "add_todo_list",
+    "remove_todo_list",
+    "add_task",
+    "remove_task",
+    "set_implementer",
+    "set_deadline",
+    "set_curator",
+    "set_todo_list_title",
+    "mark_completed",
+    "read_current_workflow",
+    "make_dir",
+    "replace_graph",
 }
 
+# Define the hidden actions parsing pattern
 _ACTION_RE = re.compile(
-    r'"action"\s*:\s*"(edit_file|delegate_request|new_file|read_file|no_action|web_search|browse)"'
+    r'"action"\s*:\s*"(edit_file|delegate_request|new_file|read_file|no_action|'
+    r'web_search|browse|search|calendar|add_comment|remove_comment|list_dir|report|'
+    r'add_todo_list|remove_todo_list|add_task|remove_task|set_implementer|set_deadline|'
+    r'set_curator|set_todo_list_title|read_current_workflow|make_dir|replace_graph|mark_completed)"'
 )
 
 
