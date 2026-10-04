@@ -457,7 +457,7 @@ async def main(page: ft.Page) -> None:
 
 
     # Right column: agents chat panel
-    chat_content, _ = build_agents_chat_panel(
+    chat_content, _ = await build_agents_chat_panel(
         page,
         graph_ref=graph_ref,
         set_graph=set_graph,

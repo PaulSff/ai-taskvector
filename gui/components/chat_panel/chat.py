@@ -81,7 +81,7 @@ MESSENGER = "taskvector"
 logger = logging.getLogger(__name__)
 
 
-def build_agents_chat_panel(
+async def build_agents_chat_panel(
     page: ft.Page,
     *,
     graph_ref: list[ProcessGraph | None],
@@ -849,13 +849,10 @@ def build_agents_chat_panel(
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
+        # Batch update all input-related controls in one call
         safe_update(
-            input_tf_first,
-            input_tf,
-            stop_btn_first,
-            stop_btn_bottom,
-            upload_btn_first,
-            upload_btn_bottom,
+            input_tf_first, input_tf, stop_btn_first,
+            stop_btn_bottom, upload_btn_first, upload_btn_bottom
         )
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
@@ -1249,6 +1246,8 @@ def build_agents_chat_panel(
         # so the UI always starts with the new current turn (user msg first).
         _remove_previous_turn_from_ui()
 
+        # 1. Immediate Visual Feedback: Append user message
+        # We use skip_messages_col_update=True because we will batch the update below
         await _append(
             "user",
             display_text,
@@ -1257,19 +1256,16 @@ def build_agents_chat_panel(
             skip_messages_col_update=True,
         )
 
-        _set_inline_status("Planning next steps…", flush=False)
+        # 2. Batch all UI changes into a single round-trip to eliminate lag
+        safe_update(messages_col, refs_chips_row, input_tf_first, input_tf)
 
-        # Capture anchor BEFORE any UI updates that might reflow/reset scroll.
-        _scroll_anchor = _capture_scroll_anchor()
+        # 3. Set status and handle scroll in a non-blocking task
+        async def _finalize_submission_ui() -> None:
+            _set_inline_status("Planning next steps…", flush=True)
+            anchor = _capture_scroll_anchor()
+            await _restore_scroll_after_anchor(anchor)
 
-        # Update only refs + inputs (NOT messages_col).
-        safe_update(refs_chips_row, input_tf_first, input_tf)
-        # safe_page_update(page)
-
-        async def _restore_after_start() -> None:
-            await _restore_scroll_after_anchor(_scroll_anchor)
-
-        page.run_task(_restore_after_start)
+        page.run_task(_finalize_submission_ui)
 
 
         async def _bound_chat_turn(t: int) -> None:
