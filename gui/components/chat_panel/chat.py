@@ -310,11 +310,11 @@ def build_agents_chat_panel(
 
         _ = page.run_task(_run)
 
-    def _toast_now(msg: str) -> None:
+    async def _toast_now(msg: str) -> None:
         async def _run_toast() -> None:
             await _toast(page, msg)
 
-        _ = page.run_task(_run_toast)
+        page.run_task(_run_toast)
 
     refs_controller = GraphReferencesController(
         new_id=new_id,
@@ -323,16 +323,16 @@ def build_agents_chat_panel(
     )
     refs_chips_row = refs_controller.row
 
-    def _row_builder(msg: Data) -> ft.Row:
-        def _undo_wrapper() -> None:
+    async def _row_builder(msg: Data) -> ft.Row:
+        async def _undo_wrapper() -> None:
             if on_undo:
                 page.run_task(on_undo)
 
-        def _redo_wrapper() -> None:
+        async def _redo_wrapper() -> None:
             if on_redo:
                 page.run_task(on_redo)
 
-        return build_message_row(
+        return await build_message_row(
             page=page,
             msg=msg,
             persist=_persist_session_debounced,
@@ -343,7 +343,7 @@ def build_agents_chat_panel(
             key=str(msg.get("id")),
         )
 
-    def _render_messages_from_history() -> None:
+    async def _render_messages_from_history() -> None:
         """
         Re-render message controls while preserving scroll position.
 
@@ -376,7 +376,7 @@ def build_agents_chat_panel(
 
         messages_col.controls = [chat_title_txt] if state.has_sent_any else [chat_title_top_txt]
 
-        render_messages(
+        await render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
             history=history_dedupe_prefer_applied(_td_session.history),
@@ -419,7 +419,7 @@ def build_agents_chat_panel(
             logger.exception("scroll_to failed (scroll_key=%r, duration=0)", anchor_scroll_key)
 
 
-    def _append(
+    async def _append(
         role: str,
         content: str,
         *,
@@ -439,7 +439,7 @@ def build_agents_chat_panel(
             msg = {"id": new_id(), "ts": now_ts(), "role": role, "content": content}
             if meta:
                 msg.update(meta)
-        row = _row_builder(msg)
+        row = await _row_builder(msg)
         msg["_flet_row"] = row
         # Smooth inline for agent turns: replace the live stream row in-place with the
         # final rendered row so there is never a duplicate-row flash or layout jump.
@@ -633,7 +633,7 @@ def build_agents_chat_panel(
         status_bar.set_status(msg, flush=flush)
 
     # --- Recent chat history picker (load/continue) ---
-    def _load_chat_file(path: Path) -> None:
+    async def _load_chat_file(path: Path) -> None:
         if state.busy:
             return
         _set_inline_status(None)
@@ -676,7 +676,7 @@ def build_agents_chat_panel(
         if top_wrapper_row_ref and top_wrapper_row_ref[0] is not None:
             top_wrapper_row_ref[0].visible = not state.has_sent_any
 
-        _render_messages_from_history()
+        await _render_messages_from_history()
         if recent_menu_ref[0] is not None:
             recent_menu_ref[0].set_selected(path.name)
 
@@ -827,16 +827,16 @@ def build_agents_chat_panel(
             async def _restore_now() -> None:
                 await _restore_scroll_after_replace(anchor_scroll_key)
 
-            _ = page.run_task(_restore_now)
+            page.run_task(_restore_now)
 
             # Streaming callback: turn_driver calls this with the accumulated buffer
             # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
             async def _stream_cb(session_id: str, chunk: str) -> None:
-                def _undo_wrapper() -> None:
+                async def _undo_wrapper() -> None:
                     if on_undo:
                         page.run_task(on_undo)
 
-                def _redo_wrapper() -> None:
+                async def _redo_wrapper() -> None:
                     if on_redo:
                         page.run_task(on_redo)
 
@@ -853,7 +853,7 @@ def build_agents_chat_panel(
                     stream_rich_ref[0] = True
                 if stream_rich_ref[0]:
                     wrapper.controls[:] = [
-                        build_agent_streaming_body(
+                        await build_agent_streaming_body(
                             page=page,
                             toast=_toast_now,
                             on_undo=_undo_wrapper if on_undo else None,
@@ -969,7 +969,7 @@ def build_agents_chat_panel(
                 # Always replace streaming row with the rendered agent row
                 content_obj = agent_msg.get("content")
                 content: str = content_obj if isinstance(content_obj, str) else ""
-                _ = _append("agent", content, msg=agent_msg)
+                await _append("agent", content, msg=agent_msg)
 
 
         except asyncio.CancelledError:
@@ -990,7 +990,7 @@ def build_agents_chat_panel(
                 "error_type": type(ex).__name__,
             }
             append_session_message(_td_sid, err_msg)
-            _ = _append("agent", err_content, msg=err_msg)
+            await _append("agent", err_content, msg=err_msg)
         finally:
             if _is_current_run(token):
                 _scroll_anchor = _capture_scroll_anchor()
@@ -1052,7 +1052,7 @@ def build_agents_chat_panel(
                     pass
 
 
-    def _send_from_field(field: ft.TextField) -> None:
+    async def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
         ref_block = refs_controller.format_for_prompt()
         if state.busy or (not text and not ref_block):
@@ -1093,8 +1093,8 @@ def build_agents_chat_panel(
             }
             append_session_message(_td_sid, user_msg_lc)
             append_session_message(_td_sid, ack_msg)
-            _ = _append("user", text, msg=user_msg_lc)
-            _ = _append("agent", ack, msg=ack_msg)
+            await _append("user", text, msg=user_msg_lc)
+            await _append("agent", ack, msg=ack_msg)
             _workflow_debug_log(f"session_language command -> {cmd_lang!r}")
             if not state.has_sent_any:
                 _after_first_send()
@@ -1152,7 +1152,7 @@ def build_agents_chat_panel(
         # so the UI always starts with the new current turn (user msg first).
         _remove_previous_turn_from_ui()
 
-        _ = _append(
+        await _append(
             "user",
             display_text,
             msg=user_msg,
@@ -1172,8 +1172,7 @@ def build_agents_chat_panel(
         async def _restore_after_start() -> None:
             await _restore_scroll_after_anchor(_scroll_anchor)
 
-        _ = page.run_task(_restore_after_start)
-
+        page.run_task(_restore_after_start)
 
 
         async def _bound_chat_turn(t: int) -> None:
@@ -1186,8 +1185,15 @@ def build_agents_chat_panel(
 
         run_turn_holder[0] = _bound_chat_turn
 
-    input_tf_first.on_submit = lambda _e: _send_from_field(input_tf_first)
-    input_tf.on_submit = lambda _e: _send_from_field(input_tf)
+    def _on_submit_first(_e) -> None:
+        page.run_task(_send_from_field, input_tf_first)
+
+    def _on_submit_bottom(_e) -> None:
+        page.run_task(_send_from_field, input_tf)
+
+    input_tf_first.on_submit = _on_submit_first
+    input_tf.on_submit = _on_submit_bottom
+
 
     def _reset_chat_ui() -> None:
         # Reset UI state and clear the turn_driver session (history, path, language, etc.)

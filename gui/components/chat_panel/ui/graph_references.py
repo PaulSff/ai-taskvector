@@ -7,19 +7,21 @@ from typing import Any
 import flet as ft
 from flet import Control
 
+from gui.utils.notifications import ToastCallback
+
 
 class GraphReferencesController:
     """Manage pending graph/code/file references and chip UI."""
     row: ft.Row
     _resolve_unit_meta: Callable[[str], tuple[str, str]]
     new_id: Callable[[], str]
-    _toast: Callable[[str], None]
+    _toast: ToastCallback
 
     def __init__(
         self,
         *,
         new_id: Callable[[], str],
-        toast: Callable[[str], None],
+        toast: ToastCallback,
         resolve_unit_meta: Callable[[str], tuple[str, str]],
     ) -> None:
         self.new_id = new_id

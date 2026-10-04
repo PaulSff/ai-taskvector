@@ -5,8 +5,11 @@ Uses an overlay toast at top center, auto-dismiss after a short duration.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import flet as ft
+
+type ToastCallback = Callable[[str], Awaitable[None]]
 
 # Default style for all notifications
 TOAST_TEXT_SIZE = 12

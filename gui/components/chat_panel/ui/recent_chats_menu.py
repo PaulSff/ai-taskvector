@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +10,7 @@ import flet as ft
 from agents.chat.session.history_store import list_recent_chat_files
 from gui.utils import safe_page_update, safe_update
 
+type OnSelect = Callable[[Path], Awaitable[None]]
 
 def time_ago_short(delta_seconds: float) -> str:
     s = max(0, int(delta_seconds))
@@ -37,7 +38,7 @@ class RecentChatsMenu:
 
     page: ft.Page
     chat_history_dir: Path
-    on_select: Callable[[Path], None]
+    on_select: OnSelect
     limit: int = 3
 
     color: str = ft.Colors.GREY_400
