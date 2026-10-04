@@ -2,6 +2,11 @@
 
 TOOL_EMPTY_RESULT_LINE = "(Nothing found: no data was returned for this request.)"
 
+# Appended to the workflow edits response.
+EDITS_FOLLOW_UP_PREFIX = (
+    "IMPORTANT: You requested the workflow modification. You must check the results below.\n\n"
+)
+
 # Appended to injected tool context so the model answers in the session language.
 FOLLOW_UP_RESPONSE_SESSION_SUFFIX = "\n\nRespond in {session_language}."
 

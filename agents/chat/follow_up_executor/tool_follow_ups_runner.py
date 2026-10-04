@@ -11,11 +11,58 @@ from agents.chat.context.follow_up_context import (
     WDFollowUpAcc,
 )
 from agents.tools.catalog import ordered_tools_for_role_id
+from agents.tools.follow_up_common import (
+    EDITS_FOLLOW_UP_PREFIX,
+    FOLLOW_UP_RESPONSE_SESSION_SUFFIX,
+)
 from agents.tools.registry import get_follow_up_runner
-from agents.tools.types import LanguageHintGetter, ParserOutput
+from agents.tools.types import FollowUpContribution, LanguageHintGetter, ParserOutput
+from core.schemas.graph_edit_api import ApplyWorkflowEditsResult
 from runtime.tools_bootstrap import ensure_tools_registration
 
 from .tool_controller import follow_up_tool_enabled
+
+
+def build_edits_follow_up_chunk(
+    result: ApplyWorkflowEditsResult | None,
+    *,
+    hint: LanguageHintGetter,
+) -> str | None:
+    if result is None or not result.attempted:
+        return None
+
+    result_text = (result.edits_summary or "").strip()
+    if not result_text:
+        return None
+
+    lang = hint()
+    return (
+        EDITS_FOLLOW_UP_PREFIX
+        + result_text
+        + FOLLOW_UP_RESPONSE_SESSION_SUFFIX.format(
+            language=lang,
+            session_language=lang,
+        )
+    )
+
+
+def build_edits_error_follow_up_chunk(
+    error_reason: str | None,
+    *,
+    hint: LanguageHintGetter,
+) -> str | None:
+    if not error_reason:
+        return None
+
+    lang = hint()
+    return (
+        EDITS_FOLLOW_UP_PREFIX
+        + error_reason
+        + FOLLOW_UP_RESPONSE_SESSION_SUFFIX.format(
+            language=lang,
+            session_language=lang,
+        )
+    )
 
 
 async def run_role_ordered_follow_ups(
@@ -25,14 +72,41 @@ async def run_role_ordered_follow_ups(
     hint: LanguageHintGetter,
     acc: WDFollowUpAcc,
 ) -> None:
-    # ensure the tools are registered for the role_id
     ensure_tools_registration(role_id=ctx.agent_role_id)
-    # the ordered tools come either from the follow-up context or tools catalog
+
+    # Inline edits are handled without tool runners.
+    if getattr(po.actions, "edits", None):
+        last_apply_result: ApplyWorkflowEditsResult | None = (
+            ctx.last_apply_result_ref[0] if ctx.last_apply_result_ref else None
+        )
+        chunk = build_edits_follow_up_chunk(last_apply_result, hint=hint)
+        if chunk is not None:
+            merge_follow_up_contribution_into_acc(
+                acc,
+                FollowUpContribution(
+                    context_chunks=[chunk],
+                    any_empty_tool=False,
+                ),
+            )
+
+    error_chunk = build_edits_error_follow_up_chunk(
+        getattr(po.actions, "error_reason", None),
+        hint=hint,
+    )
+    if error_chunk is not None:
+        merge_follow_up_contribution_into_acc(
+            acc,
+            FollowUpContribution(
+                context_chunks=[error_chunk],
+                any_empty_tool=False,
+            ),
+        )
+
     ordered_tools = (
         getattr(ctx, "ordered_follow_up_tools", None)
         or ordered_tools_for_role_id(ctx.agent_role_id)
     )
-    # select the tool_ids available for the role requesting
+
     for tool_id, parser_key in ordered_tools:
         if not follow_up_tool_enabled(ctx, tool_id):
             continue
@@ -49,7 +123,7 @@ async def run_role_ordered_follow_ups(
             f"repr={repr(actions)[:400]}",
             flush=True,
         )
-        # get the runner for each tool_id
+
         runner = get_follow_up_runner(tool_id)
         if runner is None:
             raise RuntimeError(
@@ -65,14 +139,13 @@ async def run_role_ordered_follow_ups(
             f"action_count={len(actions)}\033[0m",
             flush=True,
         )
-        # call the tool runner
+
         try:
             contribution = await runner(
                 ctx,
                 po,
                 language_hint=hint,
             )
-
         except Exception as exc:
             print(
                 "[parser_follow_up_chain] "
@@ -84,6 +157,5 @@ async def run_role_ordered_follow_ups(
             )
             traceback.print_exc()
             raise
-        # merge the tool response into the context
-        # for the LLM to inspect on the next turn
+
         merge_follow_up_contribution_into_acc(acc, contribution)
