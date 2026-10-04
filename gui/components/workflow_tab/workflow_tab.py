@@ -39,6 +39,7 @@ from gui.components.workflow_tab.dialogs.dialog_import_workflow import (
 )
 from gui.components.workflow_tab.editor.graph_code_editor import build_graph_code_view
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
+from gui.utils.ui_utils import safe_page_update, safe_update
 from gui.utils.undo_redo import UndoRedoManager
 from services.workflows.core_workflows import (
     run_graph_diff_inline,
@@ -114,10 +115,10 @@ def build_workflow_tab(
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)
 
-    def refresh_process_tab() -> None:
+    def c() -> None:
         process_content.content = build_process_tab_content()
-        process_content.update()
-        page.update()
+        safe_update(process_content)
+        safe_page_update(page)
 
     undo = UndoRedoManager(max_depth=get_workflow_undo_max_depth())
     view_mode: list[str] = ["graph"]  # "graph" | "code"

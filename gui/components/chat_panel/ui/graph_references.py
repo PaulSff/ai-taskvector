@@ -50,7 +50,7 @@ class GraphReferencesController:
         self._refs.clear()
         self._sync_chips(apply_update=False)
 
-    def add_unit(self, unit_id: str) -> None:
+    async def add_unit(self, unit_id: str) -> None:
         uid = (unit_id or "").strip()
 
         if not uid:
@@ -58,7 +58,7 @@ class GraphReferencesController:
 
         for ref in self._refs:
             if ref.get("kind") == "unit" and ref.get("unit_id") == uid:
-                self._toast("Node already in chat context")
+                await self._toast("Node already in chat context")
                 return
 
         label, unit_type = self._resolve_unit_meta(uid)
@@ -73,9 +73,9 @@ class GraphReferencesController:
         )
 
         self._sync_chips()
-        self._toast(f"Added node to chat: {label}")
+        await self._toast(f"Added node to chat: {label}")
 
-    def add_code(self, *, snippet: str, start: int, end: int) -> None:
+    async def add_code(self, *, snippet: str, start: int, end: int) -> None:
         cleaned = (snippet or "").strip()
 
         if not cleaned:
@@ -91,9 +91,9 @@ class GraphReferencesController:
         )
 
         self._sync_chips()
-        self._toast("Added JSON selection to chat")
+        await self._toast("Added JSON selection to chat")
 
-    def add_file_path(self, path: str) -> None:
+    async def add_file_path(self, path: str) -> None:
         cleaned = (path or "").strip()
 
         if not cleaned:
@@ -101,7 +101,7 @@ class GraphReferencesController:
 
         for ref in self._refs:
             if ref.get("kind") == "file_path" and ref.get("path") == cleaned:
-                self._toast("Path already in chat context")
+                await self._toast("Path already in chat context")
                 return
 
         self._refs.append(
@@ -112,7 +112,7 @@ class GraphReferencesController:
         )
 
         self._sync_chips()
-        self._toast(f"Added file to chat: {Path(cleaned).name}")
+        await self._toast(f"Added file to chat: {Path(cleaned).name}")
 
     def format_for_prompt(self) -> str:
         lines: list[str] = []

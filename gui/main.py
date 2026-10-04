@@ -457,14 +457,13 @@ async def main(page: ft.Page) -> None:
 
 
     # Right column: agents chat panel
-    chat_content = build_agents_chat_panel(
+    chat_content, _ = build_agents_chat_panel(
         page,
         graph_ref=graph_ref,
         set_graph=set_graph,
         apply_from_agent=apply_from_agent,
         get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
-        on_redo=_redo_if_workflow,
         on_show_run_console=on_show_run_console_from_chat,
         chat_panel_api=chat_panel_api,
         on_turn_status=on_turn_status,

@@ -93,7 +93,7 @@ def build_agents_chat_panel(
     on_show_run_console: Callable[[Data], None] | None = None,
     chat_panel_api: Data | None = None,
     on_turn_status: Callable[[Data], Coroutine[object, object, None]] | None = None
-) -> ft.Control:
+) -> tuple[ft.Control, Callable[[], None]]:
     """
     Build the right-column agents chat panel.
     Applies Workflow Designer edits to the current graph.
@@ -233,13 +233,33 @@ def build_agents_chat_panel(
         spacing=8,
     )
 
+    _scroll_generation = 0
+    # _scroll_lock = asyncio.Lock()
+    _restore_task_ref: list[asyncio.Task[None] | None] = [None]
+
     async def _scroll_chat_to_bottom() -> None:
         if is_streaming_ref[0]:
             return
+
         try:
+            # Let the updated control tree reach the client first.
+            await asyncio.sleep(0)
             await messages_col.scroll_to(offset=-1, duration=0)
+
+        except asyncio.CancelledError:
+            raise
+
+        except RuntimeError as exc:
+            # The column may have been replaced or detached while this task
+            # was running. This is harmless during a rebuild.
+            if "inexistent control" in str(exc).lower():
+                logger.debug("Ignoring stale scroll-to-bottom request")
+                return
+            raise
+
         except (ConnectionError, TimeoutError, OSError):
             logger.exception("scroll_to failed (offset=-1)")
+
 
     def _capture_scroll_anchor() -> str | int | float | bool | None:
         """
@@ -258,14 +278,29 @@ def build_agents_chat_panel(
         return None
 
 
-
-    async def _restore_scroll_after_anchor(anchor: str | float | bool | None) -> None:
+    async def _restore_scroll_after_anchor(
+        anchor: str |float | bool | None,
+    ) -> None:
         if anchor is None:
             return
+
         try:
             await _restore_scroll_after_replace(anchor)
+
+        except asyncio.CancelledError:
+            raise
+
+        except RuntimeError as exc:
+            if "inexistent control" in str(exc).lower():
+                logger.debug("Ignoring stale scroll anchor: %r", anchor)
+                return
+            raise
+
         except (ConnectionError, TimeoutError, OSError):
-            logger.exception("_restore_scroll_after_replace failed (anchor=%r)", anchor)
+            logger.exception(
+                "_restore_scroll_after_replace failed (anchor=%r)",
+                anchor,
+            )
 
 
     # Recent chats menu is created later (needs _load_chat_file callback).
@@ -346,35 +381,42 @@ def build_agents_chat_panel(
     async def _render_messages_from_history() -> None:
         """
         Re-render message controls while preserving scroll position.
-
-        Drop-in fix:
-        - capture an anchor scroll_key from the currently rendered controls
-        - replace messages_col.controls (which otherwise resets scroll)
-        - restore scroll to the anchor after the update
+        Scroll restoration is best-effort because the old anchor may disappear
+        when the message controls are rebuilt.
         """
-        # Pick an anchor from the currently mounted controls (before replacement).
+
         anchor_scroll_key: str | int | float | bool | None = None
+
         try:
-            controls = messages_col.controls
+            controls = list(messages_col.controls or [])
         except Exception:
             logger.exception("Failed to read messages_col.controls")
             controls = []
 
-        for c in reversed(controls):
+        for control in reversed(controls):
             try:
-                k = getattr(c, "key", None)
+                key = getattr(control, "key", None)
             except Exception:
-                logger.exception("Failed to read control.key (control=%r)", c)
+                logger.exception(
+                    "Failed to read control.key (control=%r)",
+                    control,
+                )
                 continue
 
-            if isinstance(k, (str, int, float, bool)):
-                anchor_scroll_key = k
+            if isinstance(key, (str, int, float, bool)):
+                anchor_scroll_key = key
                 break
 
-        # If this is the first render (or there's nothing to preserve), keep old behavior.
-        should_force_bottom = not state.has_sent_any or anchor_scroll_key is None
+        should_force_bottom = (
+            not state.has_sent_any
+            or anchor_scroll_key is None
+        )
 
-        messages_col.controls = [chat_title_txt] if state.has_sent_any else [chat_title_top_txt]
+        messages_col.controls = (
+            [chat_title_txt]
+            if state.has_sent_any
+            else [chat_title_top_txt]
+        )
 
         await render_messages(
             messages_col=messages_col,
@@ -390,20 +432,44 @@ def build_agents_chat_panel(
             page.update()
         except (AttributeError, RuntimeError):
             logger.exception("UI update failed")
+            return
 
         async def _restore_or_scroll() -> None:
-            # Don’t fight the user if they scrolled up; restore anchor.
-            if not should_force_bottom and anchor_scroll_key is not None:
-                try:
+            try:
+                # Give Flet time to process the rebuilt control tree.
+                await asyncio.sleep(0)
+
+                if (
+                    not should_force_bottom
+                    and anchor_scroll_key is not None
+                ):
                     await _restore_scroll_after_replace(anchor_scroll_key)
-                except (ValueError, KeyError, RuntimeError):
-                    logger.exception("Failed to restore scroll (key=%r)", anchor_scroll_key)
-            elif should_force_bottom:
-                # Maintain original “scroll to bottom” for first chat / when no anchor exists.
-                await _scroll_chat_to_bottom()
+                else:
+                    await _scroll_chat_to_bottom()
 
-        _ = page.run_task(_restore_or_scroll)
+            except asyncio.CancelledError:
+                raise
 
+            except RuntimeError as exc:
+                if "inexistent control" in str(exc).lower():
+                    logger.debug(
+                        "Ignoring stale scroll operation (key=%r)",
+                        anchor_scroll_key,
+                    )
+                    return
+
+                logger.exception(
+                    "Scroll operation failed (key=%r)",
+                    anchor_scroll_key,
+                )
+
+            except (ConnectionError, TimeoutError, OSError):
+                logger.exception(
+                    "Scroll operation failed (key=%r)",
+                    anchor_scroll_key,
+                )
+
+        page.run_task(_restore_or_scroll)
 
 
     async def _restore_scroll_after_replace(
@@ -411,12 +477,35 @@ def build_agents_chat_panel(
     ) -> None:
         if anchor_scroll_key is None:
             return
+
+        # The controls have just been rebuilt. Give Flet one event-loop turn
+        # before attempting to resolve the key on the client.
+        await asyncio.sleep(0)
+
         try:
-            await messages_col.scroll_to(scroll_key=anchor_scroll_key, duration=0)
+            await messages_col.scroll_to(
+                scroll_key=anchor_scroll_key,
+                duration=0,
+            )
+
         except asyncio.CancelledError:
             raise
+
+        except RuntimeError as exc:
+            if "inexistent control" in str(exc).lower():
+                # The anchor belonged to the old control tree.
+                logger.debug(
+                    "Ignoring stale scroll anchor: %r",
+                    anchor_scroll_key,
+                )
+                return
+            raise
+
         except (ValueError, TypeError):
-            logger.exception("scroll_to failed (scroll_key=%r, duration=0)", anchor_scroll_key)
+            logger.exception(
+                "scroll_to failed (scroll_key=%r, duration=0)",
+                anchor_scroll_key,
+            )
 
 
     async def _append(
@@ -691,10 +780,18 @@ def build_agents_chat_panel(
         # safe_page_update(page)
 
     recent_menu = RecentChatsMenu(
-        page=page, chat_history_dir=chat_history_dir, on_select=_load_chat_file
+        page=page,
+        chat_history_dir=chat_history_dir,
+        on_select=_load_chat_file
     ).build()
     recent_menu_ref[0] = recent_menu
-    recent_menu.refresh()
+
+    def refresh_recent_menu() -> None:
+        menu = recent_menu_ref[0]
+        if menu is None:
+            return
+
+        menu.refresh()
 
     history_row_top = cast(ft.Row, recent_menu.row_top)
     history_row_bottom = cast(ft.Row, recent_menu.row_bottom)
@@ -1292,9 +1389,6 @@ def build_agents_chat_panel(
         _ = page.run_task(_focus_first)
         focus_handler.set_preference("first")
 
-    # Populate recent chats on first render
-    recent_menu.refresh()
-
     if chat_panel_api is not None:
         chat_panel_api["add_code_reference"] = refs_controller.add_code
         chat_panel_api["add_file_path_reference"] = refs_controller.add_file_path
@@ -1335,7 +1429,7 @@ def build_agents_chat_panel(
         chat_drop_surface.border = None
         safe_update(chat_drop_surface)
 
-    def _chat_drop_accept(e: ft.DragTargetEvent) -> None:
+    async def _chat_drop_accept(e: ft.DragTargetEvent) -> None:
         chat_drop_surface.border = None
         safe_update(chat_drop_surface)
 
@@ -1350,13 +1444,16 @@ def build_agents_chat_panel(
             and data.get("kind") == "unit"
             and data.get("unit_id")
         ):
-            refs_controller.add_unit(str(data["unit_id"]))
+            await refs_controller.add_unit(str(data["unit_id"]))
 
-    return ft.DragTarget(
-        group=CHAT_GRAPH_DRAG_GROUP,
-        content=chat_drop_surface,
-        on_will_accept=_chat_drop_will_accept,
-        on_leave=_chat_drop_leave,
-        on_accept=_chat_drop_accept,
-        expand=True,
-    )
+
+    panel = ft.DragTarget(
+            group=CHAT_GRAPH_DRAG_GROUP,
+            content=chat_drop_surface,
+            on_will_accept=_chat_drop_will_accept,
+            on_leave=_chat_drop_leave,
+            on_accept=_chat_drop_accept,
+            expand=True,
+        )
+
+    return panel, refresh_recent_menu
