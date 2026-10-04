@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import re
 from collections.abc import Callable
 from typing import Any
@@ -23,6 +24,9 @@ from core.graph.todo_list import (
 )
 from core.schemas.process_graph import TodoList
 from gui.components.chat_panel.ui.md_to_flet import md_blocks_to_controls, md_parser
+from services.logging import setup_colored_logging
+
+logger = setup_colored_logging(logging.DEBUG)
 
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(
@@ -65,6 +69,26 @@ _TODO_MUTATOR_ONLY_ACTIONS = frozenset(
          "remove_todo_list",
      }
  )
+# The content inside fenced blocks containing the actions below
+# is going to be hidden for UI performace
+# (e.g. edit file content is not required to be displayed to the user).
+HIDE_ACTIONS = {
+    "edit_file",
+    "delegate_request",
+    "new_file",
+    "read_file",
+    "no_action",
+    "web_search",
+    "browse",
+}
+
+_ACTION_RE = re.compile(
+    r'"action"\s*:\s*"(edit_file|delegate_request|new_file|read_file|no_action|web_search|browse)"'
+)
+
+
+def fence_is_hidden_action(text: str) -> bool:
+    return _ACTION_RE.search(text) is not None
 
 
 def _line_start_positions(text: str):
@@ -137,34 +161,35 @@ def build_agent_plain_text_control(
         )
 
 
-def split_fenced_blocks(
-    text: str,
-) -> list[tuple[str, str | None, str]]:
+def split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
     parts: list[tuple[str, str | None, str]] = []
-
     last = 0
 
     for m in _FENCE_RE.finditer(text):
         if m.start() > last:
-            parts.append(("text", None, text[last : m.start()]))
+            parts.append(("text", None, text[last:m.start()]))
 
-        parts.append(
-            (
-                "code",
-                m.group("lang") or None,
-                m.group("body") or "",
-            )
-        )
+        lang = m.group("lang") or None
+        body = m.group("body") or ""
 
+        # If this is a JSON fence and still very short, keep it undecided
+        # so we don't prematurely render it as code before it can become hidden.
+        if lang == "json" and len(body) < 42:
+            parts.append(("text", None, m.group(0)))
+            last = m.end()
+            continue
+
+        kind = "hidden" if (
+            fence_is_hidden_action(body) or parsed_is_query_display_only(body)
+        ) else "code"
+        parts.append((kind, lang, body))
         last = m.end()
 
     tail = text[last:]
-
     if not tail:
         return parts
 
     last_open: re.Match[str] | None = None
-
     for m in OPEN_FENCE_LINE.finditer(tail):
         last_open = m
 
@@ -172,28 +197,21 @@ def split_fenced_blocks(
         parts.append(("text", None, tail))
         return parts
 
-    body = tail[last_open.end() :]  # content after the last opening fence line
-
-    # JSON-aware check for a valid closing fence
-    # If a valid closing fence exists, keep tail as plain text (preserves your old behavior)
-    close_idx = find_closing_fence(body, start_idx=0)
-    if close_idx is not None:
-        parts.append(("text", None, tail))
-        return parts
-
     prefix = tail[: last_open.start()]
-
     if prefix:
         parts.append(("text", None, prefix))
 
-    parts.append(
-        (
-            "code",
-            last_open.group(1) or None,
-            body,
-        )
-    )
+    lang = last_open.group(1) or None
+    body = tail[last_open.end():]
 
+    if lang == "json" and len(body) < 33:
+        parts.append(("text", None, tail[last_open.start():]))
+        return parts
+
+    kind = "hidden" if (
+        fence_is_hidden_action(body) or parsed_is_query_display_only(body)
+    ) else "code"
+    parts.append((kind, lang, body))
     return parts
 
 

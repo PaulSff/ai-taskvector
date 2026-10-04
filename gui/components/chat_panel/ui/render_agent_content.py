@@ -56,6 +56,81 @@ async def render_agent_content(
         if not chunk:
             continue
 
+        if kind == "hidden":
+            hidden_parsed: Any = None
+
+            candidate = try_salvage_json_value(chunk)
+            if candidate is not None:
+                hidden_parsed = candidate
+
+            if parsed_is_query_display_only(hidden_parsed):
+                q_lines = query_display_lines(hidden_parsed)
+                controls.append(
+                    ft.Column(
+                        controls=[
+                            ft.Text(
+                                line,
+                                **compact_meta_text_style(bubble_width=bubble_width),
+                            )
+                            for line in q_lines
+                        ],
+                        spacing=2,
+                    )
+                )
+                continue
+
+            if parsed_is_todo_display_only(hidden_parsed):
+                todo_items = iter_action_dicts(hidden_parsed)
+
+                if parsed_is_todo_mutators_only(hidden_parsed):
+                    m_lines = todo_mutator_summary_lines(todo_items)
+                    show_success_icon = bool(applied and apply_failed is False)
+
+                    if m_lines:
+                        if len(m_lines) == 1:
+                            controls.append(
+                                compact_line_with_optional_success_icon(
+                                    m_lines[0],
+                                    bubble_width=bubble_width,
+                                    show_success_icon=show_success_icon,
+                                )
+                            )
+                        else:
+                            controls.append(
+                                ft.Column(
+                                    controls=[
+                                        compact_line_with_optional_success_icon(
+                                            line,
+                                            bubble_width=bubble_width,
+                                            show_success_icon=show_success_icon,
+                                        )
+                                        for line in m_lines
+                                    ],
+                                    spacing=2,
+                                )
+                            )
+                    continue
+
+                final_list, twarnings, removed_flag = simulate_todo_actions(todo_items)
+                todo_controls = build_todo_preview_controls(
+                    final_list,
+                    twarnings,
+                    list_explicitly_removed=removed_flag,
+                    bubble_width=bubble_width,
+                )
+
+                if todo_controls:
+                    controls.append(
+                        ft.Column(
+                            controls=todo_controls,
+                            spacing=6,
+                        )
+                    )
+                continue
+
+            continue
+
+
         if kind == "text":
             ctrl = build_agent_plain_text_control(
                 tex_arrows_to_unicode(chunk),
@@ -73,20 +148,14 @@ async def render_agent_content(
         action_type: str | None = None
         edit_count = 0
 
-        # try to fix the most common json syntax cases
         candidate = try_salvage_json_value(code_body_raw)
         if candidate is not None:
             parsed = candidate
             action_type = extract_edit_action(parsed)
 
-
         if isinstance(parsed, dict):
-            if parsed.get("action") not in (
-                None,
-                "no_action",
-            ):
+            if parsed.get("action") not in (None, "no_action"):
                 edit_count = 1
-
         elif isinstance(parsed, list):
             edit_count = sum(
                 1
@@ -107,7 +176,6 @@ async def render_agent_content(
 
         if parsed_is_query_display_only(parsed):
             q_lines = query_display_lines(parsed)
-
             controls.append(
                 ft.Column(
                     controls=[
@@ -120,7 +188,6 @@ async def render_agent_content(
                     spacing=2,
                 )
             )
-
             continue
 
         if parsed_is_todo_display_only(parsed):
@@ -128,7 +195,6 @@ async def render_agent_content(
 
             if parsed_is_todo_mutators_only(parsed):
                 m_lines = todo_mutator_summary_lines(todo_items)
-
                 show_success_icon = bool(applied and not failed)
 
                 if m_lines:
@@ -140,7 +206,6 @@ async def render_agent_content(
                                 show_success_icon=show_success_icon,
                             )
                         )
-
                     else:
                         controls.append(
                             ft.Column(
@@ -155,11 +220,9 @@ async def render_agent_content(
                                 spacing=2,
                             )
                         )
-
                 continue
 
             final_list, twarnings, removed_flag = simulate_todo_actions(todo_items)
-
             todo_controls = build_todo_preview_controls(
                 final_list,
                 twarnings,
@@ -174,7 +237,6 @@ async def render_agent_content(
                         spacing=6,
                     )
                 )
-
             continue
 
         header_text = ""
@@ -189,7 +251,6 @@ async def render_agent_content(
             e: ft.Event[ft.IconButton],
             _text: str = code_body_raw,
         ) -> None:
-
             async def _run() -> None:
                 try:
                     await ft.Clipboard().set(_text)
@@ -226,19 +287,13 @@ async def render_agent_content(
         total_lines = len(lines)
 
         collapsed_height = COLLAPSED_LINES * LINE_HEIGHT
-        full_height = (
-            max(
-                total_lines,
-                1,
-            )
-            * LINE_HEIGHT
-        )
+        full_height = max(total_lines, 1) * LINE_HEIGHT
 
         expanded_ref: list[bool] = [False]
 
         fenced = (
             f"```{code_lang}\n{code_body_raw}\n```"
-            if (code_lang)
+            if code_lang
             else f"```\n{code_body_raw}\n```"
         )
 
@@ -252,8 +307,6 @@ async def render_agent_content(
             ),
         )
 
-        # Preserve existing toggle API/shape; native Markdown path has no height-control hook.
-        # FIX: keep set_code_height(_h: float) API, but apply it to a wrapping Container.
         code_container_ref: list[ft.Container | None] = [None]
 
         def set_code_height(_h: float, ref=code_container_ref) -> None:
