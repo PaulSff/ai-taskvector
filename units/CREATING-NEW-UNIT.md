@@ -38,6 +38,7 @@ UnitSpec(
     output_ports=[("result", "Any")],
     step_fn=my_step_fn,
     description="Short one-line description for UI and Units Library.",
+    cleanup_fn=my_cleanup_fn,
 )
 ```
 
@@ -48,7 +49,7 @@ UnitSpec(
 - **step_fn**: Callable that runs each step (see below). Required unless **code_block_driven** is True.
 - **description**: Optional; used in the Units Library and tooling.
 
-Other optional fields: **controllable**, **role**, **environment_tags**, **runtime_scope**, **code_block_driven**, etc. See `units/registry.py`.
+Other optional fields: **controllable**, **role**, **environment_tags**, **runtime_scope**, **code_block_driven**, and **cleanup_fn**. See `units/registry.py`.
 
 ### step_fn signature
 
@@ -64,6 +65,21 @@ def step_fn(
     # new_state: state for the next step (can be the same or updated state)
     return outputs, new_state
 ```
+
+### cleanup_fn signature
+
+If a unit manages external resources (e.g., network sockets, file handles, hardware connections), provide a `cleanup_fn`. This is executed by the executor when the workflow is stopped or shut down.
+
+```python
+def cleanup_fn(state: dict) -> None:
+    """Performs resource cleanup using the unit's final state."""
+    # Example: close a socket stored in state
+    socket = state.get("socket")
+    if socket:
+        socket.close()
+```
+
+- **state**: The final state of the unit at the time of shutdown.
 
 - **params**: Read-only config for this unit instance.
 - **inputs**: Only ports that have an incoming connection (or that are filled by the executor, e.g. agent action) are present. Use `inputs.get("port_name", default)` for optional ports.
@@ -83,20 +99,25 @@ Create `units/canonical/echo/echo.py` (or under an existing package, e.g. `units
 ```python
 """Echo unit: forward input to output with optional prefix."""
 
-from typing import Any
+from core.schemas.primitives import Data
 
 from units.registry import UnitSpec, register_unit
 
-ECHO_INPUT_PORTS = [("data", "Any")]
-ECHO_OUTPUT_PORTS = [("data", "Any")]
+ECHO_INPUT_PORTS = [("data", "Data")]
+ECHO_OUTPUT_PORTS = [("data", "Data")]
+
+
+def _echo_cleanup(state: Data) -> None:
+    """Example cleanup: log shutdown."""
+    print("Echo unit shutting down.")
 
 
 def _echo_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     data = inputs.get("data")
     prefix = (params.get("prefix") or "").strip()
     if prefix:
@@ -115,6 +136,7 @@ def register_echo() -> None:
         input_ports=ECHO_INPUT_PORTS,
         output_ports=ECHO_OUTPUT_PORTS,
         step_fn=_echo_step,
+        cleanup_fn=_echo_cleanup,
         description="Forward input to output with optional prefix (param: prefix).",
     ))
 ```
@@ -174,6 +196,7 @@ So: define ports and step_fn in the **registry**; the **graph** gets ports from 
 
 - **Stateless units**: Return `state` unchanged.
 - **Stateful units**: Return updated `new_state` (e.g. tank level, sensor history).
+- **Resource Management**: Use `cleanup_fn` to release resources (sockets, file handles) to prevent leaks on workflow stop.
 - **Numeric handling**: Use `float()` and handle `list`/`ndarray` for inputs that may be batched or from upstream.
 - **Defaults**: Use `params.get("key", default)` and `inputs.get("port", default)` so units work with partial wiring or missing params.
 

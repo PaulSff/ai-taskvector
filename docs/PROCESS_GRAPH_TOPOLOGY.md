@@ -295,7 +295,7 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 | `origin_format` | string | null | Import format: node_red, pyflow, n8n, ryven, dict. Used for export (export only to same format). |
 | `tabs` | list[TabFlow] | null | Multi-tab flows (e.g. Node-RED). One tab per flow; each tab has id, label, disabled, units, connections. When non-empty, top-level `units`/`connections` mirror the first tab. |
 | `comments` | list[Comment] | null | Optional agent comments on the flow (see §4.4). Not exported to external runtimes. |
-| `todo_list` | TodoList | null | Optional todo list (id, title, tasks) for the flow. Used by agents; not exported. Edit actions: add_todo_list, remove_todo_list, add_task, remove_task, mark_completed. Workflow Designer **todo_list** graph-edit JSON: **agents/tools/todo_manager/todo_list.json** (edit runner + `todo_list_manager`); apply logic: **core/graph/graph_edits.py** and **core/graph/todo_list.py**. |
+| `todo_lists` | list[TodoList] | null | Optional todo list (id, title, tasks) for the flow. Used by agents; not exported. Edit actions: add_todo_list, remove_todo_list, add_task, remove_task, mark_completed. Workflow Designer **todo_list** graph-edit JSON: **agents/tools/todo_manager/todo_list.json** (edit runner + `todo_list_manager`); apply logic: **core/graph/graph_edits.py** and **core/graph/todo_list.py**. |
 
 Existing configs without `layout`, `code_blocks`, `origin`, `tabs`, `comments`, or `todo_list` remain valid (defaults apply).
 
@@ -311,7 +311,31 @@ When the graph was imported from a multi-tab editor (e.g. Node-RED with several 
 
 Top-level **units** and **connections** always mirror the first tab so that single-tab consumers (editors, env factory) see the primary flow without change. **layout** and **code_blocks** are global (keyed by unit id across all tabs). Export (e.g. Node-RED) uses **tabs** when present to emit one tab node per tab and assign each node to the correct tab via `z`.
 
----
+
+### 8.2 Todo Lists and Tasks
+
+Todo lists are used by agents to track progress and are not exported to external runtimes.
+
+**TodoList**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | string | `todo_list_default` | Unique list identifier. |
+| `title` | string | null | Optional list title. |
+| `tasks` | list[TodoTask] | [] | Ordered list of tasks. |
+| `x`, `y` | float | null | Optional canvas position. |
+
+**TodoTask**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | string | Required | Unique task id. |
+| `text` | string | Required | Task description. |
+| `completed` | bool | false | Whether the task is done. |
+| `created_at` | string | "" | ISO 8601 timestamp. |
+| `implementer` | string | null | Optional assignee/owner for execution. |
+| `curator` | string | null | Optional assignee/owner for oversight. |
+| `finished_at` | string | null | ISO 8601 timestamp when finished. |
+| `deadline` | string | null | Optional ISO 8601 deadline. |
+
 
 ## 9. Example (minimal JSON)
 

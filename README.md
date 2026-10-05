@@ -211,6 +211,11 @@ Thanks for considering a contribution — we welcome fixes, features, docs, test
 
 **Beta version!** Use it at your own risk.
 
+## Quick Links
+- [Contribution Guidelines](/docs/CONTRIBUTING.md)
+- [Unit Creation Guide](units/CREATING-NEW-UNIT.md)
+- [Tool Development Guide](agents/tools/README.md)
+
 ## License
 
 [MIT](LICENSE) — use and modify for your projects.
