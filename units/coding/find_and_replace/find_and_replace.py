@@ -19,324 +19,37 @@ from __future__ import annotations
 
 import difflib
 import logging
-import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import TypedDict, cast
 
 from core.schemas.primitives import Data, Output
 from services.logging import setup_colored_logging
+from units.coding.find_and_replace.matcher import (
+    find_match_offset,
+    line_number_at_offset,
+)
+from units.coding.find_and_replace.parsers import (
+    as_object_dict,
+    extract_output_dir,
+    extract_replacements,
+    extract_target_file_and_content,
+    parse_line_num_ref,
+)
+from units.coding.find_and_replace.schemas import (
+    FindReplaceError,
+    Replacement,
+    ReplacementAudit,
+    ReplacementOperation,
+)
 from units.registry import UnitSpec, register_unit
 
-NEW_FILE_INPUT_PORTS = [("parser_output", "Any")]
-NEW_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+NEW_FILE_INPUT_PORTS = [("parser_output", "Data")]
+NEW_FILE_OUTPUT_PORTS = [("data", "Data"), ("error", "str")]
 
 DIFF_NEW_LINE_TERMINATOR = "\n"
 UNIFIED_DIFF_N_CONTEXT_LINES_AROUND = 3
 
 logger = setup_colored_logging(logging.DEBUG)
-
-
-class FindReplaceError(ValueError):
-    pass
-
-
-def _extract_output_dir(parser_output: object) -> str:
-    if not isinstance(parser_output, dict):
-        raise FindReplaceError("parser_output must be an object")
-
-    parsed = cast(dict[str, object], parser_output)
-    output_dir = parsed.get("output_dir")
-
-    if not isinstance(output_dir, str) or not output_dir.strip():
-        raise FindReplaceError("output_dir must be a non-empty string")
-
-    return output_dir.strip()
-
-
-def _extract_target_file_and_content(
-    parser_output: object,
-    output_dir: str,
-) -> tuple[Path, str]:
-    """
-    Reads the original file from:
-
-      - file.content, if provided
-      - otherwise output_dir / file.file_name
-
-    Returns:
-        (original_path, original_text)
-    """
-    if not isinstance(parser_output, dict):
-        raise FindReplaceError(
-            "missing or invalid parser_output (expected object with action='edit_file')"
-        )
-
-    parser_output = cast(dict[str, object], parser_output)
-
-    if parser_output.get("action") != "edit_file":
-        raise FindReplaceError(
-            "missing or invalid parser_output (expected object with action='edit_file')"
-        )
-
-    file_obj = parser_output.get("file")
-    if not isinstance(file_obj, dict):
-        raise FindReplaceError(
-            "file is required in parser_output and must be an object"
-        )
-
-    file_obj = cast(dict[str, object], file_obj)
-    file_name = file_obj.get("file_name")
-
-    if not isinstance(file_name, str) or not file_name.strip():
-        raise FindReplaceError(
-            "file.file_name must be a non-empty string"
-        )
-
-    file_name = file_name.strip()
-
-    output_dir_path = Path(output_dir).expanduser().resolve()
-    original_path = (output_dir_path / file_name).resolve()
-
-    # Prevent file_name values such as ../other_file.py from escaping output_dir.
-    try:
-        original_path.relative_to(output_dir_path)
-    except ValueError as exc:
-        raise FindReplaceError(
-            f"file path escapes output_dir: {file_name}"
-        ) from exc
-
-    content = file_obj.get("content")
-
-    if isinstance(content, str):
-        original_text = content
-        source = "file.content"
-    else:
-        if not original_path.exists() or not original_path.is_file():
-            raise FindReplaceError(
-                f"original target file does not exist: {original_path}"
-            )
-
-        original_text = original_path.read_text(encoding="utf-8")
-        source = "file on disk"
-
-    logger.info(
-        "Find-and-replace: extracted target file content path=%s, source=%s, length=%d",
-        original_path,
-        source,
-        len(original_text),
-    )
-
-    return original_path, original_text
-
-
-def _extract_replacements(
-    parser_output: dict[str, object],
-) -> list[Replacement]:
-    """
-    Extracts file.replacement_1, file.replacement_2, and so on.
-
-    Each replacement has this shape:
-
-        {
-            "line_num_ref": 126,
-            "find": "old text",
-            "replace_with": "new text",
-        }
-    """
-    file_value = parser_output.get("file")
-
-    if not isinstance(file_value, dict):
-        raise FindReplaceError(
-            "file is required in parser_output and must be an object"
-        )
-
-    file_obj = cast(dict[str, object], file_value)
-    replacements_by_index: dict[int, Replacement] = {}
-
-    for key, value in file_obj.items():
-        match = re.fullmatch(r"replacement_(\d+)", key)
-
-        if not match:
-            continue
-
-        index = int(match.group(1))
-
-        if index < 1:
-            raise FindReplaceError(
-                f"{key} must start at replacement_1"
-            )
-
-        if not isinstance(value, dict):
-            raise FindReplaceError(
-                f"{key} must be an object"
-            )
-
-        if index in replacements_by_index:
-            raise FindReplaceError(
-                f"duplicate replacement index: {index}"
-            )
-
-        replacement_obj = cast(dict[str, object], value)
-
-        find_value = replacement_obj.get("find")
-        if not isinstance(find_value, str) or not find_value:
-            raise FindReplaceError(
-                f"{key}.find must be a non-empty string"
-            )
-
-        replace_with_value = replacement_obj.get("replace_with")
-        if not isinstance(replace_with_value, str):
-            raise FindReplaceError(
-                f"{key}.replace_with must be a string"
-            )
-
-        line_num_ref = _parse_line_num_ref(
-            replacement_obj.get("line_num_ref"),
-            index - 1,
-        )
-
-        replacements_by_index[index] = {
-            "line_num_ref": line_num_ref,
-            "find": find_value,
-            "replace_with": replace_with_value,
-        }
-
-    if not replacements_by_index:
-        raise FindReplaceError(
-            "replacements missing (expected at least file.replacement_1)"
-        )
-
-    indexes = sorted(replacements_by_index)
-    expected_indexes = list(range(1, len(indexes) + 1))
-
-    if indexes != expected_indexes:
-        raise FindReplaceError(
-            "replacement keys must be consecutive, starting at replacement_1"
-        )
-
-    return [
-        replacements_by_index[index]
-        for index in indexes
-    ]
-
-
-def _parse_line_num_ref(
-    value: object,
-    replacement_index: int,
-) -> int | None:
-    if value is None:
-        return None
-
-    if isinstance(value, str):
-        value = value.strip()
-
-        if not value.isdigit():
-            raise FindReplaceError(
-                f"replacements[{replacement_index}].line_num_ref must be a positive integer if provided"
-            )
-
-        value = int(value)
-
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise FindReplaceError(
-            f"replacements[{replacement_index}].line_num_ref must be a positive integer if provided"
-        )
-
-    return value
-
-
-def _line_number_at_offset(text: str, offset: int) -> int:
-    """
-    Returns a 1-based line number for a character offset.
-    """
-    return text.count("\n", 0, offset) + 1
-
-
-
-def _find_match_offset(
-    text: str,
-    find_text: str,
-    line_num_ref: int | None,
-    replacement_index: int,
-) -> tuple[int, int]:
-    """
-    Finds one exact occurrence of find_text.
-
-    If multiple occurrences exist, line_num_ref is required and selects
-    the occurrence whose starting line is closest to the referenced line.
-    Equal-distance ties fail deterministically.
-    """
-    matches = [
-        match.start()
-        for match in re.finditer(re.escape(find_text), text)
-    ]
-
-    if not matches:
-        raise FindReplaceError(
-            f"replacements[{replacement_index}] find text was not found"
-        )
-
-    if len(matches) == 1:
-        start_offset = matches[0]
-        return start_offset, len(matches)
-
-    if line_num_ref is None:
-        raise FindReplaceError(
-            f"replacements[{replacement_index}] find text is ambiguous "
-            f"({len(matches)} matches); provide line_num_ref"
-        )
-
-    distances = [
-        abs(
-            _line_number_at_offset(text, match_offset)
-            - line_num_ref
-        )
-        for match_offset in matches
-    ]
-
-    closest_distance = min(distances)
-
-    closest_matches = [
-        match_offset
-        for match_offset, distance in zip(matches, distances)
-        if distance == closest_distance
-    ]
-
-    if len(closest_matches) != 1:
-        raise FindReplaceError(
-            f"replacements[{replacement_index}] find text remains ambiguous "
-            f"near line_num_ref={line_num_ref}"
-        )
-
-    start_offset = closest_matches[0]
-    return start_offset, len(matches)
-
-
-class Replacement(TypedDict):
-    line_num_ref: int | str | None
-    find: str
-    replace_with: str
-
-
-class ReplacementOperation(TypedDict):
-    index: int
-    start_offset: int
-    end_offset: int
-    find: str
-    replace_with: str
-    line_num_ref: int | None
-    total_match_count: int
-
-
-class ReplacementAudit(TypedDict):
-    index: int
-    start_line: int
-    end_line: int
-    line_num_ref: int | None
-    match_count_before_disambiguation: int
-    find_characters: int
-    replace_with_characters: int
 
 
 def _apply_replacements(
@@ -356,7 +69,7 @@ def _apply_replacements(
         find_text = replacement["find"]
         replace_with = replacement["replace_with"]
 
-        line_num_ref = _parse_line_num_ref(
+        line_num_ref = parse_line_num_ref(
             replacement["line_num_ref"],
             replacement_index,
         )
@@ -366,7 +79,7 @@ def _apply_replacements(
                 f"replacements[{replacement_index}].find must be a non-empty string"
             )
 
-        start_offset, total_match_count = _find_match_offset(
+        start_offset, total_match_count = find_match_offset(
             text=text,
             find_text=find_text,
             line_num_ref=line_num_ref,
@@ -419,11 +132,11 @@ def _apply_replacements(
         audit.append(
             {
                 "index": operation["index"],
-                "start_line": _line_number_at_offset(
+                "start_line": line_number_at_offset(
                     text,
                     start_offset,
                 ),
-                "end_line": _line_number_at_offset(
+                "end_line": line_number_at_offset(
                     text,
                     max(start_offset, end_offset - 1),
                 ),
@@ -547,21 +260,17 @@ def _build_error_with_context(
     output_dir = ""
     file_name = ""
 
-    if isinstance(parser_output, dict):
-        parsed_output = cast(dict[str, object], parser_output)
-        output_dir_value = parsed_output.get("output_dir", "")
+    if isinstance(parser_output, Mapping):
+        parsed_output = as_object_dict(parser_output, "parser_output must be a dict")
 
+        output_dir_value = parsed_output.get("output_dir", "")
         if isinstance(output_dir_value, str):
             output_dir = output_dir_value
 
-        parsed_output = cast(dict[str, object], parser_output)
-
         file_value = parsed_output.get("file")
-
-        if isinstance(file_value, dict):
-            file_obj = cast(dict[str, object], file_value)
+        if isinstance(file_value, Mapping):
+            file_obj = as_object_dict(file_value, "file must be a dict")
             file_name_value = file_obj.get("file_name", "")
-
             if isinstance(file_name_value, str):
                 file_name = file_name_value
 
@@ -576,6 +285,7 @@ def _build_error_with_context(
     return f"{message}\n{context}\n{hint}"
 
 
+
 def _find_and_replace_step(
     params: Data,
     inputs: Data,
@@ -587,18 +297,17 @@ def _find_and_replace_step(
     stage = "init"
 
     try:
-        if not isinstance(parser_output, dict):
-            raise FindReplaceError(
-                "missing or invalid parser_output (expected an object)"
-            )
-
-        typed_parser_output = cast(dict[str, object], parser_output)
+        typed_parser_output = as_object_dict(
+            parser_output,
+            "missing or invalid parser_output (expected an object)",
+        )
 
         stage = "extract_output_dir"
-        output_dir = _extract_output_dir(typed_parser_output)
+        output_dir = extract_output_dir(typed_parser_output)
+
 
         stage = "extract_target_file_and_content"
-        original_path, original_text = _extract_target_file_and_content(
+        original_path, original_text = extract_target_file_and_content(
             typed_parser_output,
             output_dir,
         )
@@ -610,7 +319,7 @@ def _find_and_replace_step(
         )
 
         stage = "extract_replacements"
-        replacements = _extract_replacements(typed_parser_output)
+        replacements = extract_replacements(typed_parser_output)
 
         stage = "validate_diff_params"
         n = params.get(
