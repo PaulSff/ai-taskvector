@@ -108,7 +108,7 @@ def _apply_replacements(
 
         if current["start_offset"] < previous["end_offset"]:
             raise FindReplaceError(
-                "replacement regions overlap: replacement_{previous['index'] + 1} and replacement_{current['index'] + 1}"
+                f"replacement regions overlap: replacement_{previous['index'] + 1} and replacement_{current['index'] + 1}"
             )
 
     updated_text = text
@@ -154,32 +154,29 @@ def _apply_replacements(
     return updated_text, audit
 
 
+def _ensure_trailing_newline(text: str) -> str:
+    return text if text.endswith("\n") else text + "\n"
+
+
 def _make_unified_diff(
     original_path: Path,
     original_text: str,
     updated_text: str,
     n: int,
 ) -> str:
-    original_text = (
-        original_text
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
+    original_text = _ensure_trailing_newline(
+        original_text.replace("\r\n", "\n").replace("\r", "\n")
     )
-    updated_text = (
-        updated_text
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
+    updated_text = _ensure_trailing_newline(
+        updated_text.replace("\r\n", "\n").replace("\r", "\n")
     )
-
-    original_lines = original_text.splitlines(keepends=True)
-    updated_lines = updated_text.splitlines(keepends=True)
 
     fromfile = f"a/{original_path.name}"
     tofile = f"b/{original_path.name}"
 
     diff_lines = difflib.unified_diff(
-        original_lines,
-        updated_lines,
+        original_text.splitlines(keepends=True),
+        updated_text.splitlines(keepends=True),
         fromfile=fromfile,
         tofile=tofile,
         n=n,

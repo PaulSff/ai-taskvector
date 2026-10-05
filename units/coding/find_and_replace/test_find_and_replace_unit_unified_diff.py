@@ -480,3 +480,204 @@ def test_find_and_replace_unit_find_is_exact_text(
     error = file_result["error"]
     assert isinstance(error, str)
     assert "find text was not found" in error
+
+
+def test_find_and_replace_unit_preserves_windows_line_endings_in_patch(
+    tmp_path: Path,
+) -> None:
+    """CRLF input should still yield a parseable unified diff."""
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old\r\n",
+                "replace_with": "new\r\n",
+            }
+        },
+        file_text="START\r\nold\r\nEND\r\n",
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    patch_text = file_result["patch"]
+    assert patch_text.strip()
+
+    patch = PatchSet(patch_text)
+    assert len(patch) == 1
+    assert len(patch[0]) == 1
+
+
+def test_find_and_replace_unit_handles_mixed_line_endings(
+    tmp_path: Path,
+) -> None:
+    """Mixed line endings should not break diff generation."""
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old_b\r\n",
+                "replace_with": "new_b\r\n",
+            }
+        },
+        file_text="a\nold_a\nb\r\nold_b\r\nc\n",
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    _ = PatchSet(file_result["patch"])
+
+
+def test_find_and_replace_unit_generates_patch_when_change_is_at_file_start(
+    tmp_path: Path,
+) -> None:
+    """Edits at the start are a common hunk-boundary edge case."""
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "START\n",
+                "replace_with": "BEGIN\n",
+            }
+        },
+        file_text="START\nmiddle\nend\n",
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    _ = PatchSet(file_result["patch"])
+
+
+def test_find_and_replace_unit_generates_patch_when_change_is_at_file_end(
+    tmp_path: Path,
+) -> None:
+    """Edits at the end can expose newline/hunk issues."""
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "end\n",
+                "replace_with": "fin\n",
+            }
+        },
+        file_text="start\nmiddle\nend\n",
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    _ = PatchSet(file_result["patch"])
+
+
+def test_find_and_replace_unit_generates_patch_for_no_trailing_newline_input(
+    tmp_path: Path,
+) -> None:
+    """Files without trailing newline often expose diff edge cases."""
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old",
+                "replace_with": "new",
+            }
+        },
+        file_text="START\nold",
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    _ = PatchSet(file_result["patch"])
+
+
+def test_find_and_replace_unit_patch_is_stable_with_long_context(
+    tmp_path: Path,
+) -> None:
+    """Large unchanged context should still produce a valid patch."""
+    file_text = (
+        "l1\nl2\nl3\nl4\nl5\nl6\nl7\n"
+        "old\n"
+        "r1\nr2\nr3\nr4\nr5\nr6\nr7\n"
+    )
+
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old\n",
+                "replace_with": "new\n",
+            }
+        },
+        file_text=file_text,
+    )
+
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is True
+    _ = PatchSet(file_result["patch"])
+
+
+def test_find_and_replace_unit_no_trailing_newline_patch_text_is_parseable(
+    tmp_path: Path,
+) -> None:
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old",
+                "replace_with": "new",
+            }
+        },
+        file_text="START\nold",
+    )
+
+    file_result = out["data"]["file"]
+    assert file_result["ok"] is True
+
+    patch_text = file_result["patch"]
+    assert patch_text.strip()
+
+    print(repr(patch_text))
+    _ = PatchSet(patch_text)
+
+
+def test_find_and_replace_unit_no_trailing_newline_patch_hunk_counts(
+    tmp_path: Path,
+) -> None:
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old",
+                "replace_with": "new",
+            }
+        },
+        file_text="START\nold",
+    )
+
+    patch_text = out["data"]["file"]["patch"]
+    print(patch_text)
+
+    assert "@@ -" in patch_text
+    assert "START\n" in patch_text
+    assert "-old" in patch_text or "-old\n" in patch_text
+    assert "+new" in patch_text or "+new\n" in patch_text
+
+
+def test_find_and_replace_unit_normalizes_crlf_on_read(
+    tmp_path: Path,
+) -> None:
+    out, _state = _run_unit(
+        tmp_path,
+        {
+            "replacement_1": {
+                "find": "old\n",
+                "replace_with": "new\n",
+            }
+        },
+        file_text="START\r\nold\r\nEND\r\n",
+    )
+
+    assert out["data"]["file"]["ok"] is True

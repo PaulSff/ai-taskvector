@@ -27,6 +27,10 @@ def extract_output_dir(parser_output: object) -> str:
     return output_dir.strip()
 
 
+def normalize_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def extract_target_file_and_content(
     parser_output: object,
     output_dir: str,
@@ -71,13 +75,13 @@ def extract_target_file_and_content(
 
     content = file_obj.get("content")
     if isinstance(content, str):
-        original_text = content
+        original_text = normalize_text(content)
         source = "file.content"
     else:
         if not original_path.exists() or not original_path.is_file():
             raise FindReplaceError(f"original target file does not exist: {original_path}")
 
-        original_text = original_path.read_text(encoding="utf-8")
+        original_text = normalize_text(original_path.read_text(encoding="utf-8"))
         source = "file on disk"
 
     logger.info(
@@ -128,8 +132,8 @@ def extract_replacements(parser_output: Data) -> list[Replacement]:
 
         replacements_by_index[index] = {
             "line_num_ref": line_num_ref,
-            "find": find_value,
-            "replace_with": replace_with_value,
+            "find": normalize_text(find_value),
+            "replace_with": normalize_text(replace_with_value),
         }
 
     if not replacements_by_index:
