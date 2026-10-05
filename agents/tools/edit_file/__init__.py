@@ -4,6 +4,7 @@ Edit-file follow-up: edit a file via the edit-file workflow.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -14,6 +15,9 @@ from agents.tools.types import (
     LanguageHintGetter,
     ParserOutput,
 )
+from services.logging import setup_colored_logging
+
+logger = setup_colored_logging(logging.DEBUG)
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -43,35 +47,38 @@ def _empty_edit_file_contribution(
     )
 
 
-def _extract_edit_file_result(out: object) -> tuple[str, str]:
-    """
-    Extract the edit-file workflow result.
-
-    Expected workflow shape:
-
-        {
-            "edit_file": {
-                "data": "..."
-            },
-            "error_prompt": {
-                "system_prompt": "..."
-            }
-        }
-    """
+def _extract_edit_file_result(out: object) -> tuple[bool | None, str, str]:
     if not isinstance(out, Mapping):
-        return "", ""
+        logger.warning("edit_file extractor got non-mapping out: %r", out)
+        return None, "", ""
 
     edit_file_output = out.get("edit_file")
     error_output = out.get("error_prompt")
 
+    ok: bool | None = None
     data = ""
     error = ""
 
     if isinstance(edit_file_output, Mapping):
         raw_data = edit_file_output.get("data")
 
-        if isinstance(raw_data, str):
-            data = raw_data.strip()
+        if isinstance(raw_data, Mapping):
+            ok = raw_data.get("ok")
+            output_path = raw_data.get("output_path")
+            changes_applied = raw_data.get("changes_applied")
+            raw_error = raw_data.get("error")
+
+            parts = []
+            if ok is not None:
+                parts.append(f"ok={ok}")
+            if output_path:
+                parts.append(f"output_path={output_path}")
+            if changes_applied:
+                parts.append(f"changes_applied:\n{changes_applied}")
+            if raw_error:
+                parts.append(f"error={raw_error}")
+
+            data = "\n".join(parts).strip()
         elif raw_data is not None:
             data = str(raw_data).strip()
 
@@ -83,7 +90,7 @@ def _extract_edit_file_result(out: object) -> tuple[str, str]:
         elif raw_error is not None:
             error = str(raw_error).strip()
 
-    return data, error
+    return ok, data, error
 
 
 def _format_workflow_error(errs: object) -> str:
@@ -181,10 +188,13 @@ async def run_edit_file_follow_up(
                 except (AttributeError, TypeError):
                     pass
 
-            edit_file_data, edit_file_error = _extract_edit_file_result(out)
-
-            # Prefer the explicit error prompt from the workflow output.
-            result = edit_file_error or edit_file_data
+            ok, edit_file_data, edit_file_error = _extract_edit_file_result(out)
+            # If the edit was successful, prefer the edit_file Unit's data output
+            # containing the metadata, such as unified diff, timestamp, md5 before and after, etc.
+            if ok is True:
+                result = edit_file_data
+            else:
+                result = edit_file_error or edit_file_data
 
             if result:
                 chunks.append(
