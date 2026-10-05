@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+import aiohttp
 import flet as ft
 
 from config.settings import get_mydata_dir
@@ -51,14 +52,17 @@ def build_rag_upload_file_dialog(
         status_txt.value = "Downloading..."
         _show_progress(True)
         try:
-            import urllib.request
+            headers = {"User-Agent": "Flet-RAG/1.0"}
+            timeout = aiohttp.ClientTimeout(total=60)
 
-            req = urllib.request.Request(url, headers={"User-Agent": "Flet-RAG/1.0"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                data = r.read()
+            async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session, session.get(url) as r:
+                r.raise_for_status()
+                data = await r.read()
+
             name = Path(url.split("?")[0]).name or "downloaded"
             if not name or name == ".":
                 name = "downloaded"
+
             mydata = get_mydata_dir()
             mydata.mkdir(parents=True, exist_ok=True)
             dest = mydata / name
@@ -67,17 +71,20 @@ def build_rag_upload_file_dialog(
             while dest.exists():
                 counter += 1
                 dest = mydata / f"{stem}_{counter}{suffix}"
+
             dest.write_bytes(data)
             await asyncio.to_thread(organize_mydata_root_files)
             status_txt.value = "Downloaded to mydata. Use Update (index) to index."
             toast("Downloaded. Click Update (index) to index.")
             on_mydata_changed()
-        except Exception as e:
+        except (aiohttp.ClientError, TimeoutError, OSError) as e:
             status_txt.value = str(e)[:200]
             toast(f"Error: {e}")
-        _show_progress(False)
-        status_txt.update()
-        page.update()
+        finally:
+            _show_progress(False)
+            status_txt.update()
+            page.update()
+
 
     def _add_from_url() -> None:
         raw = (url_tf.value or "").strip()
@@ -131,7 +138,7 @@ def build_rag_upload_file_dialog(
 
         try:
             files = await file_picker.pick_files(allow_multiple=True)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             toast(f"File picker error: {e}")
             return
 
@@ -190,7 +197,7 @@ def build_rag_upload_file_dialog(
             status_txt.update()
             page.update()
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             copied_count["n"] = 0
             status_txt.value = str(e)[:200]
             toast(f"Error: {e}")

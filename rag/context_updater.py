@@ -34,8 +34,12 @@ import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from rag.indexer import RAGIndex
+
+from core.schemas.primitives import Data
 from rag.ragconf_loader import (
     get_rag_skip_track_dir_names as _get_rag_skip_track_dir_names,
 )
@@ -388,9 +392,9 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
     )
 
 
-def load_state(rag_index_data_dir: Path) -> dict[str, Any]:
+def load_state(rag_index_data_dir: Path) -> Data:
     """Return state from .rag_index_state.json. Keys include units/mydata manifests, roles_rag_hash, repo_canonical_*, agents_rag_*."""
-    out: dict[str, Any] = {
+    out: Data = {
         "units_hash": None,
         "mydata_hash": None,
         "units_files": None,
@@ -577,7 +581,7 @@ def _compute_folder_updates(
 
 
 def _index_folder_incremental(
-    index: Any,
+    index: RAGIndex,
     root: Path,
     suffixes: frozenset[str] | set[str],
     exclude_path: Callable[[Path], bool] | None,
@@ -640,14 +644,14 @@ def run_update(
     *,
     embedding_model: str | None = None,
     repo_root: Path | None = None,
-) -> dict[str, Any]:
+) -> Data:
     """
     Update RAG index from units_dir and mydata_dir when content has changed; also incrementally
     indexes canonical TaskVector ``*.json`` graphs under ``repo_root`` (default: repo root).
     chroma_db and .rag_index_state.json live in rag_index_data_dir; mydata content is in mydata_dir.
     Returns dict: ok, need_index, units_count, mydata_count, repo_canonical_count, agents_rag_count, error, message, details.
     """
-    result: dict[str, Any] = {
+    result: Data = {
         "ok": False,
         "need_index": False,
         "units_count": 0,

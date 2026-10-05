@@ -5,12 +5,13 @@ RAG tab: knowledge-base search panel (query + results via get_rag_search_formatt
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 
 import flet as ft
 from flet import Event, IconButton
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
+from core.schemas.primitives import Data
 from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 from gui.utils.notifications import show_toast
 from gui.utils.rag_context import get_rag_search_formatted_and_rows
@@ -18,7 +19,7 @@ from gui.utils.rag_context import get_rag_search_formatted_and_rows
 from .download_helpers import download_path_or_url_to_disk
 
 
-def _row_path_for_actions(row: dict[str, Any] | None) -> str:
+def _row_path_for_actions(row: Data | None) -> str:
     if not row:
         return ""
     meta = row.get("metadata")
@@ -34,7 +35,7 @@ def _row_path_for_actions(row: dict[str, Any] | None) -> str:
 def build_rag_search_panel(
     page: ft.Page,
     *,
-    chat_panel_api: dict[str, Any] | None = None,
+    chat_panel_api: Data| None = None,
 ) -> ft.Container:
     """Build the default Search view: query field, run button, scrollable results with copy / download / share."""
     results_column = ft.Column(
@@ -52,7 +53,7 @@ def build_rag_search_panel(
     )
 
     def _rebuild_result_rows(
-        rows: list[dict[str, Any]], formatted_fallback: str
+        rows: list[Data], formatted_fallback: str
     ) -> None:
         results_column.controls.clear()
 
@@ -83,7 +84,8 @@ def build_rag_search_panel(
             meta = meta_obj if isinstance(meta_obj, dict) else {}
             ct = str(meta.get("content_type") or "").strip() or "hit"
 
-            snippet = (row.get("text") or "").replace("\n", " ").strip()
+            raw_text = row.get("text")
+            snippet = str(raw_text if raw_text is not None else "").replace("\n", " ").strip()
             if len(snippet) > 220:
                 snippet = snippet[:217] + "…"
 

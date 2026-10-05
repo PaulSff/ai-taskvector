@@ -9,6 +9,7 @@ from flet import Event, IconButton, OutlinedButton
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from config.settings import get_rag_index_dir
+from core.schemas.primitives import Data
 from gui.utils.rag_context import get_rag_context, get_rag_context_by_path
 
 from .dialog_upload_file import build_rag_upload_file_dialog
@@ -22,7 +23,7 @@ def build_rag_tab(
     page: ft.Page,
     show_rag_preview: bool = False,
     *,
-    chat_panel_api: dict[str, Any] | None = None,
+    chat_panel_api: Data | None = None,
 ) -> ft.Control:
     """
     Build the RAG tab: toolbar + Search (default) or file-manager view; upload via dialog.

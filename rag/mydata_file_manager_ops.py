@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from core.schemas.primitives import Data
 from rag.content_types import (
     mydata_destination,
     storage_category_for_suffix,
@@ -243,7 +244,7 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
     return f"data:image/png;base64,{encoded}"
 
 
-def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
+def build_mydata_storage_report(mydata: Path) -> Data:
     """Summary text + pie data URI from full-tree scan (respects noindex)."""
     root = mydata.resolve()
     by_cat = mydata_storage_by_category(root)
@@ -267,7 +268,7 @@ def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
 
 def list_mydata_directory_entries(
     mydata: Path, rel_parts: list[str]
-) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+) -> tuple[list[str], list[Data], list[str]]:
     """
     List one directory level under ``mydata``.
 
@@ -289,7 +290,7 @@ def list_mydata_directory_entries(
         rel_eff = []
         cur = root
 
-    entries: list[dict[str, Any]] = []
+    entries: list[Data] = []
     try:
         for p in sorted(cur.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
             if p.name.startswith("."):
@@ -316,7 +317,7 @@ def list_mydata_directory_entries(
 
 def build_mydata_listing_view_model(
     mydata: Path, rel_parts: list[str]
-) -> dict[str, Any]:
+) -> Data:
     """One directory level for the file-manager UI (no full-tree scan or chart)."""
     rel_eff, entries, list_errors = list_mydata_directory_entries(mydata, rel_parts)
     return {
@@ -328,7 +329,7 @@ def build_mydata_listing_view_model(
 
 def build_mydata_refresh_view_model(
     mydata: Path, rel_parts: list[str]
-) -> dict[str, Any]:
+) -> Data:
     """Combined payload for the file-manager UI (listing + storage report)."""
     out = build_mydata_listing_view_model(mydata, rel_parts)
     report = build_mydata_storage_report(mydata)

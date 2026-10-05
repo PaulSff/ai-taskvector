@@ -25,19 +25,18 @@ import csv
 import io
 import logging
 from pathlib import Path
-from typing import Any
 
 from core.schemas.primitives import Data, Output
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
-REPORT_INPUT_PORTS = [("parser_output", "Any")]
-REPORT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+REPORT_INPUT_PORTS = [("parser_output", "Data")]
+REPORT_OUTPUT_PORTS = [("data", "Data"), ("error", "str")]
 
 logger = setup_colored_logging(logging.DEBUG)
 
 
-def _unwrap_report_payload(value: Any) -> dict[str, Any] | None:
+def _unwrap_report_payload(value: object) -> Data | None:
     if not isinstance(value, dict):
         return None
 
@@ -66,30 +65,45 @@ def _unwrap_report_payload(value: Any) -> dict[str, Any] | None:
 
     return None
 
-def _md_from_report(data: dict[str, Any]) -> str:
+def _ensure_str(val: object | None) -> str:
+    """Helper to safely convert any object to a stripped string."""
+    if isinstance(val, str):
+        return val.strip()
+    return str(val or "").strip()
+
+
+def _md_from_report(data: Data) -> str:
     """Render report JSON (title, summary, sections) to Markdown."""
     parts = []
-    title = (data.get("title") or "").strip()
+
+    title = _ensure_str(data.get("title"))
     if title:
         parts.append(f"# {title}\n")
-    summary = (data.get("summary") or "").strip()
+
+    summary = _ensure_str(data.get("summary"))
     if summary:
         parts.append(summary + "\n")
-    for sec in data.get("sections") or []:
-        if not isinstance(sec, dict):
-            continue
-        heading = (sec.get("heading") or "").strip()
-        body = (sec.get("body") or "").strip()
-        if heading:
-            if not heading.startswith("#"):
-                heading = f"## {heading}"
-            parts.append(f"\n{heading}\n")
-        if body:
-            parts.append(body + "\n")
+
+    sections = data.get("sections")
+    if isinstance(sections, list):
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
+
+            heading = _ensure_str(sec.get("heading"))
+            body = _ensure_str(sec.get("body"))
+
+            if heading:
+                if not heading.startswith("#"):
+                    heading = f"## {heading}"
+                parts.append(f"\n{heading}\n")
+            if body:
+                parts.append(body + "\n")
+
     return "\n".join(parts).strip() + "\n"
 
 
-def _csv_from_report(data: dict[str, Any]) -> str:
+def _csv_from_report(data: Data) -> str:
     """Render report JSON (headers, rows) to CSV."""
     headers = data.get("headers")
     rows = data.get("rows")

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import flet as ft
 from flet import Event, IconButton, ListTile, TextButton
 
-from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 from config.settings import get_mydata_dir
+from core.schemas.primitives import Data
+from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 from gui.utils.notifications import show_toast
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,
@@ -24,8 +25,8 @@ from .download_helpers import download_path_or_url_to_disk
 def build_rag_file_browser_panel(
     page: ft.Page,
     *,
-    chat_panel_api: dict[str, Any] | None = None,
-) -> tuple[ft.Container, Callable[..., None], Callable[..., Coroutine[Any, Any, None]]]:
+    chat_panel_api: Data| None = None,
+) -> tuple[ft.Container, Callable[..., None], Callable[..., Awaitable[None]]]:
     from gui.utils.file_picker import register_file_picker
 
     nav_parts: list[str] = []
@@ -122,7 +123,7 @@ def build_rag_file_browser_panel(
         visible=False,
     )
 
-    def _run_phase1(organize: bool) -> tuple[str, dict[str, Any]]:
+    def _run_phase1(organize: bool) -> tuple[str, Data]:
         nonlocal root_dir
         org_err = ""
 
@@ -191,7 +192,7 @@ def build_rag_file_browser_panel(
         return ft.Icons.INSERT_DRIVE_FILE
 
     def _apply_file_browser_payload(
-        data: dict[str, Any],
+        data: Data,
         *,
         org_err: str = "",
         rep_err: str = "",
@@ -244,9 +245,12 @@ def build_rag_file_browser_panel(
             rows.append(ft.Text(f"Organize: {org_err}", size=11, color=ft.Colors.AMBER_200))
         if rep_err:
             rows.append(ft.Text(f"Report: {rep_err}", size=11, color=ft.Colors.ERROR))
-        for msg in data.get("list_errors") or []:
-            if isinstance(msg, str) and msg.strip():
-                rows.append(ft.Text(msg[:200], size=11, color=ft.Colors.ERROR))
+
+        list_errors = data.get("list_errors")
+        if isinstance(list_errors, list):
+            for msg in list_errors:
+                if isinstance(msg, str) and msg.strip():
+                    rows.append(ft.Text(msg[:200], size=11, color=ft.Colors.ERROR))
 
         if not root_dir.exists():
             rows.append(
@@ -276,7 +280,7 @@ def build_rag_file_browser_panel(
                 )
 
             entries_raw = data.get("entries")
-            entries: list[dict[str, Any]] = entries_raw if isinstance(entries_raw, list) else []
+            entries: list[Data] = entries_raw if isinstance(entries_raw, list) else []
 
             listed = 0
             for ent in entries:
@@ -529,7 +533,7 @@ def build_rag_file_browser_panel(
             pass
 
         org_err = ""
-        listing: dict[str, Any] = {}
+        listing: Data = {}
         try:
             org_err, listing = await asyncio.to_thread(_run_phase1, organize)
         except OSError as ex:
