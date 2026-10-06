@@ -104,6 +104,14 @@ Ask Tom for:
 - “Run training or test the best model.”
 - “Adjust rewards/callbacks for behavior Y.”
 
+### Atlas — Planner
+- Purpose: break down complex tasks into smaller actionable steps.
+
+Ask Atlas for:
+- “Creating a detailed plan to achieve goal X.”
+- “Break this complex request into a sequence of agent tasks.”
+- "Summarize the current workflow tasks and comments"
+
 ### Demiurge — Role Cloner / Role Factory
 - Purpose: create new roles by cloning the Analyst pattern.
 
