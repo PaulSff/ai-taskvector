@@ -63,6 +63,15 @@ async def render_agent_content(
             if candidate is not None:
                 hidden_parsed = candidate
 
+            if parsed_is_no_action_only(hidden_parsed):
+                controls.append(
+                    ft.Text(
+                        "No changes were made to the flow.",
+                        **compact_meta_text_style(bubble_width=bubble_width),
+                    )
+                )
+                continue
+
             if parsed_is_query_display_only(hidden_parsed):
                 q_lines = query_display_lines(hidden_parsed)
                 controls.append(
