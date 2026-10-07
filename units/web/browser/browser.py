@@ -9,30 +9,40 @@ available; otherwise urllib.
 """
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
-BROWSER_INPUT_PORTS = [("in", "Any")]  # optional: URL from upstream
-BROWSER_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
+BROWSER_INPUT_PORTS = [("in", "str")]  # optional: URL from upstream
+BROWSER_OUTPUT_PORTS = [("out", "str"), ("error", "str")]
 
 _MAX_BODY = 1024 * 1024  # 1 MB cap
 
 
 def _browser_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     url = (params or {}).get("url")
     if not url and inputs:
         url = next(iter(inputs.values()), None)
     if not url:
         return ({"out": "", "error": None}, state)
+
     url = str(url).strip()
-    timeout = float((params or {}).get("timeout") or 15)
-    timeout = max(1, min(timeout, 60))
+
+    raw_timeout = (params or {}).get("timeout")
+
+    if isinstance(raw_timeout, (int, float, str)):
+        try:
+            timeout = float(raw_timeout)
+        except (TypeError, ValueError):
+            timeout = 15.0
+    else:
+        timeout = 15.0
+
+    timeout = max(1.0, min(timeout, 60.0))
 
     err: str | None = None
     try:
@@ -55,7 +65,7 @@ def _browser_step(
                 if len(content) > _MAX_BODY:
                     content = content[:_MAX_BODY] + b"\n... (truncated)"
                 text = content.decode("utf-8", errors="replace")
-    except Exception as e:
+    except (TimeoutError, OSError, ValueError) as e:
         err = str(e)[:200]
         return ({"out": f"(Fetch error: {e})", "error": err}, state)
 
@@ -73,7 +83,11 @@ def fetch_url(url: str, timeout: float = 15) -> str:
         {},
         0.0,
     )
-    return (out.get("out") or "") if isinstance(out.get("out"), str) else ""
+
+    result = out.get("out")
+    if isinstance(result, str):
+        return result
+    return ""
 
 
 def register_browser() -> None:
@@ -89,4 +103,4 @@ def register_browser() -> None:
     ))
 
 
-__all__ = ["register_browser", "fetch_url", "BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS"]
+__all__ = ["BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS", "fetch_url", "register_browser"]

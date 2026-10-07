@@ -8,20 +8,19 @@ Params: mode ("text" | "links" | "tables" | "markup"), optional selector (CSS se
 """
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
-BEAUTIFULSOUP_INPUT_PORTS = [("in", "Any")]
-BEAUTIFULSOUP_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
+BEAUTIFULSOUP_INPUT_PORTS = [("in", "str")]
+BEAUTIFULSOUP_OUTPUT_PORTS = [("out", "str"), ("error", "str")]
 
 
 def _beautifulsoup_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     raw = None
     if inputs:
         raw = next(iter(inputs.values()), None)
@@ -29,9 +28,18 @@ def _beautifulsoup_step(
         return ({"out": "", "error": None}, state)
     html = str(raw).strip()
     par = params or {}
-    mode = (par.get("mode") or "text").strip().lower()
-    selector = par.get("selector") or par.get("css_selector")
-    limit = int(par.get("limit") or 0)  # 0 = no limit
+    mode_val = par.get("mode")
+    mode = str(mode_val).strip().lower() if mode_val is not None else "text"
+    selector_val = par.get("selector") or par.get("css_selector")
+
+    limit_raw = par.get("limit")
+    if limit_raw is None:
+        limit = 0
+    else:
+        try:
+            limit = int(str(limit_raw).strip())
+        except (TypeError, ValueError):
+            limit = 0  # 0 = no limit
 
     err: str | None = None
     try:
@@ -44,12 +52,15 @@ def _beautifulsoup_step(
         )
 
     soup = BeautifulSoup(html, "html.parser")
-    if selector:
-        try:
-            root = soup.select_one(selector) or soup
-        except Exception as e:
-            err = str(e)[:200]
-            root = soup
+    root = soup
+    if isinstance(selector_val, str):
+        selector_str = selector_val.strip()
+        if selector_str:
+            try:
+                root = soup.select_one(selector_str) or soup
+            except (ValueError, TypeError) as e:
+                err = str(e)[:200]
+                root = soup
     else:
         root = soup
 
@@ -58,7 +69,8 @@ def _beautifulsoup_step(
     elif mode == "links":
         links = []
         for a in root.find_all("a", href=True):
-            href = (a.get("href") or "").strip()
+            href_val = a.get("href")
+            href = str(href_val).strip() if href_val is not None else ""
             if not href or href.startswith("#"):
                 continue
             text = (a.get_text() or "").strip()
@@ -83,7 +95,7 @@ def _beautifulsoup_step(
     return ({"out": out, "error": err}, state)
 
 
-def html_to_text(html: str, mode: str = "text", **params: Any) -> str:
+def html_to_text(html: str, mode: str = "text", **params: Data) -> str:
     """
     Run the beautifulsoup unit: parse HTML and return extracted content.
     Use after the browser unit (e.g. browse action: fetch_url → html_to_text).
@@ -93,7 +105,8 @@ def html_to_text(html: str, mode: str = "text", **params: Any) -> str:
         return ""
     par = {"mode": mode, **params}
     out, _ = _beautifulsoup_step(par, {"in": html}, {}, 0.0)
-    return (out.get("out") or "") if isinstance(out.get("out"), str) else ""
+    result = out.get("out")
+    return result if isinstance(result, str) else ""
 
 
 def register_beautifulsoup() -> None:

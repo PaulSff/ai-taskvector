@@ -6,4 +6,4 @@ from units.web.browser.browser import (
     register_browser,
 )
 
-__all__ = ["register_browser", "fetch_url", "BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS"]
+__all__ = ["BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS", "fetch_url", "register_browser"]

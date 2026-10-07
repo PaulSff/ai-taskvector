@@ -13,9 +13,9 @@
       "type": "browser",
       "controllable": false,
       "params": {},
-      "input_ports": [{ "name": "in", "type": "Any" }],
+      "input_ports": [{ "name": "in", "type": "str" }],
       "output_ports": [
-        { "name": "out", "type": "Any" },
+        { "name": "out", "type": "str" },
         { "name": "error", "type": "str" }
       ]
     },
@@ -24,9 +24,9 @@
       "type": "beautifulsoup",
       "controllable": false,
       "params": { "mode": "text" },
-      "input_ports": [{ "name": "in", "type": "Any" }],
+      "input_ports": [{ "name": "in", "type": "str" }],
       "output_ports": [
-        { "name": "out", "type": "Any" },
+        { "name": "out", "type": "str" },
         { "name": "error", "type": "str" }
       ]
     }
@@ -41,6 +41,6 @@
     }
   ],
   "metadata": {
-    "description": "Fetch URL and extract text via browser + BeautifulSoup. Used by Workflow Designer chat for browse_url action (follow-up context). Inject URL → browser → beautifulsoup."
+    "description": "This workflow fetches URL and extracts its text via browser + BeautifulSoup"
   }
 }

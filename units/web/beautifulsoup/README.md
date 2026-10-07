@@ -11,8 +11,8 @@ Parses HTML and extracts content as plain text, links, tables, or markup. Typica
 ## API
 
 - **Type name:** `beautifulsoup`
-- **Input ports:** `in` (Any) — HTML string (e.g. from browser unit)
-- **Output ports:** `out` (Any) — extracted content as string
+- **Input ports:** `in` (str) — HTML string (e.g. from browser unit)
+- **Output ports:** `out` (str) — extracted content as string
 
 ---
 

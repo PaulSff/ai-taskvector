@@ -7,8 +7,8 @@ from units.web.beautifulsoup.beautifulsoup import (
 )
 
 __all__ = [
-    "register_beautifulsoup",
-    "html_to_text",
     "BEAUTIFULSOUP_INPUT_PORTS",
     "BEAUTIFULSOUP_OUTPUT_PORTS",
+    "html_to_text",
+    "register_beautifulsoup",
 ]

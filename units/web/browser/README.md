@@ -9,8 +9,8 @@ Fetches a URL via HTTP GET and outputs the raw response body (e.g. HTML). No Jav
 ## API
 
 - **Type name:** `browser`
-- **Input ports:** `in` (Any) — optional; URL can come from params instead
-- **Output ports:** `out` (Any) — raw response body as string (e.g. HTML)
+- **Input ports:** `in` (str) — optional; URL can come from params instead
+- **Output ports:** `out` (str) — raw response body as string (e.g. HTML)
 
 ---
 
