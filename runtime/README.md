@@ -30,12 +30,13 @@ python -m runtime workflow.json --initial-inputs @inputs.json --output out.json
 ```
 
 ```bash
-# Publish results/errors via ZMQ
-python run_workflow.py /path/to/workflow.json \
+# Publish results, tokens, and updates via ZMQ
+python -m runtime workflow.json \
   --zmq-pub-endpoint tcp://127.0.0.1:5557 \
   --send-job-message \
-  --execution-timeout-s <seconds> \
-  --run-id <id>
+  --execution-timeout-s 30 \
+  --keep-alive \
+  --run-id my_run_123
 ```
 
 | Option | Description |
@@ -63,6 +64,9 @@ outputs = run_workflow(
     },
     unit_param_overrides={"llm_agent": {"model_name": "llama3.2"}},
     format="dict",
+    keep_alive=True,
+    execution_timeout_s=60,
+    role_id="workflow_designer"
 )
 
 # Simple run with no inputs (backward-compatible)
