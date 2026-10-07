@@ -311,25 +311,29 @@ def build_rag_file_browser_panel(
                             await show_toast(page, "Path copied")
                         page.run_task(_do)
 
-                    def _send_dir_path_to_chat(e: ft.Event[ft.IconButton], p: str = abs_path_str) -> None:
+                    def _send_dir_path_to_chat(
+                        e: ft.Event[ft.IconButton],
+                        p: str = abs_path_str,
+                    ) -> None:
                         api = chat_panel_api or {}
                         fn = api.get("add_file_path_reference")
-                        if callable(fn):
+
+                        async def _send() -> None:
+                            if not callable(fn):
+                                await show_toast(page, "Chat is not ready yet")
+                                return
+
                             try:
                                 result = fn(p)
-                            except (TypeError, ValueError):
-                                result = False
+                                if asyncio.iscoroutine(result):
+                                    result = await result
 
-                            if asyncio.iscoroutine(result):
-                                page.run_task(lambda: result)
-
-                            if result is False:
-
-                                async def _warn() -> None:
+                                if result is False:
                                     await show_toast(page, "Chat is not ready yet")
+                            except (TypeError, RuntimeError):
+                                await show_toast(page, "Could not add path to chat")
 
-                                page.run_task(_warn)
-                            return
+                        page.run_task(_send)
 
                         async def _warn() -> None:
                             await show_toast(page, "Chat is not ready yet")
@@ -397,25 +401,32 @@ def build_rag_file_browser_panel(
                             await show_toast(page, "Path copied")
                         page.run_task(_do)
 
-                    def _send_path_to_chat(e: ft.Event[ft.IconButton], p: str = abs_path_str) -> None:
+                    def _send_path_to_chat(
+                        e: ft.Event[ft.IconButton],
+                        p: str = abs_path_str,
+                    ) -> None:
                         api = chat_panel_api or {}
                         fn = api.get("add_file_path_reference")
-                        if callable(fn):
+
+                        if not callable(fn):
+                            async def _warn() -> None:
+                                await show_toast(page, "Chat is not ready yet")
+
+                            page.run_task(_warn)
+                            return
+
+                        async def _send() -> None:
                             try:
                                 result = fn(p)
-                            except (TypeError, ValueError):
-                                result = False
+                                if asyncio.iscoroutine(result):
+                                    result = await result
 
-                            if asyncio.iscoroutine(result):
-                                page.run_task(lambda: result)
-
-                            if result is False:
-
-                                async def _warn() -> None:
+                                if result is False:
                                     await show_toast(page, "Chat is not ready yet")
+                            except (TypeError, RuntimeError):
+                                await show_toast(page, "Could not add path to chat")
 
-                                page.run_task(_warn)
-                            return
+                        page.run_task(_send)
 
                         async def _warn() -> None:
                             await show_toast(page, "Chat is not ready yet")
