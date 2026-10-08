@@ -54,7 +54,7 @@ def format_exception(e: Exception) -> str:
     return format_ollama_exception(e)
 
 
-def _extract_content_piece(response: Any) -> str:
+def _extract_content_piece(response: object) -> str:
     """Get message content from Ollama response (dict or object). Always return a string (no stripping)."""
     try:
         msg = (
@@ -76,7 +76,7 @@ def _extract_content_piece(response: Any) -> str:
         return ""
 
 
-def _extract_content(response: Any) -> str:
+def _extract_content(response: object) -> str:
     """Get message content from Ollama response (dict or object). Always return a string."""
     return _extract_content_piece(response).strip()
 
