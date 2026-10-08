@@ -15,7 +15,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+
+from core.schemas.primitives import Data
 
 
 def _get_rag_defaults() -> tuple[str, str]:
@@ -37,14 +38,14 @@ def _get_rag_defaults() -> tuple[str, str]:
             if not p.is_absolute():
                 p = repo / p
             return str(p.resolve()), rag_embedding_model_raw()
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError):
             return (
                 "rag/.rag_index_data",
                 "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             )
 
 
-def _load_app_settings(config_path: Path) -> dict[str, Any]:
+def _load_app_settings(config_path: Path) -> Data:
     """Load config/app_settings.json; return dict or empty."""
     path = config_path.resolve()
     if not path.is_file():
@@ -157,11 +158,17 @@ def main() -> None:
             ragconf = {}
 
         def _resolve(p: str | None, key: str, default: str) -> Path:
-            raw = p or settings.get(key) or ragconf.get(key) or default
-            path = Path(raw)
+            configured = settings.get(key) or ragconf.get(key) or default
+            raw = p if p is not None else configured
+
+            if not isinstance(raw, str):
+                raise TypeError(f"{key} must be a string path, got {type(raw).__name__}")
+
+            path = Path(raw).expanduser()
             if not path.is_absolute():
                 path = repo_root / path
             return path.resolve()
+
 
         rag_index_data_dir = _resolve(
             getattr(args, "rag_index_data_dir", None),
@@ -172,13 +179,21 @@ def main() -> None:
         units_dir = (
             Path(args.units_dir) if args.units_dir else (repo_root / "units")
         ).resolve()
-        embedding_model = (
+        embedding_model_raw = (
             args.embedding_model
             or settings.get("rag_embedding_model")
             or ragconf.get("rag_embedding_model")
         )
+
+        embedding_model: str | None = (
+            embedding_model_raw if isinstance(embedding_model_raw, str) else None
+        )
+
         result = run_update(
-            rag_index_data_dir, units_dir, mydata_dir, embedding_model=embedding_model
+            rag_index_data_dir,
+            units_dir,
+            mydata_dir,
+            embedding_model=embedding_model,
         )
         if args.json:
             print(json.dumps(result, indent=2, default=str))
