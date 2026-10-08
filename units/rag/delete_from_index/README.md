@@ -13,7 +13,7 @@ Each path is tried both as-is and resolved to an absolute path, matching whichev
 
 | Direction | Name | Type | Description |
 |-----------|------|------|-------------|
-| Input | `file_paths` | `Any` | List of file path strings (or a single string) whose chunks should be deleted |
+| Input | `file_paths` | `list[str]` | List of file path strings whose chunks should be deleted |
 | Output | `count` | `float` | Total number of chunk IDs removed from the index |
 | Output | `error` | `str` | Error message string, or `null` on success |
 

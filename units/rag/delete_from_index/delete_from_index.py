@@ -15,12 +15,12 @@ Use the ``rag/workflows/rag_delete_from_index.json`` workflow to invoke this uni
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.rag.chroma_locking import get_chroma_write_lock
 from units.registry import UnitSpec, register_unit
 
-DELETE_FROM_INDEX_INPUT_PORTS = [("file_paths", "Any")]
+DELETE_FROM_INDEX_INPUT_PORTS = [("file_paths", "list[str]")]
 DELETE_FROM_INDEX_OUTPUT_PORTS = [("count", "float"), ("error", "str")]
 
 
@@ -80,11 +80,11 @@ def delete_chunks_by_file_paths(
 
 
 def _delete_from_index_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Resolve file_paths from input, delete matching chunks, clear the search cache."""
     persist_dir = str(params.get("persist_dir") or "").strip()
     if not persist_dir:
