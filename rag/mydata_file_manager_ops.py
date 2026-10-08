@@ -14,7 +14,6 @@ import shutil
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from core.schemas.primitives import Data
 from rag.content_types import (
@@ -186,8 +185,6 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
     if not by_bytes or sum(by_bytes.values()) <= 0:
         return None
 
-    from typing import cast
-
     import matplotlib
 
     matplotlib.use("Agg")
@@ -219,10 +216,11 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
         textprops={"fontsize": 8, "color": "#e8e8e8"},
     )
 
-    _wedges, _texts, autotexts = cast(
-        tuple[list[Any], list[Any], list[Any]],
-        pie_result,
-    )
+    if len(pie_result) == 3:
+        _wedges, _texts, autotexts = pie_result
+    else:
+        _wedges, _texts = pie_result
+        autotexts = []
 
     for text in autotexts:
         text.set_color("#1a1a1a")
