@@ -7,8 +7,8 @@ API: action dict with keys {"action":"formulas_calc","path":...,"inputs":{...},
 "outputs":[...],"output-format":"json"}.
 
 Ports:
- - input:  ("action", "Any")
- - outputs: ("results", "Any"), ("error", "str")
+ - input:  ("action", "Data")
+ - outputs: ("results", "Data"), ("error", "str")
 
 Assumptions / targeted formulas API (common patterns across formulas versions):
  - **Legacy:** ``formulas.ExcelCompiler().read(path)`` -> workbook, compile/recalculate, read cells.
@@ -20,13 +20,26 @@ Adjust minor call names if your installed formulas version differs; comments ind
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypeGuard
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
-INPUT_PORTS = [("action", "Any"), ("parser_output", "Any")]
-OUTPUT_PORTS = [("results", "Any"), ("error", "str")]
+INPUT_PORTS = [("action", "Data"), ("parser_output", "Data")]
+OUTPUT_PORTS = [("results", "Data"), ("error", "str")]
 
+
+class ExcelModelProto(Protocol):
+    def load(self, path: str) -> object: ...
+    def finish(self) -> object: ...
+    def calculate(self) -> Data: ...
+    def from_dict(self, data: Data) -> object: ...
+
+class FormulasMod(Protocol):
+    ExcelModel: type[ExcelModelProto]
+
+class HasValue(Protocol):
+    value: object
 
 # --- Helpers: parse references & ranges -------------------------------------
 
@@ -114,30 +127,34 @@ def _expand_range(addr: str) -> list[tuple[int, int]]:
 
 
 # --- formulas 1.3+ (ExcelModel) ---------------------------------------------
+#
+def _has_value(val: object) -> TypeGuard[HasValue]:
+    return hasattr(val, "value")
 
-
-def _ranges_value_to_python(val: Any) -> Any:
+def _ranges_value_to_python(val: object) -> object:
     """Turn formulas ``Ranges`` (or similar) into JSON-friendly scalars / nested lists."""
     if val is None:
         return None
+
     cls_name = type(val).__name__
-    if cls_name == "XlError" or "Error" in cls_name and hasattr(val, "value"):
+    if cls_name == "XlError" or ("Error" in cls_name and _has_value(val)):
         return str(val)
-    if hasattr(val, "value"):
+
+    if _has_value(val):
         arr = val.value
         try:
             import numpy as np
 
-            if hasattr(arr, "shape"):
+            if isinstance(arr, np.ndarray):
                 if arr.size == 1:
                     x = arr.flat[0]
                     return x.item() if isinstance(x, np.generic) else x
                 return arr.tolist()
-        except (ImportError, AttributeError, ValueError, TypeError) as _e:
+        except (ImportError, AttributeError, ValueError, TypeError):
             pass
         return arr
-    return val
 
+    return val
 
 def _excel_model_cell_token(sol_key: str) -> str:
     ks = str(sol_key)
@@ -155,7 +172,7 @@ def _excel_model_sheet_blob_lower(sol_key: str) -> str:
 
 
 def _excel_model_find_sol_key(
-    sol: dict[Any, Any],
+    sol: Data,
     user_sheet_hint: str | None,
     addr_token: str,
 ) -> str | None:
@@ -171,7 +188,7 @@ def _excel_model_find_sol_key(
     return str(candidates[0])
 
 
-def _excel_model_resolve_input_key(sol_probe: dict[Any, Any], raw_key: str) -> str | None:
+def _excel_model_resolve_input_key(sol_probe: Data, raw_key: str) -> str | None:
     sh, addr = _split_sheet_and_addr(str(raw_key))
     if ":" in addr:
         addr = addr.split(":", 1)[0].strip()
@@ -184,32 +201,32 @@ def _excel_model_resolve_input_key(sol_probe: dict[Any, Any], raw_key: str) -> s
 
 
 def _formulas_excel_model_roundtrip(
-    formulas_mod: Any,
+    formulas_mod: object,
     path: str,
-    provided_inputs: dict[str, Any],
-    requested_outputs: list[Any],
+    provided_inputs: Data,
+    requested_outputs: list[object],
     out_fmt: str,
-    state: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any]]:
+    state: Data,
+) -> Output:
     """Evaluate workbook using ``formulas.ExcelModel`` (1.3.x)."""
-    results: dict[str, Any] = {}
+    results: Data = {}
     p = Path(str(path).strip())
     if not p.is_file():
         return {"results": {}, "error": f"workbook not found: {path}"}, state
     abs_path = str(p.resolve())
 
-    model = formulas_mod.ExcelModel()
+    model = formulas_mod.ExcelModel()  # type: ignore[attr-defined]
     model.load(abs_path)
     model.finish()
     sol_probe = model.calculate()
 
-    overrides: dict[str, Any] = {}
+    overrides: Data = {}
     for raw_k, val in provided_inputs.items():
         sk = _excel_model_resolve_input_key(sol_probe, str(raw_k))
         if sk is not None:
             overrides[sk] = val
 
-    model2 = formulas_mod.ExcelModel()
+    model2 = formulas_mod.ExcelModel()  # type: ignore[attr-defined]
     model2.load(abs_path)
     model2.finish()
     if overrides:
@@ -231,9 +248,9 @@ def _formulas_excel_model_roundtrip(
                 rows = [r for _, r in coords]
                 min_c, max_c = min(cols), max(cols)
                 min_r, max_r = min(rows), max(rows)
-                out_grid: list[list[Any]] = []
+                out_grid: list[list[object]] = []
                 for rr in range(min_r, max_r + 1):
-                    row_vals: list[Any] = []
+                    row_vals: list[object] = []
                     for cc in range(min_c, max_c + 1):
                         a1 = f"{_a1_col_label(cc)}{rr}"
                         ck = _excel_model_find_sol_key(sol, sheet_name, a1.upper())
@@ -252,48 +269,49 @@ def _formulas_excel_model_roundtrip(
 
     return {"results": results, "error": ""}, state
 
-
 # --- Core step function -----------------------------------------------------
 
 
 def _formulas_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """
     params: Unit params (may contain an action dict fallback)
     inputs: may contain 'action' dict injected by executor
     state: kept unchanged (stateless)
     """
 
-    # default outputs
-    results: dict[str, Any] = {}
+    results: Data = {}
 
-    # 1) Get action dict (prefer parser_output from ProcessAgent, then inject action)
-    action_cmd = None
-    parser_out = inputs.get("parser_output") if inputs else None
+    action_cmd: Data | None = None
+
+    parser_out = inputs.get("parser_output")
     if isinstance(parser_out, dict):
         fcw = parser_out.get("formulas_calc")
         if isinstance(fcw, dict) and fcw.get("action") == "formulas_calc":
             action_cmd = fcw
+
     if action_cmd is None:
-        if isinstance(inputs.get("action"), dict):
-            action_cmd = inputs["action"]
-        elif isinstance(params.get("action"), dict):
-            action_cmd = params["action"]
-        elif params.get("action") == "formulas_calc" or params.get("type") == "formulas_calc":
-            action_cmd = {
-                "action": params.get("action"),
-                "path": params.get("path"),
-                "inputs": params.get("inputs", {}),
-                "outputs": params.get("outputs", []),
-                "output-format": params.get("output-format", "json"),
-            }
+        inp_action = inputs.get("action")
+        if isinstance(inp_action, dict):
+            action_cmd = inp_action
+        else:
+            param_action = params.get("action")
+            if isinstance(param_action, dict):
+                action_cmd = param_action
+            elif params.get("action") == "formulas_calc" or params.get("type") == "formulas_calc":
+                action_cmd = {
+                    "action": params.get("action"),
+                    "path": params.get("path"),
+                    "inputs": params.get("inputs", {}),
+                    "outputs": params.get("outputs", []),
+                    "output-format": params.get("output-format", "json"),
+                }
 
     if not action_cmd:
-        # nothing to do
         return {"results": {}, "error": ""}, state
 
     if action_cmd.get("action") != "formulas_calc":
@@ -304,6 +322,7 @@ def _formulas_step(
     requested_outputs = action_cmd.get("outputs", []) or []
     out_fmt = action_cmd.get("output-format", action_cmd.get("output_format", "json"))
 
+
     # 2) Import formulas
     try:
         import formulas
@@ -312,15 +331,22 @@ def _formulas_step(
 
     # 2b) formulas 1.3+: ExcelModel only (no ExcelCompiler)
     if not hasattr(formulas, "ExcelCompiler") and hasattr(formulas, "ExcelModel"):
-        if not path or not str(path).strip():
+        if not isinstance(path, str) or not path.strip():
             return {"results": {}, "error": "formulas_calc requires path for ExcelModel"}, state
+        if not isinstance(provided_inputs, dict):
+            return {"results": {}, "error": "invalid inputs"}, state
+        if not isinstance(requested_outputs, list):
+            return {"results": {}, "error": "invalid outputs"}, state
+        if not isinstance(out_fmt, str):
+            return {"results": {}, "error": "invalid output format"}, state
+
         try:
             return _formulas_excel_model_roundtrip(
                 formulas,
-                str(path),
+                path,
                 provided_inputs,
                 requested_outputs,
-                str(out_fmt),
+                out_fmt,
                 state,
             )
         except (OSError, ValueError, TypeError) as e:
@@ -336,7 +362,6 @@ def _formulas_step(
             if path:
                 workbook = compiler.read(path)
             else:
-                # some versions allow compiler.read_xml or creating empty workbook; fallback to None
                 workbook = getattr(compiler, "create_workbook", lambda: None)()
         else:
             # fallback to Parser usage
@@ -345,13 +370,11 @@ def _formulas_step(
                 raise RuntimeError("formulas has no ExcelCompiler or Parser API in this environment")
             compiler = parser()
             if path:
-                # some Parser variants offer read or loads; try read first
                 read = getattr(compiler, "read", None)
                 if callable(read):
                     workbook = read(path)
                 else:
-                    # try load from file content
-                    with open(path, "rb") as f:
+                    with open(str(path), "rb") as f:
                         content = f.read()
                     workbook = compiler.loads(content)
             else:
@@ -404,8 +427,10 @@ def _formulas_step(
             raise KeyError(f"sheet not found: {sheet_name}")
 
     # 4) Apply overrides from provided_inputs
+    overrides = provided_inputs if isinstance(provided_inputs, dict) else {}
+
     try:
-        for raw_key, val in provided_inputs.items():
+        for raw_key, val in overrides.items():
             sheet_name, addr = _split_sheet_and_addr(str(raw_key))
             sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet("")
             # handle ranges or single cells; try methods used by formulas internals
@@ -500,6 +525,7 @@ def _formulas_step(
     except (TypeError, AttributeError, IndexError, KeyError, ValueError) as e:
         return {"results": {}, "error": f"apply_overrides failed: {e}"}, state
 
+
     # 5) Compile / evaluate
     try:
         # many formulas distributions expect compiler.compile(workbook) then workbook.recalculate()
@@ -529,24 +555,22 @@ def _formulas_step(
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         return {"results": {}, "error": f"recalculation/evaluation failed: {e}"}, state
 
-    # 6) Collect requested outputs
+    outputs = requested_outputs if isinstance(requested_outputs, list) else []
+
     try:
-        for raw_out in requested_outputs:
+        for raw_out in outputs:
             sheet_name, addr = _split_sheet_and_addr(str(raw_out))
             sheet = _get_sheet(sheet_name if sheet_name else "")
             if ":" in addr:
                 coords = _expand_range(addr)
-                # build rows/cols shape
-                # determine min/max to shape nested lists
                 cols = [c for c, _ in coords]
                 rows = [r for _, r in coords]
                 min_c, max_c = min(cols), max(cols)
                 min_r, max_r = min(rows), max(rows)
-                out_grid: list[list[Any]] = []
+                out_grid: list[list[object]] = []
                 for rr in range(min_r, max_r + 1):
-                    row_vals: list[Any] = []
+                    row_vals: list[object] = []
                     for cc in range(min_c, max_c + 1):
-                        # locate cell object
                         cell_obj = None
                         try:
                             cell_obj = sheet.cell(f"{_a1_col_label(cc)}{rr}")
@@ -561,7 +585,6 @@ def _formulas_step(
                         if cell_obj is None:
                             row_vals.append(None)
                         else:
-                            # prefer .value, then .result, then .raw_value
                             val = None
                             for attr in ("value", "result", "raw_value", "raw"):
                                 if hasattr(cell_obj, attr):
@@ -571,7 +594,6 @@ def _formulas_step(
                     out_grid.append(row_vals)
                 results[str(raw_out)] = out_grid
             else:
-                # single cell
                 coords = _expand_range(addr)
                 c, r = coords[0]
                 cell_obj = None
@@ -599,7 +621,11 @@ def _formulas_step(
         return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
 
     # 7) Format output (only json/raw supported; others fall back)
-    fmt = (out_fmt or "json").lower()
+    if not isinstance(out_fmt, str):
+        fmt = "json"
+    else:
+        fmt = out_fmt.lower()
+
     if fmt not in ("json", "raw"):
         return {"results": {}, "error": f"unsupported output-format: {fmt}"}, state
     return {"results": results, "error": ""}, state

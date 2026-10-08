@@ -14,11 +14,11 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        { "name": "action", "type": "Any" },
-        { "name": "parser_output", "type": "Any" }
+        { "name": "action", "type": "Data" },
+        { "name": "parser_output", "type": "Data" }
       ],
       "output_ports": [
-        { "name": "results", "type": "Any" },
+        { "name": "results", "type": "Data" },
         { "name": "error", "type": "str" }
       ]
     }
