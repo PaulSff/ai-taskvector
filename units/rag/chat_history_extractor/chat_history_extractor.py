@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, safe_int
 from units.registry import UnitSpec, register_unit
 
-CHAT_HISTORY_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-CHAT_HISTORY_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
+CHAT_HISTORY_EXTRACT_INPUT_PORTS = [("data", "Data"), ("file_path", "str")]
+CHAT_HISTORY_EXTRACT_OUTPUT_PORTS = [("items", "list[Data]"), ("error", "str")]
 
 
 # defaults (can be overridden via params)
@@ -26,7 +27,7 @@ DEFAULT_CHUNK_MODE = "none"  # "none" (grouping) or "char" (character chunking)
 # -----------------------------
 
 
-def _to_string(val: Any) -> str:
+def _to_string(val: object) -> str:
     if val is None:
         return ""
     if isinstance(val, str):
@@ -39,26 +40,27 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _messages(
-    raw: dict[str, Any] | list[Any],
-) -> list[dict[str, Any]]:
-    if isinstance(raw, dict) and "messages" in raw:
+def _messages(raw: object) -> list[Data]:
+    if isinstance(raw, Mapping) and "messages" in raw:
         msgs = raw.get("messages") or []
     elif isinstance(raw, list):
         msgs = raw
     else:
         return []
 
+    if not isinstance(msgs, list):
+        return []
+
     return [m for m in msgs if isinstance(m, dict)]
 
 
 def _extract_meta(
-    raw: dict[str, Any] | list[Any],
+    raw: Data | list[Data],
     source: str,
     *,
     include_text: bool = True,
     include_feedbacks: bool = True,
-) -> dict[str, Any]:
+) -> Data:
     msgs = _messages(raw)
 
     roles = set()
@@ -93,7 +95,7 @@ def _extract_meta(
 
     name = f"Chat history ({len(msgs)} messages)"
 
-    meta: dict[str, Any] = {
+    meta: Data = {
         "content_type": "chat_history",
         "format": "chat_history",
         "name": name,
@@ -113,7 +115,7 @@ def _extract_meta(
 
 
 def _format_message(
-    m: dict[str, Any], role_fallback: str = DEFAULT_ROLE_FALLBACK
+    m: Data, role_fallback: str = DEFAULT_ROLE_FALLBACK
 ) -> str:
     role = m.get("role")
     role_str = str(role).strip() if role is not None else role_fallback or ""
@@ -151,16 +153,16 @@ def _format_message(
 
 
 def _group_messages(
-    messages: list[dict[str, Any]],
+    messages: list[Data],
     group_size: int,
     overlap: int,
-) -> list[list[dict[str, Any]]]:
+) -> list[list[Data]]:
     if group_size <= 0:
         group_size = 1
     if overlap >= group_size:
         overlap = group_size - 1
     step = group_size - overlap
-    groups: list[list[dict[str, Any]]] = []
+    groups: list[list[Data]] = []
     for i in range(0, len(messages), step):
         window = messages[i : i + group_size]
         if window:
@@ -168,7 +170,7 @@ def _group_messages(
     return groups
 
 
-def _build_text(group: list[dict[str, Any]], role_fallback: str) -> str:
+def _build_text(group: list[Data], role_fallback: str) -> str:
     return "\n".join(
         line
         for line in (
@@ -179,7 +181,7 @@ def _build_text(group: list[dict[str, Any]], role_fallback: str) -> str:
 
 
 def _lines_from_messages(
-    messages: list[dict[str, Any]], role_fallback: str
+    messages: list[Data], role_fallback: str
 ) -> list[str]:
     lines: list[str] = []
     for m in messages:
@@ -189,7 +191,7 @@ def _lines_from_messages(
     return lines
 
 
-def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
+def _slim_chat_meta_for_index(meta: Data) -> Data:
     keys = (
         "content_type",
         "format",
@@ -199,7 +201,7 @@ def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
         "roles",
         "agents",
     )
-    slim: dict[str, Any] = {k: meta[k] for k in keys if k in meta}
+    slim: Data = {k: meta[k] for k in keys if k in meta}
     fb = meta.get("feedbacks")
     if fb:
         slim["feedbacks"] = fb[:40] if isinstance(fb, list) and len(fb) > 40 else fb
@@ -215,9 +217,9 @@ def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _chat_history_extract_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:
@@ -273,19 +275,33 @@ def _chat_history_extract_step(
         # -----------------------------
         # params
         # -----------------------------
-        group_size = int(params.get("group_size", DEFAULT_GROUP_SIZE))
-        overlap = int(params.get("group_overlap", DEFAULT_GROUP_OVERLAP))
+        _group_size = safe_int(params.get("group_size"))
+        group_size = _group_size if _group_size is not None else DEFAULT_GROUP_SIZE
+
+        _overlap = safe_int(params.get("group_overlap"))
+        overlap = _overlap if _overlap is not None else DEFAULT_GROUP_OVERLAP
+
         group_size = max(1, min(group_size, 50))
         overlap = max(0, min(overlap, group_size - 1))
 
-        max_messages = int(params.get("max_messages", DEFAULT_MAX_MESSAGES))
+        max_messages = safe_int(params.get("max_messages"))
+        if max_messages is None:
+            max_messages = DEFAULT_MAX_MESSAGES
+
         include_text = bool(params.get("include_text", DEFAULT_INCLUDE_TEXT))
         include_feedbacks = bool(
             params.get("include_feedbacks", DEFAULT_INCLUDE_FEEDBACKS)
         )
         role_fallback = params.get("role_fallback", DEFAULT_ROLE_FALLBACK)
+        if not isinstance(role_fallback, str):
+            role_fallback = DEFAULT_ROLE_FALLBACK
+
         chunk_mode = params.get("chunk_mode", DEFAULT_CHUNK_MODE)
-        chunk_chars = int(params.get("chunk_chars", DEFAULT_CHUNK_CHARS))
+
+        chunk_chars = safe_int(params.get("chunk_chars"))
+        if chunk_chars is None:
+            chunk_chars = DEFAULT_CHUNK_CHARS
+
 
         messages = messages[:max_messages]
 
@@ -296,11 +312,13 @@ def _chat_history_extract_step(
         meta["raw_json_path"] = str(path)
         meta["origin"] = "chat_history"
 
-        items: list[dict[str, Any]] = []
+        items: list[Data] = []
 
         if chunk_mode == "char":
             # character chunking path (align with extractors.build_chat_history_index_documents)
+            role_fallback = str(params.get("role_fallback", ""))
             lines = _lines_from_messages(messages, role_fallback)
+
             if not lines:
                 return {"items": [], "error": ""}, state
 

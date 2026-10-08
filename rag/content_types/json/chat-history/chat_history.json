@@ -11,17 +11,17 @@
       "input_ports": [
         {
           "name": "data",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "file_path",
-          "type": "Any"
+          "type": "str"
         }
       ],
       "output_ports": [
         {
           "name": "items",
-          "type": "Any"
+          "type": "list[Data]"
         },
         {
           "name": "error",

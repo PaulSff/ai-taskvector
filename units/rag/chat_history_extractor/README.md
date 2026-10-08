@@ -10,8 +10,8 @@ Normalize chat histories for downstream indexing or processing. Accepts either a
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
-| **Inputs** | `data` | Any | Chat history: either a list of message dicts or a dict with a `"messages"` list. Each message may include `role`, `content`, `agent`, `feedback`, `ts`. |
-|  | `file_path` | Any | Optional path string to a file containing JSON chat history; overrides `data`'s file\_path and is used to set metadata file paths. |
+| **Inputs** | `data` | Data | Chat history: either a list of message dicts or a dict with a `"messages"` list. Each message may include `role`, `content`, `agent`, `feedback`, `ts`. |
+|  | `file_path` | str | Optional path string to a file containing JSON chat history; overrides `data`'s file\_path and is used to set metadata file paths. |
 | **Params** | `group_size` | int | Number of turns per group (default 4). Applied when `chunk_mode` != `"char"`. |
 |  | `group_overlap` | int | Sliding-window overlap between groups (default 0). |
 |  | `max_messages` | int | Maximum messages to process (default 8000). |
@@ -20,7 +20,7 @@ Normalize chat histories for downstream indexing or processing. Accepts either a
 |  | `role_fallback` | str | Fallback string when `role` is missing; set to `""` to omit empty-role-only lines like extractors.py (default `"?"`). |
 |  | `chunk_mode` | str | `"none"` (default) for grouping by turns, or `"char"` to produce character-chunked index documents matching extractors.py behavior. |
 |  | `chunk_chars` | int | Max chars per chunk when `chunk_mode` == `"char"` (default 4000). |
-| **Outputs** | `items` | Any | List of items: each item is `{"text": <str>, "metadata": <dict>}`. Metadata shape varies: grouping items include `group_index`, `group_size`, `total_groups`; char-chunked items include `chunk_index`, `chunk_count` and slim meta keys. |
+| **Outputs** | `items` | list[Data] | List of items: each item is `{"text": <str>, "metadata": <dict>}`. Metadata shape varies: grouping items include `group_index`, `group_size`, `total_groups`; char-chunked items include `chunk_index`, `chunk_count` and slim meta keys. |
 |  | `error` | str | Empty string on success, or an error message. |
 
 ## Metadata fields (commonly present)

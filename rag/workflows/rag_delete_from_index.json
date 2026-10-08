@@ -20,7 +20,7 @@
         "persist_dir": "settings.rag_index_data_dir"
       },
       "input_ports": [
-        { "name": "file_paths", "type": "Any" }
+        { "name": "file_paths", "type": "list[str]" }
       ],
       "output_ports": [
         { "name": "count", "type": "float" },
