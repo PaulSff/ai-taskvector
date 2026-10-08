@@ -76,6 +76,8 @@ CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
 MESSENGER = "taskvector"
+LAST_UI_UPDATE_TS = 0.0
+UI_UPDATE_INTERVAL_S = 0.05 # 50ms throttle
 
 
 logger = logging.getLogger(__name__)
@@ -236,6 +238,7 @@ async def build_agents_chat_panel(
     _scroll_generation = 0
     # _scroll_lock = asyncio.Lock()
     _restore_task_ref: list[asyncio.Task[None] | None] = [None]
+    _current_turn_task: list[asyncio.Task[None] | None] = [None]
 
     async def _scroll_chat_to_bottom() -> None:
         if is_streaming_ref[0]:
@@ -785,6 +788,8 @@ async def build_agents_chat_panel(
         on_select=_load_chat_file
     ).build()
     recent_menu_ref[0] = recent_menu
+    # Populate the menu immediately on initial load
+    recent_menu.refresh()
 
     def refresh_recent_menu() -> None:
         menu = recent_menu_ref[0]
@@ -925,45 +930,62 @@ async def build_agents_chat_panel(
 
             # Streaming callback: turn_driver calls this with the accumulated buffer
             # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
-            async def _stream_cb(session_id: str, chunk: str) -> None:
-                async def _undo_wrapper() -> None:
-                    if on_undo:
-                        page.run_task(on_undo)
+            # Throttling state for streaming updates
+            _last_ui_update_ts = LAST_UI_UPDATE_TS
+            _ui_update_interval = UI_UPDATE_INTERVAL_S
 
-                async def _redo_wrapper() -> None:
-                    if on_redo:
-                        page.run_task(on_redo)
+            async def _stream_cb(session_id: str, chunk: str) -> None:
+                nonlocal _last_ui_update_ts
 
                 if chunk.startswith(INLINE_STATUS_PREFIX):
                     rest = chunk[len(INLINE_STATUS_PREFIX) :]
                     _set_inline_status(rest if rest else None)
-                    # safe_page_update(page)
                     return
+
                 _ensure_stream_row()
                 wrapper = stream_wrapper_ref[0]
                 if wrapper is None:
                     return
+
+                # Update rich mode flag if code fence detected
                 if not stream_rich_ref[0] and streaming_agent_opened_code_fence(chunk):
                     stream_rich_ref[0] = True
+
+                # Throttling logic: only update the UI if the interval has passed
+                current_ts = asyncio.get_event_loop().time()
+                if current_ts - _last_ui_update_ts < _ui_update_interval:
+                    # We still update the underlying value for plain text to avoid loss,
+                    # but we skip the expensive .update() call
+                    if not stream_rich_ref[0]:
+                        t = stream_plain_txt_ref[0]
+                        if t: t.value = chunk
+                    return
+
+                _last_ui_update_ts = current_ts
+
                 if stream_rich_ref[0]:
-                    wrapper.controls[:] = [
-                        await build_agent_streaming_body(
-                            page=page,
-                            toast=_toast_now,
-                            on_undo=_undo_wrapper if on_undo else None,
-                            on_redo=_redo_wrapper if on_redo else None,
-                            content=chunk,
-                            bubble_width=None,
-                        )
-                    ]
+                    async def _undo_wrapper() -> None:
+                        if on_undo: page.run_task(on_undo)
+                    async def _redo_wrapper() -> None:
+                        if on_redo: page.run_task(on_redo)
+
+                    # Rebuild rich body
+                    rich_body = await build_agent_streaming_body(
+                        page=page,
+                        toast=_toast_now,
+                        on_undo=_undo_wrapper if on_undo else None,
+                        on_redo=_redo_wrapper if on_redo else None,
+                        content=chunk,
+                        bubble_width=None,
+                    )
+                    wrapper.controls[:] = [rich_body]
                     wrapper.update()
                 else:
                     t = stream_plain_txt_ref[0]
-                    if t is None:
-                        return
-                    t.value = chunk
-                    t.update()
-                # safe_page_update(page)
+                    if t is not None:
+                        t.value = chunk
+                        t.update()
+
                 _set_inline_status(None)
 
             # initialize once per render/update loop scope
@@ -1211,10 +1233,16 @@ async def build_agents_chat_panel(
         input_tf_first.value = ""
         input_tf.value = ""
         turn_id = new_id()
-        # Lock composer immediately so a second Enter cannot queue another send before the async chain runs.
+        # Lock composer immediately
         state.busy = True
         input_tf_first.disabled = True
         input_tf.disabled = True
+
+        # CANCEL any existing turn task to prevent parallel streaming
+        if _current_turn_task[0] is not None:
+            _current_turn_task[0].cancel()
+            _current_turn_task[0] = None
+
         run_turn_holder: list[Callable[[int], Awaitable[None]] | None] = [None]
 
         # Pre-build user message dict so the same object is stored in both the
@@ -1269,14 +1297,27 @@ async def build_agents_chat_panel(
 
 
         async def _bound_chat_turn(t: int) -> None:
-            await _run_chat_turn(
-                t,
-                turn_id=turn_id,
-                user_msg=user_msg,
-                message_for_workflow=message_for_workflow,
-            )
+            try:
+                await _run_chat_turn(
+                    t,
+                    turn_id=turn_id,
+                    user_msg=user_msg,
+                    message_for_workflow=message_for_workflow,
+                )
+            except asyncio.CancelledError:
+                logger.info("Chat turn task was cancelled.")
+                raise
 
-        run_turn_holder[0] = _bound_chat_turn
+        # Wrap the bound turn in a task so we can track and cancel it
+        async def _task_wrapper(t: int):
+            _current_turn_task[0] = asyncio.create_task(_bound_chat_turn(t))
+            try:
+                await _current_turn_task[0]
+            finally:
+                if _current_turn_task[0] == asyncio.current_task():
+                    _current_turn_task[0] = None
+
+        run_turn_holder[0] = _task_wrapper
 
     def _on_submit_first(_e) -> None:
         page.run_task(_send_from_field, input_tf_first)
