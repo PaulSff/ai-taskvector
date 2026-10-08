@@ -7,14 +7,14 @@ Inject(user_message) -> CleanText -> IsAQuestion -> branching logic
 from __future__ import annotations
 
 import re
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
-def _normalize_text(raw: Any) -> str:
+def _normalize_text(raw: object) -> str:
     if raw is None:
         return ""
     if isinstance(raw, bytes):
@@ -40,11 +40,11 @@ def _extract_question_sentence(text: str) -> str | None:
 
 
 def _is_a_question_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     raw = _normalize_text((inputs or {}).get("text"))
     if not raw:
         raw = _normalize_text((params or {}).get("text"))
