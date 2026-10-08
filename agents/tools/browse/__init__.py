@@ -108,7 +108,7 @@ async def run_browse_follow_up(
         BROWSE_FOLLOW_UP_SUFFIX,
     )
 
-    _safe_set_inline_status(ctx, "Loading pages…")
+    _safe_set_inline_status(ctx, "Reading pages…")
 
     browse_actions = po.actions.get_tool_actions("browse")
 
