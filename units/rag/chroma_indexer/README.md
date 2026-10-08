@@ -18,10 +18,10 @@
 
 | Port / Param | Direction | Type | Description |
 |----------------|-----------|------|-------------|
-| **Inputs** | `texts` | Any | List of chunk strings to index. |
-| | `metadatas` | Any | Parallel list of metadata dicts per chunk. |
-| | `embeddings` | Any | Optional pre-computed embedding vectors (one per chunk). |
-| **Output** | `count` | float | Number of chunks added. |
+| **Inputs** | `texts` | List[str] | List of chunk strings to index. |
+| | `metadatas` | List[Dict] | Parallel list of metadata dicts per chunk. |
+| | `embeddings` | List[List[float]] | Optional pre-computed embedding vectors (one per chunk). |
+| **Output** | `count` | int | Number of chunks added. |
 | **Params** | `persist_dir` | str | Index root (contains `chroma_db/`). Use `settings.rag_index_data_dir`. |
 | | `embedding_model` | str | Same model id as **Embedder**. Use `settings.rag_embedding_model`. |
 | | `indexer_max_workers` | int | max number of concurrent workers |

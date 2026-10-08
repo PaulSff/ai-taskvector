@@ -22,6 +22,7 @@ from typing import Any
 
 from chromadb.config import Settings
 
+from core.schemas.primitives import Data, Output
 from units.rag.chroma_locking import get_chroma_write_lock
 from units.registry import UnitSpec, register_unit
 
@@ -43,7 +44,17 @@ _ADD_BATCH = 64
 
 # ---- Chroma client cache ----
 _CLIENT_LOCK = Lock()
-_CLIENT_CACHE: dict[str, Any] = {}
+_CLIENT_CACHE: Data = {}
+
+# ---- Chroma client ports ----
+
+CHROMA_INDEXER_INPUT_PORTS = [
+    ("texts", "list[str]"),
+    ("metadatas", "list[dict]"),
+    ("embeddings", "list[list[float]]"),
+]
+CHROMA_INDEXER_OUTPUT_PORTS = [("count", "float")]
+
 
 def _persist_key(persist_dir: str | Path) -> str:
     return str(Path(persist_dir).expanduser().resolve())
@@ -82,7 +93,7 @@ def get_rag_collection(persist_dir: str | Path) -> Any:
     )
 
 
-def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+def _chroma_safe_metadata(meta: Data) -> Data:
     """Chroma allows str, int, float, bool, None. Serialize list/dict to JSON string."""
     out: dict[str, Any] = {}
     for k, v in meta.items():
@@ -106,7 +117,7 @@ def _add_rag_chunks(
     *,
     persist_dir: str | Path,
     embedding_model: str,
-    chunks: list[tuple[str, dict[str, Any]]],
+    chunks: list[tuple[str, Data]],
     precomputed_embeddings: list[list[float]] | None = None,
     anonymized_telemetry: bool = False,
 ) -> int:
@@ -169,7 +180,7 @@ def _rebuild_rag_collection(
     *,
     persist_dir: str | Path,
     embedding_model: str,
-    chunks: list[tuple[str, dict[str, Any]]],
+    chunks: list[tuple[str, Data]],
     anonymized_telemetry: bool = False,
 ) -> int:
     """Internal: drop the ``rag`` collection then rebuild it from ``chunks``."""
@@ -189,20 +200,12 @@ def _rebuild_rag_collection(
         )
 
 
-CHROMA_INDEXER_INPUT_PORTS = [
-    ("texts", "Any"),
-    ("metadatas", "Any"),
-    ("embeddings", "Any"),
-]
-CHROMA_INDEXER_OUTPUT_PORTS = [("count", "float")]
-
-
 def _chroma_indexer_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     persist_dir = str(params.get("persist_dir") or "").strip()
     model = str(params.get("embedding_model") or "").strip()
     anonymized_telemetry = bool(params.get("anonymized_telemetry", False))
@@ -241,11 +244,18 @@ def _chroma_indexer_step(
         anonymized_telemetry=anonymized_telemetry,
     )
 
-    max_workers = params.get("indexer_max_workers", 1)
-    try:
-        max_workers = int(max_workers)
-    except (TypeError, ValueError):
+    max_workers_raw = params.get("indexer_max_workers", 1)
+
+    if isinstance(max_workers_raw, int):
+        max_workers = max_workers_raw
+    elif isinstance(max_workers_raw, str):
+        try:
+            max_workers = int(max_workers_raw)
+        except ValueError:
+            max_workers = 1
+    else:
         max_workers = 1
+
     max_workers = max(1, max_workers)
 
     fut = _get_indexer_pool(max_workers=max_workers).submit(func)

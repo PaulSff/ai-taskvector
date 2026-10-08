@@ -696,15 +696,15 @@
       "input_ports": [
         {
           "name": "texts",
-          "type": "Any"
+          "type": "list[str]"
         },
         {
           "name": "metadatas",
-          "type": "Any"
+          "type": "list[str]"
         },
         {
           "name": "embeddings",
-          "type": "Any"
+          "type": "list[list[float]]"
         }
       ],
       "output_ports": [
