@@ -18,7 +18,7 @@ from core.schemas.primitives import WorkflowInputs
 from runtime.run import run_workflow
 
 
-def run_create_filename_workflow(
+async def run_create_filename_workflow(
     first_message: str,
     role_id: str,
 ) -> str:

@@ -128,13 +128,11 @@ def _schedule_name_from_first_message_async(
     async def _run() -> None:
         base = ""
         try:
-            resp = await asyncio.to_thread(
-                run_create_filename_workflow,
+            resp = await run_create_filename_workflow(
                 first_message,
                 CHAT_NAME_CREATOR_ROLE_ID,
             )
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
-
         except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             base = slugify_filename(first_message)
 
