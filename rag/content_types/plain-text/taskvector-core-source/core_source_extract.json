@@ -19,11 +19,11 @@
         "content_type": "core_source"
       },
       "input_ports": [
-        { "name": "data", "type": "Any" },
-        { "name": "file_path", "type": "Any" }
+        { "name": "data", "type": "object" },
+        { "name": "file_path", "type": "str" }
       ],
       "output_ports": [
-        { "name": "items", "type": "Any" },
+        { "name": "items", "type": "list" },
         { "name": "error", "type": "str" }
       ]
     },

@@ -20,18 +20,24 @@ Params:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data
 from units.registry import UnitSpec, register_unit
 
-PLAIN_TEXT_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-PLAIN_TEXT_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
+PLAIN_TEXT_EXTRACT_INPUT_PORTS = [
+    ("data", "object"),
+    ("file_path", "str"),
+]
+PLAIN_TEXT_EXTRACT_OUTPUT_PORTS = [
+    ("items", "list"),
+    ("error", "str")
+]
 
 _DEFAULT_MAX_CHARS = 50_000
 _DEFAULT_ENCODING = "utf-8"
 
 
-def _resolve_path(data: Any, file_path_port: Any) -> str:
+def _resolve_path(data: object | None, file_path_port: object | None) -> str:
     if isinstance(file_path_port, str) and file_path_port.strip():
         return file_path_port.strip()
     if isinstance(data, dict):
@@ -44,9 +50,9 @@ def _resolve_path(data: Any, file_path_port: Any) -> str:
 
 
 def _plain_text_extract_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:
@@ -58,7 +64,13 @@ def _plain_text_extract_step(
         if not path.is_file():
             return {"items": [], "error": f"file not found: {fp}"}, state
 
-        max_chars = max(1, int(params.get("max_chars", _DEFAULT_MAX_CHARS)))
+        raw = params.get("max_chars", _DEFAULT_MAX_CHARS)
+
+        if isinstance(raw, (int, str, float)):
+            max_chars = max(1, int(raw or _DEFAULT_MAX_CHARS))
+        else:
+            max_chars = _DEFAULT_MAX_CHARS
+
         encoding = (
             str(params.get("encoding", _DEFAULT_ENCODING)).strip() or _DEFAULT_ENCODING
         )

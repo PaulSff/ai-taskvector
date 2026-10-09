@@ -7,7 +7,7 @@ from units.rag.plain_text_extract.plain_text_extract import (
 )
 
 __all__ = [
-    "register_plain_text_extract",
     "PLAIN_TEXT_EXTRACT_INPUT_PORTS",
     "PLAIN_TEXT_EXTRACT_OUTPUT_PORTS",
+    "register_plain_text_extract",
 ]

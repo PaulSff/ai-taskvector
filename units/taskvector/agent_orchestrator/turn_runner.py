@@ -110,7 +110,7 @@ async def run_orchestrator_turn(
         graph = comment_result.graph_after
 
         # Save the the workflow after the modification
-        save_result = save_workflow_version(graph)
+        save_result = await save_workflow_version(graph)
 
         logger.info(
             "[run_orchestrator_turn] Workflow saved after Dispatcher's comments: saved=%s path=%s reason=%s",
