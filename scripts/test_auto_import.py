@@ -192,7 +192,10 @@ def test_import_workflow_agent_workflow_with_canonical_origin() -> None:
     assert outputs["error"] == "", f"Import_workflow error: {outputs['error']}"
     assert outputs["graph"] is not None
     assert isinstance(outputs["graph"], dict)
-    assert len(outputs["graph"].get("units", [])) > 1
+    graph_out = outputs["graph"]
+    if isinstance(graph_out, dict):
+        units = graph_out.get("units", [])
+        assert isinstance(units, list) and len(units) > 1
     assert "connections" in outputs["graph"]
 
 
@@ -230,15 +233,21 @@ def test_auto_import_workflow_with_agent_workflow_paste() -> None:
     )
 
     assert outputs is not None, "run_workflow returned None"
-    iw = outputs.get("import_workflow") or {}
-    err = iw.get("error") or ""
+    iw = outputs.get("import_workflow")
+    if not isinstance(iw, dict):
+        iw = {}
+    err = iw.get("error")
+    if not isinstance(err, str):
+        err = ""
     graph = iw.get("graph")
 
     assert err == "", f"import_workflow error: {err}"
     assert graph is not None, "import_workflow did not return graph"
     assert isinstance(graph, dict), "graph is not a dict"
     assert "units" in graph, "graph has no units"
-    assert len(graph["units"]) > 1, "expected multiple units from agent_workflow"
+    if isinstance(graph, dict):
+        units = graph.get("units")
+        assert isinstance(units, list) and len(units) > 1, "expected multiple units from agent_workflow"
     assert "connections" in graph
 
 

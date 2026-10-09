@@ -37,32 +37,37 @@ async def main():
     # Try common extraction variants:
     dr = None
     if isinstance(ad_out, dict):
-        dr = (
-            (ad_out.get("delegate_req") or {}).get("data")
-            or (ad_out.get("delegate_request") or {}).get("data")
-            or (ad_out.get("delegate") or {}).get("data")
-            or (ad_out.get("debug_delegate") or {}).get("data")
-        )
+        for key in ("delegate_req", "delegate_request", "delegate", "debug_delegate"):
+            candidate = ad_out.get(key)
+            if isinstance(candidate, dict):
+                data = candidate.get("data")
+                if isinstance(data, dict) and data:
+                    dr = data
+                    break
         if not dr:
             for k, v in ad_out.items():
-                if (
-                    isinstance(v, dict)
-                    and isinstance(v.get("data"), dict)
-                    and "delegate_to" in (v.get("data") or {})
-                ):
-                    dr = v.get("data")
+                if not isinstance(v, dict):
+                    continue
+
+                data = v.get("data")
+                if isinstance(data, dict) and "delegate_to" in data:
+                    dr = data
                     print("found delegate data under key:", k)
                     break
 
     print("extracted delegate data:")
     print(json.dumps(dr, indent=2, ensure_ascii=False))
 
+    delegate_to = dr.get("delegate_to") if isinstance(dr, dict) else None
+
     ok = (
         isinstance(dr, dict)
         and dr.get("ok") is True
-        and (dr.get("delegate_to") or "").strip()
+        and isinstance(delegate_to, str)
+        and bool(delegate_to.strip())
     )
     print("passes validation:", bool(ok))
+
 
 
 if __name__ == "__main__":

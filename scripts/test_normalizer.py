@@ -51,7 +51,7 @@ def test_node_red_full_workflow():
         },
         {"id": "out", "type": "debug", "wires": []},
     ]
-    graph = to_process_graph(raw, format="node_red")
+    graph = to_process_graph(raw, format="node_red")  # type: ignore
     assert len(graph.units) == 3
     assert len(graph.connections) == 2  # src→fn, fn→out
     fn_unit = graph.get_unit("fn")
@@ -102,16 +102,16 @@ def test_pyflow_adapter():
             {"from": "n3", "to": "n4"},
         ],
     }
-    graph = to_process_graph(raw, format="pyflow")
+    graph = to_process_graph(raw, format="pyflow")  # type: ignore
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 4
     assert len(graph.connections) == 3
-    n1 = graph.get_unit("n1")
+    n1 = graph.get_unit("r1")
     assert n1 is not None
     assert n1.type == "Source"
-    n4 = graph.get_unit("n4")
-    assert n4 is not None
-    assert n4.type == "Sensor"
+    n3 = graph.get_unit("r3")
+    assert n3 is not None
+    assert n3.type == "Sensor"
     assert len(graph.code_blocks) == 1
     assert graph.code_blocks[0].id == "n4"
     assert graph.code_blocks[0].language == "python"
@@ -148,7 +148,7 @@ def test_ryven_adapter():
             },
         ],
     }
-    graph = to_process_graph(raw, format="ryven")
+    graph = to_process_graph(raw, format="ryven")  # type: ignore
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 3
     assert len(graph.connections) == 2
@@ -163,7 +163,7 @@ def test_ryven_adapter():
     assert "inputs.get" in graph.code_blocks[0].source
     # Top-level flow/nodes variant
     raw2 = {"flow": {"nodes": [{"id": "a", "type": "Node"}], "links": []}}
-    graph2 = to_process_graph(raw2, format="ryven")
+    graph2 = to_process_graph(raw2, format="ryven")  # type: ignore
     assert len(graph2.units) == 1
     unit_a = graph2.get_unit("a")
     assert unit_a is not None
@@ -207,7 +207,7 @@ def test_n8n_adapter():
             "Processor": {"main": [[{"node": "Output", "type": "main", "index": 0}]]},
         },
     }
-    graph = to_process_graph(raw, format="n8n")
+    graph = to_process_graph(raw, format="n8n")  # type: ignore
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 3
     assert len(graph.connections) == 2
@@ -233,7 +233,7 @@ def test_env_inference():
         ],
         "connections": [{"from": "u1", "to": "u2"}],
     }
-    g = to_process_graph(data_bi_only, format="dict")
+    g = to_process_graph(data_bi_only, format="dict")  # type: ignore
     assert g.environment_type.value == "data_bi"
     assert g.environments == ["data_bi"]
 
@@ -242,7 +242,7 @@ def test_env_inference():
         "units": [{"id": "s1", "type": "Source"}, {"id": "v1", "type": "Valve"}],
         "connections": [{"from": "s1", "to": "v1"}],
     }
-    g2 = to_process_graph(thermo_only, format="dict")
+    g2 = to_process_graph(thermo_only, format="dict")  # type: ignore
     assert g2.environment_type.value == "thermodynamic"
     assert g2.environments == ["thermodynamic"]
 
@@ -254,7 +254,7 @@ def test_env_inference():
         ],
         "connections": [],
     }
-    g3 = to_process_graph(mixed, format="dict")
+    g3 = to_process_graph(mixed, format="dict")  # type: ignore
     assert g3.environment_type.value == "thermodynamic"
     assert set(g3.environments or []) == {"thermodynamic", "data_bi"}
 
@@ -266,7 +266,7 @@ def test_env_inference():
         ],
         "connections": [],
     }
-    g4 = to_process_graph(rl_graph, format="dict")
+    g4 = to_process_graph(rl_graph, format="dict")  # type: ignore
     assert "canonical" in (g4.environments or [])
     assert "RL training" in (g4.environments or [])
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -145,9 +145,12 @@ def test_filter_ge_filters_by_score_threshold() -> None:
         {},
         0.0,
     )
+    outputs = cast(dict[str, Any], outputs)
     assert outputs["row_count"] == 2.0
-    assert len(outputs["table"]) == 2
-    assert all(r["score"] >= 0.48 for r in outputs["table"])
+    table_out = outputs["table"]
+    assert isinstance(table_out, list)
+    assert len(table_out) == 2
+    assert all(r["score"] >= 0.48 for r in table_out)
 
 
 def test_filter_lt_filters_correctly() -> None:
@@ -167,6 +170,7 @@ def test_filter_lt_filters_correctly() -> None:
         {},
         0.0,
     )
+    outputs = cast(dict[str, Any], outputs)
     assert outputs["row_count"] == 1.0
     assert outputs["table"][0]["score"] == 0.1
 
@@ -209,7 +213,8 @@ def test_format_rag_formats_table_into_prompt_block() -> None:
         {},
         0.0,
     )
-    data = outputs["data"]
+    outputs = cast(dict[str, Any], outputs)
+    data = cast(str, outputs["data"])
     assert "Relevant context from knowledge base" in data
     assert "Valve controls flow" in data or "Valve" in data
     assert "document" in data.lower() or "Document" in data
@@ -229,7 +234,9 @@ def test_format_rag_respects_snippet_max() -> None:
         0.0,
     )
     # Snippet should be truncated to 50 chars
-    assert len(outputs["data"]) < 500
+    data = outputs["data"]
+    assert isinstance(data, (str, list))
+    assert len(data) < 500
 
 
 # ---- GraphSummary ----
@@ -290,7 +297,10 @@ def test_units_library_with_summary_includes_units_section() -> None:
     except (OSError, ValueError, TypeError):
         return
     data = outputs["data"]
+    data = outputs["data"]
+    assert isinstance(data, str)
     assert "Units Library" in data or "units" in data.lower() or "Library" in data
+
 
 
 # ---- RAG pipeline: RagSearch -> Filter -> FormatRagPrompt ----

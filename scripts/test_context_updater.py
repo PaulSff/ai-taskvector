@@ -222,8 +222,9 @@ def test_run_update_persists_repo_canonical_state():
         assert result.get("ok") is True
         state = load_state(rag_dir)
         assert state.get("repo_canonical_hash") is not None
-        assert isinstance(state.get("repo_canonical_files"), dict)
-        assert "gui/wf.json" in state["repo_canonical_files"]
+        repo_files = state.get("repo_canonical_files")
+        assert isinstance(repo_files, dict)
+        assert "gui/wf.json" in repo_files
         assert state.get("agents_rag_hash") is not None
         assert isinstance(state.get("agents_rag_files"), dict)
         fake_index.add_documents_and_index.assert_called_once()
