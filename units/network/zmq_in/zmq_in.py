@@ -71,12 +71,15 @@ through the executor or one of the supported loop parameters.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 from collections.abc import Coroutine
-from typing import Any, Literal
+from concurrent.futures import Future
+from typing import Literal, TypeGuard
 
+from core.schemas.primitives import Data, JsonObject, Output, safe_int
 from runtime.executor import GraphWakeupCallback, GraphWakeupEvent
 from services.logging import setup_colored_logging
 from services.zmq.zmq_messaging import ZmqTopics
@@ -88,32 +91,30 @@ logger = setup_colored_logging(logging.DEBUG)
 
 # Inputs are control inputs only. Received ZMQ messages are outputs.
 ZMQ_IN_INPUT_PORTS = [
-    ("start", "Any"),
-    ("stop", "Any"),
+    ("start", "dict"),
+    ("stop", "dict"),
 ]
 
 
 ZMQ_IN_OUTPUT_PORTS = [
-    ("token", "Any"),
-    ("job", "Any"),
-    ("result", "Any"),
-    ("update_batch", "Any"),
-    ("error", "Any"),
+    ("token", "dict"),
+    ("job", "dict"),
+    ("result", "dict"),
+    ("update_batch", "dict"),
+    ("error", "dict"),
 ]
 
 
 Status = Literal["running", "stopped", "starting", "stopping"]
 
 
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+def _safe_int(value: object, default: int = 0) -> int:
+    result = safe_int(value)
+    return default if result is None else result
 
 
 def _get_background_loop(
-    params: dict[str, Any],
+    params: Data,
 ) -> asyncio.AbstractEventLoop:
     executor = params.get("_executor")
 
@@ -215,7 +216,7 @@ def _load_subscriptions_from_json(
 
 
 def _infer_endpoints_from_params(
-    params: dict[str, Any],
+    params: Data,
 ) -> tuple[list[str], str | None]:
     subscriptions_json_path = params.get("subscriptions_json_path")
     endpoint = params.get("endpoint")
@@ -252,7 +253,7 @@ def _infer_endpoints_from_params(
     return deduped, json_path_used
 
 
-def _topics_from_params(params: dict[str, Any]) -> ZmqTopics:
+def _topics_from_params(params: Data) -> ZmqTopics:
     injected = params.get("topics")
 
     required_attributes = (
@@ -284,13 +285,17 @@ def _all_unit_topic_names(topics: ZmqTopics) -> list[str]:
 
 def _make_wakeup_handler(
     *,
-    state: dict[str, Any],
+    state: Data,
     output_name: str,
     unit_id: str,
     callback: GraphWakeupCallback | None,
 ):
-    async def _handler(_topic: str, payload: Any) -> None:
-        latest = state.setdefault("_latest", {})
+    async def _handler(_topic: str, payload: JsonObject) -> None:
+        latest = state.get("_latest")
+        if not isinstance(latest, dict):
+            latest = {}
+            state["_latest"] = latest
+
         latest[output_name] = payload
 
         state["_sequence"] = (
@@ -321,7 +326,7 @@ def _register_handlers(
     *,
     subscriber: ZmqSubscriber,
     topics: ZmqTopics,
-    state: dict[str, Any],
+    state: Data,
     unit_id: str,
     callback: GraphWakeupCallback | None,
 ) -> None:
@@ -346,7 +351,7 @@ def _register_handlers(
 
 
 def _fire_and_forget(
-    coroutine: Coroutine[Any, Any, Any],
+    coroutine: Coroutine[object, object, object],
     background_loop: asyncio.AbstractEventLoop,
 ) -> None:
     future = asyncio.run_coroutine_threadsafe(
@@ -354,7 +359,7 @@ def _fire_and_forget(
         background_loop,
     )
 
-    def _done_callback(done_future: Any) -> None:
+    def _done_callback(done_future: Future[object]) -> None:
         try:
             done_future.result()
         except asyncio.CancelledError:
@@ -365,16 +370,30 @@ def _fire_and_forget(
     future.add_done_callback(_done_callback)
 
 
+def is_graph_wakeup_callback(
+    value: object,
+) -> TypeGuard[GraphWakeupCallback]:
+    if not callable(value):
+        return False
+
+    try:
+        return inspect.signature(value).return_annotation in (None, type(None))
+    except (TypeError, ValueError):
+        return False
+
 async def _maybe_start_subscribers(
     *,
-    params: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    state: Data,
 ) -> None:
     unit_id = params.get("_unit_id")
 
-    callback: GraphWakeupCallback | None = params.get(
-        "_graph_wakeup_callback"
-    )
+    raw_callback = params.get("_graph_wakeup_callback")
+
+    if raw_callback is not None and not is_graph_wakeup_callback(raw_callback):
+        raise TypeError("'_graph_wakeup_callback' must be a GraphWakeupCallback")
+
+    callback: GraphWakeupCallback | None = raw_callback
 
     if not isinstance(unit_id, str) or not unit_id:
         raise ValueError("ZmqIn requires params['_unit_id']")
@@ -479,10 +498,13 @@ async def _maybe_start_subscribers(
 
 async def _maybe_stop_subscribers(
     *,
-    state: dict[str, Any],
+    state: Data,
 ) -> None:
-    subscribers: list[ZmqSubscriber] = list(
-        state.get("_subscribers") or []
+    raw_subscribers = state.get("_subscribers")
+    subscribers = (
+        [item for item in raw_subscribers if isinstance(item, ZmqSubscriber)]
+        if isinstance(raw_subscribers, list)
+        else []
     )
 
     try:
@@ -505,10 +527,9 @@ async def _maybe_stop_subscribers(
         state["running"] = False
 
 
-def _emit_latest_and_clear(
-    state: dict[str, Any],
-) -> dict[str, Any]:
-    latest = state.pop("_latest", {})
+def _emit_latest_and_clear(state: Data) -> Data:
+    raw_latest = state.pop("_latest", {})
+    latest = raw_latest if isinstance(raw_latest, dict) else {}
 
     return {
         "token": latest.get("token"),
@@ -519,7 +540,7 @@ def _emit_latest_and_clear(
     }
 
 
-def _empty_outputs() -> dict[str, Any]:
+def _empty_outputs() -> Data:
     return {
         "token": None,
         "job": None,
@@ -530,15 +551,12 @@ def _empty_outputs() -> dict[str, Any]:
 
 
 def _zmq_in_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     del dt
-
-    if state is None:
-        state = {}
 
     state.setdefault("running", False)
     state.setdefault("started_at", None)
