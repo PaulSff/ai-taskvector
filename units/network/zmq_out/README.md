@@ -12,11 +12,11 @@ This unit is designed to send system events, job requests, results, and errors t
 
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `token` | `Any` | Payload containing `run_id` and `token`. |
-| `job` | `Any` | Payload to trigger a new job (requires `run_id` and either `workflow_path` or `workflow_graph`). |
-| `result` | `Any` | Payload containing `run_id` and `outputs` dictionary. |
-| `update_batch` | `Any` | A dictionary of updates to be published. |
-| `error` | `Any` | Payload containing `run_id` and `error` message. |
+| `token` | `JsonObject` | Payload containing `run_id` and `token`. |
+| `job` | `JsonObject` | Payload to trigger a new job (requires `run_id` and either `workflow_path` or `workflow_graph`). |
+| `result` | `JsonObject` | Payload containing `run_id` and `outputs` dictionary. |
+| `update_batch` | `JsonObject` | A dictionary of updates to be published. |
+| `error` | `JsonObject` | Payload containing `run_id` and `error` message. |
 
 **Note:** Only one input port should be provided at a time. Providing multiple inputs simultaneously will result in an error.
 
@@ -24,7 +24,7 @@ This unit is designed to send system events, job requests, results, and errors t
 
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `bypass` | `Any` | Forwards the validated payload that was successfully queued for publishing. |
+| `bypass` | `JsonObject` | Forwards the validated payload that was successfully queued for publishing. |
 | `error` | `str` | Emits error messages if validation fails or if there is a runtime issue (e.g., missing endpoint). |
 
 ## Parameters

@@ -4,8 +4,8 @@ ZmqOut Unit is a simple publisher with an explicit control input.
 import asyncio
 import logging
 from collections.abc import Coroutine
+from concurrent.futures import Future
 from copy import deepcopy
-from typing import Any
 
 from core.schemas.primitives import Data, JsonObject, Output
 from services.logging import setup_colored_logging
@@ -26,19 +26,17 @@ logger = setup_colored_logging(logging.DEBUG)
 
 
 ZMQ_OUT_INPUT_PORTS = [
-    ("token", "Any"),
-    ("job", "Any"),
-    ("result", "Any"),
-    ("update_batch", "Any"),
-    ("error", "Any"),
+    ("token", "JsonObject"),
+    ("job", "JsonObject"),
+    ("result", "JsonObject"),
+    ("update_batch", "JsonObject"),
+    ("error", "JsonObject"),
 ]
-
 
 ZMQ_OUT_OUTPUT_PORTS = [
-    ("bypass", "Any"),
+    ("bypass", "JsonObject"),
     ("error", "str"),
 ]
-
 
 _PAYLOAD_INPUT_NAMES = (
     "token",
@@ -411,7 +409,7 @@ async def _publish_async(
 
 
 def _fire_and_forget(
-    coroutine: Coroutine[Any, Any, Any],
+    coroutine: Coroutine[object, object, object],
     background_loop: asyncio.AbstractEventLoop,
 ) -> None:
     future = asyncio.run_coroutine_threadsafe(
@@ -419,17 +417,13 @@ def _fire_and_forget(
         background_loop,
     )
 
-    def _done_callback(done_future: Any) -> None:
+    def _done_callback(done_future: Future[object]) -> None:
         try:
             done_future.result()
         except asyncio.CancelledError:
-            logger.debug(
-                "ZmqOut background operation was cancelled"
-            )
+            logger.debug("ZmqOut background operation was cancelled")
         except Exception:
-            logger.exception(
-                "ZmqOut background operation failed"
-            )
+            logger.exception("ZmqOut background operation failed")
 
     future.add_done_callback(_done_callback)
 
