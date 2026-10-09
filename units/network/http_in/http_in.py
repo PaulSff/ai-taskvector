@@ -6,8 +6,8 @@ Bypasses nothing; the next unit (request_router) routes the message to step_driv
 """
 from units.registry import UnitSpec, register_unit
 
-HTTP_IN_INPUT_PORTS = [("request", "any")]
-HTTP_IN_OUTPUT_PORTS = [("out", "any")]
+HTTP_IN_INPUT_PORTS = [("request", "dict")]
+HTTP_IN_OUTPUT_PORTS = [("out", "dict")]
 
 
 def _http_in_step(

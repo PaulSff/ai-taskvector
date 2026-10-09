@@ -10,8 +10,8 @@ Represents the HTTP endpoint where the training client sends reset/step requests
 
 | Port / Param | Direction | Type | Description                    |
 |--------------|-----------|------|--------------------------------|
-| **Inputs**   | in        | any  | `request` — injected by adapter |
-| **Outputs**  | out       | any  | Same as request (passthrough)   |
+| **Inputs**   | in        | dict  | `request` — injected by adapter (JSON payload) |
+| **Outputs**  | out       | dict  | Same as request (passthrough)   |
 | **Params**   | config    | —    | url, method, etc. (platform-specific) |
 
 ## Example
