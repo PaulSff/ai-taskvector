@@ -7,7 +7,7 @@ from units.rag.rag_detect_origin.rag_detect_origin import (
 )
 
 __all__ = [
-    "register_rag_detect_origin",
     "RAG_DETECT_ORIGIN_INPUT_PORTS",
     "RAG_DETECT_ORIGIN_OUTPUT_PORTS",
+    "register_rag_detect_origin",
 ]

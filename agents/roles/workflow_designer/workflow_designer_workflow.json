@@ -714,7 +714,11 @@
       "input_ports": [
         {
           "name": "graph",
-          "type": "Any"
+          "type": "GraphInput"
+        },
+        {
+          "name": "path",
+          "type": "str"
         }
       ],
       "output_ports": [
@@ -724,11 +728,15 @@
         },
         {
           "name": "graph",
-          "type": "Any"
+          "type": "GraphInput"
         },
         {
           "name": "error",
           "type": "str"
+        },
+        {
+          "name": "context",
+          "type": "RoutingContext"
         }
       ]
     },

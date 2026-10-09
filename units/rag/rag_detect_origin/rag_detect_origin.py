@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypedDict, TypeGuard, runtime_checkable
 
 from core.schemas.primitives import Data, Output
 from rag.content_types.registry import classify_content
@@ -15,23 +15,47 @@ except ImportError:
     yaml = None  # type: ignore
 
 
-RAG_DETECT_ORIGIN_INPUT_PORTS = [("graph", "Any"), ("path", "Any")]
+@runtime_checkable
+class Dumpable(Protocol):
+    def model_dump(self) -> Data | list[object]: ...
+    def dict(self) -> Data | list[object]: ...
+
+type GraphInput = str | Data | list[object] | Dumpable
+
+class RoutingContext(TypedDict):
+    file_path: str
+    parsed: Data | list[object] | None
+    origin: str
+
+RAG_DETECT_ORIGIN_INPUT_PORTS = [
+    ("graph", "GraphInput"),
+    ("path", "str")
+]
 RAG_DETECT_ORIGIN_OUTPUT_PORTS = [
     ("origin", "str"),
-    ("graph", "Any"),
+    ("graph", "GraphInput"),
     ("error", "str"),
-    ("context", "Any"),
+    ("context", "RoutingContext"),
 ]
 
+def _is_blank_str(x: object) -> TypeGuard[str]:
+    return isinstance(x, str) and not x.strip()
 
-def _bundle_parts(graph: Any) -> tuple[Any | None, str, bool]:
-    """Indexer-style ``{parsed, file_path}``: returns (parsed value, file_path, True) if key ``parsed`` exists."""
-    if not isinstance(graph, dict):
+def _is_graph_input(x: object) -> TypeGuard[GraphInput]:
+    return isinstance(x, (str, dict, list))
+
+def _bundle_parts(
+    graph: GraphInput,
+) -> tuple[Data | list[object] | None, str, bool]:
+    if not isinstance(graph, dict) or "parsed" not in graph:
         return None, "", False
-    if "parsed" not in graph:
+
+    parsed = graph["parsed"]
+    if parsed is not None and not isinstance(parsed, (dict, list)):
         return None, "", False
+
     fp = str(graph.get("file_path") or "").strip()
-    return graph.get("parsed"), fp, True
+    return parsed, fp, True
 
 
 def _try_parse_text(text: str) -> tuple[object | None, str | None]:
@@ -82,8 +106,8 @@ def _read_file_text(path: Path) -> tuple[str | None, str | None]:
 
 
 def _graph_to_data(
-    graph: Any,
-) -> tuple[dict[str, Any] | list[Any] | None, Path, str | None]:
+    graph: GraphInput | None,
+) -> tuple[Data | list[object] | None, Path, str | None]:
     """
     Return (JSON/YAML root for classify, path hint for discriminants, error_message).
 
@@ -210,10 +234,11 @@ def _rag_detect_origin_step(
     """Output 0: origin (content_kind); output 1: normalized graph; output 2: error; output 3: routing context."""
     g_in = inputs.get("graph") if inputs else None
     p_in = inputs.get("path") if inputs else None
-    graph_in: Any = None
-    if g_in is not None and not (isinstance(g_in, str) and not str(g_in).strip()):
+    graph_in: GraphInput | None = None
+
+    if g_in is not None and not _is_blank_str(g_in) and _is_graph_input(g_in):
         graph_in = g_in
-    elif p_in is not None and not (isinstance(p_in, str) and not str(p_in).strip()):
+    elif p_in is not None and not _is_blank_str(p_in) and _is_graph_input(p_in):
         graph_in = p_in
 
     err_msg = ""

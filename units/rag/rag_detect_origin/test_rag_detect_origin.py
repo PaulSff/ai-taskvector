@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-# Adjust import path as needed to import the module under test
 import units.rag.rag_detect_origin.rag_detect_origin as rdo
 
 
@@ -37,7 +36,7 @@ def write_temp(path: Path, content: str):
 def test_json_file(tmp_path):
     p = tmp_path / "g.json"
     write_temp(p, json.dumps({"type": "example"}))
-    data, hint = rdo._graph_to_data(str(p))
+    data, hint, _ = rdo._graph_to_data(str(p))
     assert isinstance(data, dict)
     assert hint == p
     out, _ = rdo._rag_detect_origin_step({}, {"graph": str(p)}, {}, 0.0)
@@ -49,22 +48,20 @@ def test_yaml_file(tmp_path):
     p = tmp_path / "g.yaml"
     yaml_text = "type: example\n"
     write_temp(p, yaml_text)
-    data, hint = rdo._graph_to_data(str(p))
-    # If PyYAML installed, data should be dict; otherwise None (file exists but parser not available)
+    data, _hint, _ = rdo._graph_to_data(str(p))
     if rdo.yaml is not None:
         assert isinstance(data, dict)
         out, _ = rdo._rag_detect_origin_step({}, {"graph": str(p)}, {}, 0.0)
         assert out["origin"] == "example-kind"
         assert out["graph"] == {"type": "example"}
     else:
-        # Without PyYAML, parsing fails and classify will receive None -> generic
         out, _ = rdo._rag_detect_origin_step({}, {"graph": str(p)}, {}, 0.0)
         assert out["origin"] == "json-generic"
 
 
 def test_json_string():
     s = json.dumps({"type": "example"})
-    data, hint = rdo._graph_to_data(s)
+    data, _hint, _ = rdo._graph_to_data(s)
     assert isinstance(data, dict)
     out, _ = rdo._rag_detect_origin_step({}, {"graph": s}, {}, 0.0)
     assert out["origin"] == "example-kind"
@@ -72,7 +69,7 @@ def test_json_string():
 
 def test_yaml_string():
     s = "type: example\n"
-    data, hint = rdo._graph_to_data(s)
+    data, _hint, _ = rdo._graph_to_data(s)
     if rdo.yaml is not None:
         assert isinstance(data, dict)
         out, _ = rdo._rag_detect_origin_step({}, {"graph": s}, {}, 0.0)
@@ -85,15 +82,15 @@ def test_yaml_string():
 
 def test_bundle_with_parsed_dict():
     bundle = {"parsed": {"type": "example"}, "file_path": ""}
-    data, hint = rdo._graph_to_data(bundle)
+    data, _hint, _ = rdo._graph_to_data(bundle)
     assert isinstance(data, dict)
     out, _ = rdo._rag_detect_origin_step({}, {"graph": bundle}, {}, 0.0)
     assert out["origin"] == "example-kind"
 
 
 def test_bundle_with_parsed_yaml_string():
-    bundle = {"parsed": "type: example\n", "file_path": ""}
-    data, hint = rdo._graph_to_data(bundle)
+    bundle: dict[str, object] = {"parsed": "type: example\n", "file_path": ""}
+    data, _hint, _ = rdo._graph_to_data(bundle)
     if rdo.yaml is not None:
         assert isinstance(data, dict)
         out, _ = rdo._rag_detect_origin_step({}, {"graph": bundle}, {}, 0.0)
@@ -106,7 +103,7 @@ def test_bundle_with_parsed_yaml_string():
 def test_scalar_yaml_wrap(tmp_path):
     p = tmp_path / "scalar.yaml"
     write_temp(p, "42\n")
-    data, hint = rdo._graph_to_data(str(p))
+    data, _hint, _ = rdo._graph_to_data(str(p))
     if rdo.yaml is not None:
         # Should wrap scalar into {"value": 42}
         assert isinstance(data, dict)
