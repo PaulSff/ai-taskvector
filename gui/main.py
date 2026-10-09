@@ -446,7 +446,7 @@ async def main(page: ft.Page) -> None:
         )
 
     turn_progress_bar = TurnProgressBar() # <- TaskVector native chat
-    _base_on_turn_status = on_turn_status_hook(page, turn_progress_bar)
+    _base_on_turn_status = await on_turn_status_hook(page, turn_progress_bar)
 
     # Trigger RAG update on turn success to ingest new history, context
     async def on_turn_status(payload: Data) -> None:

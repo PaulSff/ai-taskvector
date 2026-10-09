@@ -9,7 +9,7 @@ from core.schemas.primitives import Data
 from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
 
 
-def on_turn_status_hook(
+async def on_turn_status_hook(
     page: ft.Page,
     bar: TurnProgressBar,
 ) -> Callable[[Data], Coroutine[object, object, None]]:
