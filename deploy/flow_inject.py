@@ -9,8 +9,7 @@ observation_source_ids to the agent node.
 PyFlow: Agent node includes template-based Python code_block (HTTP client to
 inference service). Run: python -m server.inference_server --model <path>
 """
-from typing import Any
-
+from core.schemas.primitives import Data
 from deploy.agent_inject import (
     render_llm_agent_predict_js,
     render_llm_agent_predict_n8n,
@@ -19,7 +18,7 @@ from deploy.agent_inject import (
 )
 
 
-def _nodes_list(flow: dict | list) -> list[dict[str, Any]]:
+def _nodes_list(flow: dict | list) -> list[Data]:
     """Return mutable list of node dicts from flow (array, or flow with nodes/flows)."""
     if isinstance(flow, list):
         return list(flow)
@@ -33,7 +32,7 @@ def _nodes_list(flow: dict | list) -> list[dict[str, Any]]:
     return []
 
 
-def _put_back(flow: dict | list, nodes: list[dict[str, Any]]) -> dict | list:
+def _put_back(flow: dict | list, nodes: list[Data]) -> dict | list:
     """Put nodes back into the same structure as flow."""
     if isinstance(flow, list):
         return nodes
@@ -90,17 +89,23 @@ def inject_agent_into_flow(
         nid = n.get("id") or n.get("name")
         if nid not in source_ids:
             continue
-        wires = list(n.get("wires") or [])
+
+        wires_obj = n.get("wires")
+        if isinstance(wires_obj, list):
+            wires = [list(w) for w in wires_obj if isinstance(w, list)]
+        else:
+            wires = []
+
         if not wires:
             wires = [[]]
-        else:
-            wires = [list(w) for w in wires]
+
         if agent_id not in wires[0]:
             wires[0].append(agent_id)
+
         n["wires"] = wires
 
     # Create the agent node: inputs from observation sources, output to action targets
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "type": agent_type,
         "wires": [list(action_target_ids)],
@@ -148,7 +153,7 @@ def inject_llm_agent_into_flow(
         inference_url, observation_source_ids,
         system_prompt, user_prompt_template, model_name, provider, host,
     )
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "type": "function",
         "z": flow_id,
@@ -164,11 +169,15 @@ def inject_llm_agent_into_flow(
         nid = n.get("id") or n.get("name")
         if nid not in observation_source_ids:
             continue
-        wires = list(n.get("wires") or [])
+        wires_obj = n.get("wires")
+        if isinstance(wires_obj, list):
+            wires = [list(w) for w in wires_obj if isinstance(w, list)]
+        else:
+            wires = []
+
         if not wires:
             wires = [[]]
-        else:
-            wires = [list(w) for w in wires]
+
         if agent_id not in wires[0]:
             wires[0].append(agent_id)
         n["wires"] = wires
@@ -292,7 +301,7 @@ def inject_agent_into_pyflow_flow(
     conns = _pyflow_conns_ensure(flow)
 
     code_src = render_rl_agent_predict_py(inference_url, observation_source_ids)
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "name": agent_id,
         "type": agent_type,
@@ -345,7 +354,7 @@ def inject_llm_agent_into_pyflow_flow(
         inference_url, observation_source_ids,
         system_prompt, user_prompt_template, model_name, provider, host,
     )
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "name": agent_id,
         "type": "LLMAgent",
@@ -431,7 +440,7 @@ def inject_agent_into_n8n_flow(
         "main": [[{"node": t, "type": "main", "index": 0} for t in action_target_ids]],
     }
 
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "name": agent_id,
         "type": agent_type,
@@ -488,7 +497,7 @@ def inject_llm_agent_into_n8n_flow(
             main_out.append([])
         main_out[0].append(dict(agent_conn))
     conns[agent_id] = {"main": [[{"node": t, "type": "main", "index": 0} for t in action_target_ids]]}
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_id,
         "name": agent_id,
         "type": "n8n-nodes-base.code",
@@ -501,7 +510,7 @@ def inject_llm_agent_into_n8n_flow(
 
 
 def inject_agent_into_comfyui_workflow(
-    workflow: dict[str, Any],
+    workflow: Data,
     agent_id: str,
     model_path: str,
     observation_source_ids: list[str],
@@ -509,7 +518,7 @@ def inject_agent_into_comfyui_workflow(
     *,
     inference_url: str = "http://127.0.0.1:8000/predict",
     position: tuple[float, float] = (500, 300),
-) -> dict[str, Any]:
+) -> Data:
     """
     Add an RL Agent node (RLAgentPredict) to a ComfyUI workflow and wire it.
 
@@ -603,7 +612,7 @@ def inject_agent_into_comfyui_workflow(
                 n["inputs"] = ins
                 break
 
-    agent_node: dict[str, Any] = {
+    agent_node: Data = {
         "id": agent_node_id,
         "type": "RLAgentPredict",
         "pos": [x, y],
