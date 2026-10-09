@@ -3,13 +3,13 @@ from typing import cast
 
 import yaml
 
-from core.schemas.primitives import is_string_keyed_dict
+from core.schemas.primitives import Data, is_string_keyed_dict
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 default_conf = SCRIPT_DIR / "conf.yaml"
 
 
-def load_conf_yaml(path: str | Path) -> dict[str, object]:
+def load_conf_yaml(path: str | Path) -> Data:
     with open(path, "r", encoding="utf-8") as f:
         loaded: object = cast(object, yaml.safe_load(f))
 
@@ -25,7 +25,7 @@ def load_conf_yaml(path: str | Path) -> dict[str, object]:
 
 
 def get_conf_value(
-    conf: dict[str, object],
+    conf: Data,
     key: str,
     default: object | None = None,
 ) -> object:
@@ -38,7 +38,7 @@ def get_conf_value(
     raise KeyError(f"Missing required key in conf.yaml: {key}")
 
 
-def get_conf_int(conf: dict[str, object], key: str) -> int:
+def get_conf_int(conf: Data, key: str) -> int:
     value = get_conf_value(conf, key)
 
     if isinstance(value, bool) or not isinstance(value, int):
@@ -47,7 +47,7 @@ def get_conf_int(conf: dict[str, object], key: str) -> int:
     return value
 
 
-def get_conf_str_list(conf: dict[str, object], key: str) -> list[str]:
+def get_conf_str_list(conf: Data, key: str) -> list[str]:
     value = get_conf_value(conf, key)
 
     if not isinstance(value, list):
@@ -63,7 +63,7 @@ def get_conf_str_list(conf: dict[str, object], key: str) -> list[str]:
     return cast(list[str], items)
 
 
-def get_conf_str_dict(conf: dict[str, object], key: str) -> dict[str, str]:
+def get_conf_str_dict(conf: Data, key: str) -> dict[str, str]:
     value = get_conf_value(conf, key)
 
     if not isinstance(value, dict):
@@ -89,7 +89,7 @@ def load_conf(
     path: str | Path | None = None,
     *,
     required_keys: list[str] | None = None,
-) -> dict[str, object]:
+) -> Data:
     conf_path = path or default_conf
     conf = load_conf_yaml(conf_path)
 
