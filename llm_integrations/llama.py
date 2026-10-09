@@ -6,6 +6,8 @@ from typing import Any
 
 import requests
 
+from core.schemas.primitives import Data
+
 LLAMA_SERVE_DEFAULT_HOST = "http://127.0.0.1:8080"
 LLAMA_SERVE_DEFAULT_TIMEOUT_S = 300
 
@@ -73,7 +75,7 @@ def chat(
     model: str,
     messages: list[dict[str, str]],
     timeout_s: int = LLAMA_SERVE_DEFAULT_TIMEOUT_S,
-    options: dict[str, Any] | None = None,
+    options: Data | None = None,
     api_key: str | None = None,
 ) -> str:
     """
@@ -113,7 +115,7 @@ def chat_stream(
     model: str,
     messages: list[dict[str, str]],
     timeout_s: int = LLAMA_SERVE_DEFAULT_TIMEOUT_S,
-    options: dict[str, Any] | None = None,
+    options: Data | None = None,
     api_key: str | None = None,
 ) -> Iterator[str]:
     """

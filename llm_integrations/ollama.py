@@ -8,10 +8,18 @@ don't depend directly on ollama-python details.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import TypedDict
+
+from core.schemas.primitives import Data
 
 OLLAMA_DEFAULT_HOST = "http://127.0.0.1:11434"
 OLLAMA_DEFAULT_TIMEOUT_S = 300
+
+
+class OllamaClientKwargs(TypedDict, total=False):
+    host: str
+    timeout: int
+    headers: dict[str, str]
 
 
 def format_ollama_exception(e: Exception) -> str:
@@ -83,13 +91,12 @@ def _extract_content(response: object) -> str:
 
 def _ollama_client_kwargs(
     host: str, timeout_s: int, api_key: str | None
-) -> dict[str, Any]:
-    """Build kwargs for ollama Client (host, timeout, optional Authorization header for Cloud)."""
-    kwargs: dict[str, Any] = {"host": host, "timeout": timeout_s}
-    if (api_key or "").strip():
-        kwargs["headers"] = {"Authorization": f"Bearer {(api_key or '').strip()}"}
+) -> OllamaClientKwargs:
+    kwargs: OllamaClientKwargs = {"host": host, "timeout": timeout_s}
+    key = (api_key or "").strip()
+    if key:
+        kwargs["headers"] = {"Authorization": f"Bearer {key}"}
     return kwargs
-
 
 # --- Cloud detection helper ---
 
@@ -139,8 +146,8 @@ def _messages_to_raw_prompt(messages: list[dict[str, str]]) -> str:
 
 
 def _call_client_chat_with_messages(
-    client, model: str, messages: list[dict[str, str]], options: dict[str, Any]
-) -> Any:
+    client, model: str, messages: list[dict[str, str]], options: Data
+) -> object:
     """
     Call client.chat according to model type.
 
@@ -163,7 +170,7 @@ def chat(
     model: str,
     messages: list[dict[str, str]],
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
-    options: dict[str, Any] | None = None,
+    options: Data | None = None,
     api_key: str | None = None,
 ) -> str:
     """
@@ -193,7 +200,7 @@ def chat_stream(
     model: str,
     messages: list[dict[str, str]],
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
-    options: dict[str, Any] | None = None,
+    options: Data | None = None,
     api_key: str | None = None,
 ) -> Iterator[str]:
     """
