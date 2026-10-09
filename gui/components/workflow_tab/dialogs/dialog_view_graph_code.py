@@ -465,7 +465,7 @@ def open_view_graph_code_dialog(
 
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
-            save_workflow_version(new_graph, project_name=proj, template=template)
+            await save_workflow_version(new_graph, project_name=proj, template=template)
 
             _close_dlg()
 
@@ -691,7 +691,7 @@ def open_view_graph_code_dialog(
 
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
-            result = save_workflow_version(new_graph, project_name=proj, template=template)
+            result = await save_workflow_version(new_graph, project_name=proj, template=template)
 
             if getattr(result, "reason", None) == "saved":
                 await show_toast(page, "Saved!")

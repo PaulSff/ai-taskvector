@@ -300,7 +300,7 @@ def _build_role(role_id: str, out_path: Path) -> str:
 
 
 # Updated build_prompt_templates to discover roles and build them
-def build_prompt_templates(
+async def build_prompt_templates(
     workflow_designer_path: Path | None = None,
     rl_coach_path: Path | None = None,
     create_filename_path: Path | None = None,
@@ -346,14 +346,13 @@ def build_prompt_templates(
         return False, str(e)
 
 
-def main() -> None:
-    """CLI entry: use paths from app settings or OUT_DIR."""
-    success, message = build_prompt_templates(None, None)
+async def main() -> None:
+    success, message = await build_prompt_templates(None, None)
     if success:
         print(message)
     else:
         raise SystemExit(message)
 
-
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())

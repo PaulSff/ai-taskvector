@@ -53,7 +53,7 @@ def open_leave_comment_dialog(
 
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
-        result = save_workflow_version(new_graph, project_name=proj, template=template)
+        result = await save_workflow_version(new_graph, project_name=proj, template=template)
 
         if result.reason == "saved":
             _toast("Saved!")

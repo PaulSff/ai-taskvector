@@ -504,7 +504,7 @@ def open_add_node_dialog(
             # --- auto-save ---
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
-            auto_result = save_workflow_version(
+            auto_result = await save_workflow_version(
                 new_graph, project_name=proj, template=template
             )
 

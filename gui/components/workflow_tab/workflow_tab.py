@@ -150,7 +150,7 @@ async def build_workflow_tab(
 
                 proj = get_workflow_project_name()
                 template = get_workflow_save_path_template()
-                result = save_workflow_version(
+                result = await save_workflow_version(
                     graph, project_name=proj, template=template
                 )
 
@@ -406,7 +406,7 @@ async def build_workflow_tab(
 
             proj = get_workflow_project_name()
             template = get_workflow_save_path_template()
-            result = save_workflow_version(graph, project_name=proj, template=template)
+            result = await save_workflow_version(graph, project_name=proj, template=template)
 
             if result.reason == "saved":
                 show_toast(page, "Saved!")

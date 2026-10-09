@@ -89,7 +89,7 @@ _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
 
-def _append_message_to_session(
+async def _append_message_to_session(
     s: _Session, role: str, content: str, meta: Data | None = None
 ) -> Data:
     msg: Data = {
@@ -106,7 +106,7 @@ def _append_message_to_session(
         s.chat_path = suggest_initial_chat_path(_chat_history_dir)
 
     try:
-        _ = append_chat_message_delta(s.chat_path, message_for_persist(msg))
+        await append_chat_message_delta(s.chat_path, message_for_persist(msg))
     except (OSError, TypeError, ValueError):
         pass
     return msg
@@ -116,7 +116,7 @@ def _append_message_to_session(
 # from gui.llm import get_llm_provider, get_llm_provider_config, run_create_filename_workflow
 # from gui.config import _chat_history_dir
 
-def _schedule_name_from_first_message_async(
+async def _schedule_name_from_first_message_async(
     s: _Session,
     first_message: str,
     on_rename: Callable[[Path], None] | None = None,
@@ -156,7 +156,7 @@ def _schedule_name_from_first_message_async(
 
                 try:
                     snapshot = to_snapshot(s)
-                    payload = build_chat_payload(
+                    payload = await build_chat_payload(
                         schema_version=3,
                         session_id=snapshot["session_id"],
                         created_at=snapshot["created_at"],
@@ -167,7 +167,7 @@ def _schedule_name_from_first_message_async(
                         get_llm_provider=lambda a: get_llm_provider(agent=a),
                         get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
                     )
-                    _ = write_chat_payload(new_path, payload)
+                    await write_chat_payload(new_path, payload)
                 except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
                     pass
 
@@ -189,7 +189,7 @@ def _schedule_name_from_first_message_async(
 # Session helpers (public API for chat.py)
 # ---------------------------------------------------------------------------
 
-def restore_session(session_id: str, *, path: Path, payload: Data) -> None:
+async def restore_session(session_id: str, *, path: Path, payload: Data) -> None:
     """Restore a session from a loaded chat-file payload."""
     with _sessions_lock:
         s = _sessions.get(session_id)
@@ -241,7 +241,7 @@ def restore_session(session_id: str, *, path: Path, payload: Data) -> None:
         s.applied_flag = True
 
 
-def append_session_message(session_id: str, msg: Data) -> None:
+async def append_session_message(session_id: str, msg: Data) -> None:
     """Append a pre-built message dict to session history and the delta file.
 
     Use this for messages that bypass handle_turn (e.g. session-language
@@ -261,22 +261,24 @@ def append_session_message(session_id: str, msg: Data) -> None:
 
     try:
         # Assign to '_' because the function returns a bool that isn't used
-        _ = append_chat_message_delta(s.chat_path, message_for_persist(msg))
+        await append_chat_message_delta(s.chat_path, message_for_persist(msg))
     except OSError as e:
         # e.g., file/path issues
         logger.warning("Failed to append chat delta: %s", e)
 
 
 
-def persist_session(session_id: str, *, agent_selected: str | None = None) -> bool:
+async def persist_session(session_id: str, *, agent_selected: str | None = None) -> bool:
     """Write a full history snapshot for the session to disk. Returns True on success."""
     with _sessions_lock:
         s = _sessions.get(session_id)
+
     if s is None or s.chat_path is None:
         return False
+
     try:
         snapshot = to_snapshot(s)
-        payload = build_chat_payload(
+        payload = await build_chat_payload(
             schema_version=3,
             session_id=snapshot["session_id"],
             created_at=snapshot["created_at"],
@@ -288,21 +290,19 @@ def persist_session(session_id: str, *, agent_selected: str | None = None) -> bo
             get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
         )
 
-        return write_chat_payload(s.chat_path, payload)
+        return await write_chat_payload(s.chat_path, payload)
 
     except KeyError as e:
-        # snapshot missing required fields
         logger.warning("Snapshot missing key: %s", e)
         return False
-
-    except (OSError) as e:
-        # filesystem / IO problems writing payload
+    except OSError as e:
         logger.warning("Failed to write chat payload: %s", e)
         return False
-
     except ValueError as e:
-        # build_chat_payload validation failures
         logger.warning("Invalid chat payload: %s", e)
+        return False
+    except (ImportError, AttributeError, TypeError, TimeoutError) as e:
+        logger.warning("Failed to persist session: %s", e)
         return False
 
 
@@ -337,7 +337,7 @@ async def handle_turn(
         if s.chat_path is None:
             s.chat_path = suggest_initial_chat_path(_chat_history_dir)
 
-    def _append_agent_placeholder_if_needed(
+    async def _append_agent_placeholder_if_needed(
         *,
         turn_id: str,
         assistant_message_id: str,
@@ -349,12 +349,12 @@ async def handle_turn(
         """
         try:
             if s.chat_path is not None:
-                _ = _append_message_to_session(
+                await _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
 
                 try:
-                    _ = append_chat_message_delta(
+                    await append_chat_message_delta(
                         s.chat_path,
                         {
                             "role": "agent",
@@ -371,7 +371,7 @@ async def handle_turn(
                     # optionally: raise
                     # raise
             else:
-                _ = _append_message_to_session(
+                await _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
 
@@ -400,7 +400,7 @@ async def handle_turn(
                 return
 
             try:
-                _ = append_chat_message_delta(
+                await append_chat_message_delta(
                     s.chat_path,
                     {
                         "role": "agent",
@@ -677,7 +677,7 @@ async def handle_turn(
             if s.chat_path is None:
                 s.chat_path = suggest_initial_chat_path(_chat_history_dir)
                 try:
-                    _ = append_chat_message_delta(
+                    await append_chat_message_delta(
                         s.chat_path, message_for_persist(pre_built_user_msg)
                     )
                 except (OSError) as e:
@@ -689,7 +689,7 @@ async def handle_turn(
                     raise
         else:
             turn_id = new_id()
-            _ = _append_message_to_session(
+            await _append_message_to_session(
                 s,
                 "user",
                 user_message,
@@ -714,7 +714,7 @@ async def handle_turn(
 
         if not s.has_sent_any:
             s.has_sent_any = True
-            _schedule_name_from_first_message_async(
+            await _schedule_name_from_first_message_async(
                 s, user_message, on_rename=on_rename
             )
 
@@ -835,7 +835,7 @@ async def handle_turn(
                     with s.run_lock:
                         _ensure_chat_path()
 
-                    _append_agent_placeholder_if_needed(
+                    await _append_agent_placeholder_if_needed(
                         turn_id=turn_id,
                         assistant_message_id=assistant_message_id,
                         agent_meta=cast(
@@ -891,7 +891,7 @@ async def handle_turn(
                 else:
                     s.last_apply_result = None
 
-                _ = _append_message_to_session(
+                await _append_message_to_session(
                     s,
                     "agent",
                     content,
@@ -956,7 +956,7 @@ async def handle_turn(
                 s.session_id,
                 run_id,
             )
-            _ = _append_message_to_session(
+            await _append_message_to_session(
                 s,
                 "agent",
                 "Timed out waiting for workflow response. Please retry.",
@@ -1005,7 +1005,7 @@ async def handle_turn(
             error_msg = error_out.get("error")
 
             if error_msg:
-                _ = _append_message_to_session(
+                await _append_message_to_session(
                     s,
                     "agent",
                     str(error_msg), # Now str() is receiving an 'object', which is allowed
@@ -1052,7 +1052,7 @@ async def handle_turn(
             meta["turn_id"] = turn_id
             meta["agent"] = role_id
 
-            _ = _append_message_to_session(
+            await _append_message_to_session(
                 s,
                 "agent",
                 str(content or ""), # Convert to string; use empty string if content is None
@@ -1075,7 +1075,7 @@ async def handle_turn(
             final_msg if isinstance(final_msg, str) else "No final message returned."
         )
 
-        _ = _append_message_to_session(
+        await _append_message_to_session(
             s,
             "agent",
             final_content,

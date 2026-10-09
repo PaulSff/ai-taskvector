@@ -82,7 +82,7 @@ def open_remove_link_dialog(
 
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
-        result = save_workflow_version(
+        result = await save_workflow_version(
             new_graph,
             project_name=proj,
             template=template,

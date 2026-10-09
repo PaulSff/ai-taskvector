@@ -158,11 +158,11 @@ async def main(page: ft.Page) -> None:
     page.update()
     # --- END STARTUP SPINNER ---
 
-    # Sync config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
+    # Config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
     try:
         from agents.build_prompt_templates import build_prompt_templates
 
-        _ok, _msg = build_prompt_templates(None, None)
+        _ok, _msg = await build_prompt_templates(None, None)
         if not _ok:
             logger.error("Prompt templates sync failed: %s", _msg)
 
@@ -348,16 +348,16 @@ async def main(page: ft.Page) -> None:
     )
 
     # Placeholder tabs
-    training_content = build_training_tab(
+    training_content = await build_training_tab(
         page,
         graph_ref=graph_ref,
         show_toast=show_toast_sync,
         chat_panel_api=chat_panel_api,
     )
-    rag_content = build_rag_tab(
+    rag_content = await build_rag_tab(
         page, show_rag_preview=_dev_mode(), chat_panel_api=chat_panel_api
     )
-    settings_content = build_settings_tab(
+    settings_content = await build_settings_tab(
         page,
         on_saved=_refresh_model_label,
     )
@@ -392,7 +392,7 @@ async def main(page: ft.Page) -> None:
     resizing: list[bool] = [False]
 
     async def do_save_and_toast() -> None:
-        result = save_workflow_version(graph_ref[0])
+        result = await save_workflow_version(graph_ref[0])
 
         async def _toast() -> None:
             if result.reason == "saved":

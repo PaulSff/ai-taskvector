@@ -41,7 +41,7 @@ def message_for_persist(m: Data) -> Data:
     return _message_for_persist(m)
 
 
-def build_chat_payload(
+async def build_chat_payload(
     *,
     schema_version: int,
     session_id: str,

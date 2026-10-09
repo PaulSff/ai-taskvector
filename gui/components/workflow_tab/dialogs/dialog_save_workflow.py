@@ -147,7 +147,7 @@ def open_save_workflow_dialog(
         _ = page.run_task(_task)
 
 
-    def _save_click(e: ft.Event[ft.Button]) -> None:
+    async def _save_click(e: ft.Event[ft.Button]) -> None:
         proj = initial_project
         folder = (folder_tf.value or "").strip()
         filename = _ensure_json_suffix((filename_tf.value or "").strip())
@@ -194,7 +194,7 @@ def open_save_workflow_dialog(
         abs_folder = str(Path(folder).resolve())
         user_template = str(Path(abs_folder) / user_name_template)
 
-        result = save_workflow_version(
+        result = await save_workflow_version(
             _get_process_graph(),
             project_name=proj,
             template=user_template,

@@ -19,7 +19,7 @@ from .pie_chart import build_rag_storage_pie_panel
 from .search import build_rag_search_panel
 
 
-def build_rag_tab(
+async def build_rag_tab(
     page: ft.Page,
     show_rag_preview: bool = False,
     *,

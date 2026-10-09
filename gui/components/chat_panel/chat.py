@@ -740,7 +740,7 @@ async def build_agents_chat_panel(
             return
 
         # Restore session state into turn_driver (history, language, path, etc.)
-        restore_session(_td_sid, path=path, payload=payload)
+        await restore_session(_td_sid, path=path, payload=payload)
 
         _set_chat_title_from_path(path)
         state.has_sent_any = _td_session.has_sent_any
@@ -1105,7 +1105,7 @@ async def build_agents_chat_panel(
                 "source": "error",
                 "error_type": type(ex).__name__,
             }
-            append_session_message(_td_sid, err_msg)
+            await append_session_message(_td_sid, err_msg)
             await _append("agent", err_content, msg=err_msg)
         finally:
             if _is_current_run(token):
@@ -1207,8 +1207,8 @@ async def build_agents_chat_panel(
                 "agent": agent_dd.value,
                 "source": "session_language_command",
             }
-            append_session_message(_td_sid, user_msg_lc)
-            append_session_message(_td_sid, ack_msg)
+            await append_session_message(_td_sid, user_msg_lc)
+            await append_session_message(_td_sid, ack_msg)
             await _append("user", text, msg=user_msg_lc)
             await _append("agent", ack, msg=ack_msg)
             _workflow_debug_log(f"session_language command -> {cmd_lang!r}")

@@ -208,7 +208,7 @@ def open_import_workflow_dialog(
     async def _auto_save_imported(graph: ProcessGraph) -> None:
         proj = get_workflow_project_name()
         template = get_workflow_save_path_template()
-        result = save_workflow_version(graph, project_name=proj, template=template)
+        result = await save_workflow_version(graph, project_name=proj, template=template)
 
         if result.reason == "saved":
             await _toast("Saved!")

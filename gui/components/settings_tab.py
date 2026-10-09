@@ -66,7 +66,7 @@ from gui.utils.notifications import show_toast
 from gui.utils.role_settings_discovery import discover_role_llm_ui_entries
 
 
-def build_settings_tab(
+async def build_settings_tab(
     page: ft.Page,
     *,
     on_saved: Callable[[], None] | None = None,
@@ -414,9 +414,7 @@ def build_settings_tab(
                 await _show_snack(pg, f"Build prompts: {err}")
                 return
 
-            success, message = await asyncio.to_thread(
-                build_prompt_templates, None, None
-            )
+            success, message = await build_prompt_templates(None, None)
 
             if success:
                 await show_toast(pg, "Built successfully")
@@ -424,6 +422,7 @@ def build_settings_tab(
                 await _show_snack(pg, f"Build prompts failed: {message}")
 
         pg.run_task(_run)
+
 
     def save_click() -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()

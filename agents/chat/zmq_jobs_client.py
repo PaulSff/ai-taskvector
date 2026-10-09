@@ -140,8 +140,6 @@ def _serialize_initial_inputs(
 
     return normalized
 
-
-
 # ------- Publish the orchestration workflow job to workflow-server -------
 
 async def publish_job_and_wait(

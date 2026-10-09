@@ -362,7 +362,7 @@ def _build_training_progress_section(
     )
 
 
-def build_training_tab(
+async def build_training_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None] | None = None,
     *,

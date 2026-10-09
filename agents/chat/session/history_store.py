@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import cast
+
+from core.schemas.primitives import Data, is_data
 
 
 def slugify_filename(text: str, *, max_len: int = 64) -> str:
@@ -39,45 +40,34 @@ def list_recent_chat_files(chat_history_dir: Path, *, limit: int = 30) -> list[P
     return files[:limit]
 
 
-def load_chat_payload(path: Path) -> dict[str, object] | None:
+def load_chat_payload(path: Path) -> Data | None:
     """Load chat payload JSON from path."""
 
     try:
-        payload_obj = cast(
-            object,
-            json.loads(path.read_text(encoding="utf-8")),
-        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
-    if not isinstance(payload_obj, dict):
+    if not is_data(payload):
         return None
 
-    payload = cast(dict[str, object], payload_obj)
-
-    messages_obj = payload.get("messages")
-
-    if isinstance(messages_obj, list):
-        messages = cast(list[object], messages_obj)
-    else:
-        messages: list[object] = []
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        messages = []
         payload["messages"] = messages
 
     for event in read_chat_message_deltas(path):
         if event.get("op") != "append":
             continue
 
-        message_obj = event.get("message")
-
-        if isinstance(message_obj, dict):
-            messages.append(
-                cast(dict[str, object], message_obj)
-            )
+        message = event.get("message")
+        if is_data(message):
+            messages.append(message)
 
     return payload
 
 
-def write_chat_payload(path: Path, payload: dict[str, object]) -> bool:
+async def write_chat_payload(path: Path, payload: Data) -> bool:
     """Write chat payload JSON to path. Returns success."""
     try:
         _ = path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -93,7 +83,7 @@ def _chat_delta_path(path: Path) -> Path:
     return path.with_suffix(".delta.jsonl")
 
 
-def append_chat_message_delta(path: Path, message: dict[str, object]) -> bool:
+async def append_chat_message_delta(path: Path, message: Data) -> bool:
     """Append one chat message delta record (JSONL)."""
     rec = {"op": "append", "message": message}
     try:
@@ -104,7 +94,7 @@ def append_chat_message_delta(path: Path, message: dict[str, object]) -> bool:
         return False
 
 
-def read_chat_message_deltas(path: Path) -> list[dict[str, object]]:
+def read_chat_message_deltas(path: Path) -> list[Data]:
     """Read append-only message deltas (best effort)."""
 
     delta_path = _chat_delta_path(path)
@@ -114,21 +104,20 @@ def read_chat_message_deltas(path: Path) -> list[dict[str, object]]:
     except OSError:
         return []
 
-    output: list[dict[str, object]] = []
+    output: list[Data] = []
 
     for line in lines:
         text = line.strip()
-
         if not text:
             continue
 
         try:
-            obj = cast(object, json.loads(text))
+            obj = json.loads(text)
         except json.JSONDecodeError:
             continue
 
-        if isinstance(obj, dict):
-            output.append(cast(dict[str, object], obj))
+        if is_data(obj):
+            output.append(obj)
 
     return output
 

@@ -165,7 +165,7 @@ async def run_agentic_loop(
             from agents.chat.utils import save_workflow_version
 
             try:
-                save_result = save_workflow_version(graph)
+                save_result = await save_workflow_version(graph)
             except (ValidationError, TypeError):
                 logger.exception(
                     "[run_agentic_loop] session=%s: failed to save invalid workflow graph",

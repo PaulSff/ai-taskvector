@@ -111,7 +111,7 @@ class SaveResult:
     reason: str  # "saved" | "no_changes" | "no_graph" | "error"
 
 
-def save_workflow_version(
+async def save_workflow_version(
     graph: ProcessGraph | None,
     *,
     project_name: str | None = None,

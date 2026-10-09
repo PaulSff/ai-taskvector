@@ -198,7 +198,7 @@ async def handle_tasks_expired_hook(
         from agents.chat.utils import save_workflow_version
 
         try:
-            save_result = save_workflow_version(graph)
+            save_result = await save_workflow_version(graph)
         except (ValidationError, TypeError):
             logger.exception(
                 "session=%s: failed to save updated workflow graph",
