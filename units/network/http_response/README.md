@@ -10,7 +10,7 @@ Sink for the step response: in canonical there is one response path only: StepRe
 
 | Port / Param | Direction | Type | Description                          |
 |--------------|-----------|------|--------------------------------------|
-| **Inputs**   | in        | any  | `payload` — body to send to client   |
+| **Inputs**   | in        | dict | `payload` — body to send to client   |
 | **Outputs**  | —         | —    | None (side-effect only)              |
 | **Params**   | config    | —    | Platform-specific response options   |
 

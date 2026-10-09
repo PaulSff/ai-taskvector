@@ -6,7 +6,7 @@ At runtime the adapter reads this unit's input and sends the HTTP response.
 """
 from units.registry import UnitSpec, register_unit
 
-HTTP_RESPONSE_INPUT_PORTS = [("payload", "any")]
+HTTP_RESPONSE_INPUT_PORTS = [("payload", "dict")]
 HTTP_RESPONSE_OUTPUT_PORTS = []  # side-effect only: response to client
 
 
