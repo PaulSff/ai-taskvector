@@ -129,7 +129,11 @@ class RagUpdateViaZmq:
         finally:
             # Shut down subscription loop/socket cleanly.
             await self._sub.stop()
+            # Close the pub socket
+            self._pub.close()
 
     async def close(self) -> None:
-        # If you want explicit cleanup, call this; publisher sockets are kept by design.
+        # If you want explicit cleanup, call this;
         await self._sub.stop()
+        # Close the pub socket
+        self._pub.close()

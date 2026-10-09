@@ -406,6 +406,9 @@ async def publish_job_and_wait(
 
 
         finally:
+            # Close the pub socket
+            pub.close()
+            # Stop subscribers
             await update_sub.stop()
             await sub.stop()
 

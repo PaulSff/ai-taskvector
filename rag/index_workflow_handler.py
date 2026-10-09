@@ -75,13 +75,14 @@ class WorkflowServerClient:
             self._started = True
 
     async def close(self) -> None:
-        # Fail any in-flight runs so callers don't hang.
         async with self._futures_lock:
             for fut in self._futures_by_run_id.values():
                 if not fut.done():
                     fut.set_result({"error": "Client shutting down"})
             self._futures_by_run_id.clear()
-
+        # Close the pub socket
+        self._pub.close()
+        # Stop the subscribers
         await self._sub.stop()
         self._started = False
 

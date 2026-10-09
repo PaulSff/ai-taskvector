@@ -207,12 +207,14 @@ async def run_workflow_with_errors(
         return outputs, collect_workflow_errors(outputs)
 
     finally:
+        # Close the pub socket
+        if job_pub is not None:
+            job_pub.close()
+        # Stop subscribers
         if sub is not None:
             try:
                 await sub.stop()
             except (TypeError, AttributeError):
-                logger.exception(
-                    "Failed to stop subscriber"
-                )
+                logger.exception("Failed to stop subscriber")
 
         await _slot_allocator.release()

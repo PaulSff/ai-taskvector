@@ -138,6 +138,7 @@ async def _publish_and_wait(
                     raise WorkflowTimeoutError(execution_timeout_s)
                 await asyncio.sleep(0.01)
         finally:
+            # Stop subscriber
             await sub.stop()
 
         if has_workflow_error:
@@ -146,6 +147,9 @@ async def _publish_and_wait(
         return final_outputs or {}
 
     finally:
+        # Close the pub socket
+        if job_pub is not None:
+            job_pub.close()
         # Always release the round-robin slot
         await _slot_allocator.release()
 

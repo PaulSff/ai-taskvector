@@ -688,17 +688,18 @@ async def run_via_jobs_and_await(
         raise
 
     finally:
+        # Stop the subscribers
         if sub is not None:
             try:
-                logger.info(
-                    "Console: Stopping subscriber (run_id=%s)",
-                    run_id,
-                )
+                logger.info("Console: Stopping subscriber (run_id=%s)", run_id)
                 await sub.stop()
             except (RuntimeError, ValueError, TypeError):
                 logger.exception(
                     "Console: Failed to stop subscriber (run_id=%s)",
                     run_id,
                 )
-
+        # Close pub socket
+        if job_pub is not None:
+            job_pub.close()
+        # Release the current slot
         await _slot_allocator.release()
