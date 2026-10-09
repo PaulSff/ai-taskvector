@@ -10,12 +10,16 @@ Takes **RagExtract** output (`extracted`) plus **`file_path`**, formats **`text`
 
 | Port / Param | Direction | Type | Description |
 |----------------|-----------|------|-------------|
-| **Inputs** | `extracted` | Any | Flat dict (e.g. from **RagExtract**) |
-| | `file_path` | str | Indexed file path (stored on metadata) |
+| **Inputs** | `extracted` | dict | Flat dict (e.g. from **RagExtract**) |
+| | `file_path` | str | Indexed file path (stored on metadata). Fallback: extracted from `extracted` if missing |
+| | `chunk_texts` | list | Echoed to output for linear chains |
+| | `chunk_metadatas` | list | Echoed to output for linear chains |
 | **Outputs** | `text` | str | Formatted body for embedding |
-| | `metadata` | Any | Dict for Chroma |
-| | `document` | Any | `{"text", "metadata"}` convenience object |
+| | `metadata` | dict | Dict for Chroma |
+| | `document` | dict | `{"text", "metadata"}` convenience object |
 | | `error` | str | Set if `text_template` formatting fails |
+| | `chunk_texts` | list | Echoed from input |
+| | `chunk_metadatas` | list | Echoed from input |
 | **Params** | `text_template` | str | Default `{text}`; `{key}` placeholders use `extracted` |
 | | `metadata_keys` | list[str] | Which keys from `extracted` to copy into metadata |
 | | `static_metadata` | dict | Merged after extracted keys |

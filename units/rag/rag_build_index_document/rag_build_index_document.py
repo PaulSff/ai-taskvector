@@ -9,31 +9,30 @@ Params:
 
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 RAG_BUILD_INDEX_DOCUMENT_INPUT_PORTS = [
-    ("extracted", "Any"),
+    ("extracted", "dict"),
     ("file_path", "str"),
-    ("chunk_texts", "Any"),
-    ("chunk_metadatas", "Any"),
+    ("chunk_texts", "list"),
+    ("chunk_metadatas", "list"),
 ]
 RAG_BUILD_INDEX_DOCUMENT_OUTPUT_PORTS = [
     ("text", "str"),
-    ("metadata", "Any"),
-    ("document", "Any"),
+    ("metadata", "dict"),
+    ("document", "dict"),
     ("error", "str"),
-    ("chunk_texts", "Any"),
-    ("chunk_metadatas", "Any"),
+    ("chunk_texts", "list"),
+    ("chunk_metadatas", "list"),
 ]
 
 
-def _as_dict(val: Any) -> dict[str, Any]:
+def _as_dict(val: object) -> Data:
     return dict(val) if isinstance(val, dict) else {}
 
 
-def _file_path_str(val: Any) -> str:
+def _file_path_str(val: object) -> str:
     """Accept a bare path string or a RagExtract-style ``{"file_path": "..."}`` dict."""
     if isinstance(val, dict):
         v = val.get("file_path")
@@ -44,11 +43,11 @@ def _file_path_str(val: Any) -> str:
 
 
 def _rag_build_index_document_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     extracted = _as_dict(inputs.get("extracted"))
     fp = _file_path_str(inputs.get("file_path"))
     if not fp:
@@ -56,7 +55,7 @@ def _rag_build_index_document_step(
     err = ""
     tpl = str(params.get("text_template") or "{text}").strip() or "{text}"
 
-    class _Fmt(dict[str, Any]):
+    class _Fmt(dict[str, object]):
         def __missing__(self, key: str) -> str:  # type: ignore[override]
             return ""
 
@@ -70,7 +69,7 @@ def _rag_build_index_document_step(
         text = tpl
         err = str(e)
 
-    meta: dict[str, Any] = {}
+    meta: Data = {}
     mk = params.get("metadata_keys")
     if isinstance(mk, list):
         for k in mk:

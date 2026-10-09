@@ -620,7 +620,7 @@
       "input_ports": [
         {
           "name": "extracted",
-          "type": "Any"
+          "type": "dict"
         },
         {
           "name": "file_path",
@@ -628,11 +628,11 @@
         },
         {
           "name": "chunk_texts",
-          "type": "Any"
+          "type": "list"
         },
         {
           "name": "chunk_metadatas",
-          "type": "Any"
+          "type": "list"
         }
       ],
       "output_ports": [
@@ -642,11 +642,11 @@
         },
         {
           "name": "metadata",
-          "type": "Any"
+          "type": "dict"
         },
         {
           "name": "document",
-          "type": "Any"
+          "type": "dict"
         },
         {
           "name": "error",
@@ -654,11 +654,11 @@
         },
         {
           "name": "chunk_texts",
-          "type": "Any"
+          "type": "list"
         },
         {
           "name": "chunk_metadatas",
-          "type": "Any"
+          "type": "list"
         }
       ]
     },
