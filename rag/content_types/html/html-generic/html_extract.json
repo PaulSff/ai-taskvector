@@ -131,9 +131,9 @@
       "type": "RagChunkBuilder",
       "controllable": false,
       "params": {},
-      "input_ports": [{ "name": "items", "type": "Any" }],
+      "input_ports": [{ "name": "items", "type": "list" }],
       "output_ports": [
-        { "name": "chunks", "type": "Any" },
+        { "name": "chunks", "type": "list" },
         { "name": "error", "type": "str" }
       ]
     }

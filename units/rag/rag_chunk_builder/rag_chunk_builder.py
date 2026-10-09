@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
-
+from core.schemas.primitives import Data, safe_int
 from units.registry import UnitSpec, register_unit
 
-RAG_CHUNK_BUILDER_INPUT_PORTS = [("items", "Any")]
-RAG_CHUNK_BUILDER_OUTPUT_PORTS = [("chunks", "Any"), ("error", "str")]
-
+RAG_CHUNK_BUILDER_INPUT_PORTS = [("items", "list")]
+RAG_CHUNK_BUILDER_OUTPUT_PORTS = [
+    ("chunks", "list"),
+    ("error", "str"),
+]
 
 # -----------------------------
 # Chunking strategies
@@ -70,18 +71,24 @@ def _chunk_by_lines(
 
 
 def _build_chunks(
-    items: list[dict[str, Any]],
+    items: list[Data],
     *,
     strategy: str,
     chunk_size: int,
     overlap: int,
-) -> list[dict[str, Any]]:
-
-    out: list[dict[str, Any]] = []
+) -> list[Data]:
+    out: list[Data] = []
 
     for item in items:
+        if not isinstance(item, dict):
+            continue
+
         text = item.get("text", "")
-        meta = item.get("metadata", {}) or {}
+        meta = item.get("metadata")
+
+        # Ignore missing or invalid metadata rather than failing on **meta.
+        if not isinstance(meta, dict):
+            meta = {}
 
         if not isinstance(text, str) or not text.strip():
             continue
@@ -89,7 +96,7 @@ def _build_chunks(
         if strategy == "lines":
             chunks = _chunk_by_lines(text, chunk_size)
         else:
-            # default: chars
+            # Default: chars
             chunks = _chunk_by_chars(text, chunk_size, overlap)
 
         n = len(chunks)
@@ -115,9 +122,9 @@ def _build_chunks(
 
 
 def _chunk_builder_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:
@@ -130,12 +137,20 @@ def _chunk_builder_step(
         if not isinstance(items, list):
             return {"chunks": [], "error": "items must be a list"}, state
 
-        # --- params ---
         strategy = str(params.get("strategy", "chars")).lower()
-        chunk_size = int(params.get("chunk_size", 1000))
-        overlap = int(params.get("overlap", 100))
 
-        # --- safety guards ---
+        chunk_size_value = safe_int(params.get("chunk_size", 1000))
+        overlap_value = safe_int(params.get("overlap", 100))
+
+        if chunk_size_value is None:
+            raise ValueError("chunk_size must be an integer")
+        if overlap_value is None:
+            raise ValueError("overlap must be an integer")
+
+        chunk_size = chunk_size_value
+        overlap = overlap_value
+
+        # Safety guards
         chunk_size = max(100, min(chunk_size, 20000))
         overlap = max(0, min(overlap, chunk_size // 2))
 
@@ -150,6 +165,7 @@ def _chunk_builder_step(
 
     except (ValueError, TypeError) as e:
         return {"chunks": [], "error": str(e)}, state
+
 
 
 # -----------------------------

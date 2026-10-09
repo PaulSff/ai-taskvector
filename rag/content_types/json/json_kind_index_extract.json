@@ -91,21 +91,10 @@
       "controllable": false,
       "params": {},
       "name": null,
-      "input_ports": [
-        {
-          "name": "items",
-          "type": "Any"
-        }
-      ],
+      "input_ports": [{ "name": "items", "type": "list" }],
       "output_ports": [
-        {
-          "name": "chunks",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
+        { "name": "chunks", "type": "list" },
+        { "name": "error", "type": "str" }
       ]
     },
     {

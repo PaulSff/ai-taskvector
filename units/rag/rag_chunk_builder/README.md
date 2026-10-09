@@ -14,8 +14,8 @@ Each output chunk includes the chunk text and merged metadata with `chunk_index`
 
 | Port / Param | Direction | Type | Description |
 |--------------:|:---------:|:----:|-------------|
-| **Inputs** | `items` | Any | List of items OR dict `{"items": [...]}`; each item: `{"text": str, "metadata": dict}` |
-| **Outputs** | `chunks` | Any | List of chunk objects: `{"text": str, "metadata": dict}` |
+| **Inputs** | `items` | list | List of items OR dict `{"items": [...]}`; each item: `{"text": str, "metadata": dict}` |
+| **Outputs** | `chunks` | list | List of chunk objects: `{"text": str, "metadata": dict}` |
 |  | `error` | str | Error message (empty on success) |
 | **Params** | `strategy` | str | `"chars"` (default) or `"lines"`. Any value other than `"lines"` uses `chars`. |
 |  | `chunk_size` | int | Default `1000`. Clamped to range `[100, 20000]`. |
