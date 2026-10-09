@@ -344,7 +344,7 @@ async def build_agents_chat_panel(
             await asyncio.sleep(max(0.0, delay_s))
             if my_token != _persist_token_ref[0]:
                 return
-            _ = persist_session(_td_sid, agent_selected=agent_dd.value)
+            await persist_session(_td_sid, agent_selected=agent_dd.value)
 
         _ = page.run_task(_run)
 
