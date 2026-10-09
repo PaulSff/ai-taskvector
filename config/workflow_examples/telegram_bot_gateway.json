@@ -211,29 +211,29 @@
       "input_ports": [
         {
           "name": "token",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "job",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "result",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "update_batch",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "error",
-          "type": "Any"
+          "type": "JsonObject"
         }
       ],
       "output_ports": [
         {
           "name": "bypass",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "error",
@@ -252,29 +252,29 @@
       "input_ports": [
         {
           "name": "token",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "job",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "result",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "update_batch",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "error",
-          "type": "Any"
+          "type": "JsonObject"
         }
       ],
       "output_ports": [
         {
           "name": "bypass",
-          "type": "Any"
+          "type": "JsonObject"
         },
         {
           "name": "error",
