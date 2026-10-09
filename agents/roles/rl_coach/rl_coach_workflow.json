@@ -382,7 +382,7 @@
       "output_ports": [
         {
           "name": "action",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "error",
@@ -455,7 +455,7 @@
       ],
       "output_ports": [
         {
-          "name": "edits",
+          "name": "action",
           "type": "Any"
         },
         {
@@ -471,14 +471,14 @@
       "params": {},
       "input_ports": [
         {
-          "name": "action",
-          "type": "Any"
+          "name": "message",
+          "type": "str"
         }
       ],
       "output_ports": [
         {
-          "name": "edits",
-          "type": "Any"
+          "name": "actions",
+          "type": "ParsedActions"
         },
         {
           "name": "error",

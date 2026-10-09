@@ -94,7 +94,7 @@
       "output_ports": [
         {
           "name": "action",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "error",

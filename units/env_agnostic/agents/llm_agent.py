@@ -14,7 +14,7 @@ from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
 LLMAGENT_INPUT_PORTS = [("system_prompt", "str"), ("user_message", "str")]
-LLMAGENT_OUTPUT_PORTS = [("action", "Any"), ("error", "str")]
+LLMAGENT_OUTPUT_PORTS = [("action", "str"), ("error", "str")]
 
 # Same placeholder as Aggregate/Prompt so we can detect when the pipeline lost the user message.
 _USER_MESSAGE_PLACEHOLDER = "(No message provided.)"

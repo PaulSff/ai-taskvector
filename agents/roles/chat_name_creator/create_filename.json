@@ -36,7 +36,7 @@
         { "name": "user_message", "type": "str" }
       ],
       "output_ports": [
-        { "name": "action", "type": "Any" },
+        { "name": "action", "type": "str" },
         { "name": "error", "type": "str" }
       ]
     }

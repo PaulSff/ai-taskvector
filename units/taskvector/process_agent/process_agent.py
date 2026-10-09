@@ -21,7 +21,7 @@ from units.registry import UnitSpec, register_unit
 
 from .action_blocks import parse_action_blocks
 
-PROCESS_AGENT_INPUT_PORTS = [("message", "Any")]
+PROCESS_AGENT_INPUT_PORTS = [("message", "str")]
 PROCESS_AGENT_OUTPUT_PORTS = [
     ("actions", "ParsedActions"),
     ("error", "str"),

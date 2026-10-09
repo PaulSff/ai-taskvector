@@ -620,7 +620,7 @@
       "output_ports": [
         {
           "name": "action",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "error",
@@ -691,13 +691,13 @@
       "input_ports": [
         {
           "name": "message",
-          "type": "Any"
+          "type": "str"
         }
       ],
       "output_ports": [
         {
           "name": "actions",
-          "type": "Any"
+          "type": "ParsedActions"
         },
         {
           "name": "error",
