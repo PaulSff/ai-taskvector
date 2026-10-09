@@ -1,6 +1,6 @@
 # grep
 
-Canonical unit: run grep to search in a **file path** or in **raw text** (e.g. Debug logs, code). Useful for the agent to inspect logs and code.
+Canonical unit: search in a **file path** or in **raw text** (e.g. Debug logs, code) using a pure Python implementation. Useful for the agent to inspect logs and code.
 
 **Unit type:** `grep`
 
@@ -28,13 +28,14 @@ URL is not supported; use a separate step to fetch content and pass it as text o
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
-| **Input**    | in        | Any  | Optional path or raw text to search (e.g. from Debug). Used when params do not set source. |
+| **Input**    | in        | str  | Optional path or raw text to search. Used when params do not set source. |
+| **Input**    | parser_output | Data | Action-style payload (e.g. from a parser) containing `grep` params. |
 | **Param**    | pattern / regex / command | str | Search pattern (required). `command` is an alias for agent use. |
 | **Param**    | source / path / file | str | File path or inline text; overrides input when set. |
 | **Param**    | options   | str  | Grep options (default `-n` for line numbers). |
-| **Param**    | _needs_executor  | bool  | Set to `true` in order to use async loop. |
-| **Output**   | out       | Any  | Matching lines (stdout/stderr from grep). |
-| **Output**   | error     | str  | Error message on timeout or subprocess failure; `None` on success. |
+| **Param**    | _background_loop / _executor | object | Used by the runtime to execute the search in a background thread/loop. |
+| **Output**   | out       | str  | Matching lines found in the source. |
+| **Output**   | error     | str  | Error message on timeout or file access failure; `None` on success. |
 
 ## Usage
 

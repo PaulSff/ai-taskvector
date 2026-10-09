@@ -14,17 +14,21 @@
       "input_ports": [
         {
           "name": "action",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "path",
           "type": "str"
+        },
+        {
+          "name": "data",
+          "type": "Data"
         }
       ],
       "output_ports": [
         {
           "name": "data",
-          "type": "Any"
+          "type": "Data"
         },
         {
           "name": "error",

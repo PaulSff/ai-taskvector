@@ -580,17 +580,17 @@
       "input_ports": [
         {
           "name": "in",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "parser_output",
-          "type": "Any"
+          "type": "Data"
         }
       ],
       "output_ports": [
         {
           "name": "out",
-          "type": "Any"
+          "type": "str"
         },
         {
           "name": "error",

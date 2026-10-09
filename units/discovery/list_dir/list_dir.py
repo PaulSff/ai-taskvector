@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
 # Use the same port-spec style as in your grep unit:
 # list of (port_name, port_type_as_string_or_any)
 LIST_DIR_INPUT_PORTS = [
-    ("action", "Any"),  # payload: {"action":"list_dir","path":"<local_path>"}
-    ("path", "Any"),    # optional/ignored if runner only provides action payload
-    ("data", "Any"),    # optional/ignored if runner only provides action payload
+    ("action", "Data"),  # payload: {"action":"list_dir","path":"<local_path>"}
+    ("path", "str"),    # optional/ignored if runner only provides action payload
+    ("data", "Data"),    # optional/ignored if runner only provides action payload
 ]
 
 LIST_DIR_OUTPUT_PORTS = [
-    ("data", "Any"),   # {"path": str, "content": {"dirs": list[str], "files": list[str]}}
+    ("data", "Data"),   # {"path": str, "content": {"dirs": list[str], "files": list[str]}}
     ("error", "str"),  # error message or None
 ]
 
-def _validate_action_payload(action_port: Any) -> str:
+def _validate_action_payload(action_port: object) -> str:
     if not isinstance(action_port, dict):
         raise TypeError("input 'action' must be a dict")
 
@@ -36,14 +36,14 @@ def _validate_action_payload(action_port: Any) -> str:
 
 
 def _list_dir_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
 
     err_msg: str | None = None
-    data: dict[str, Any] = {"path": "", "content": {"dirs": [], "files": []}}
+    data: Data = {"path": "", "content": {"dirs": [], "files": []}}
 
     try:
         action_payload = inputs.get("action")

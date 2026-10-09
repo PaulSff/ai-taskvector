@@ -11,15 +11,15 @@ The `ListDir` unit provides a non-recursive listing of a local directory. It ide
 ## API Specification
 
 ### Input Ports
-- **action** (`Any`): The primary control port. Expects a dictionary: 
+- **action** (`Data`): The primary control port. Expects a dictionary:
 ```json 
 {"action": "list_dir", "path": "/path/to/dir"}
 ```
-- **path** (`Any`): Optional. If provided, the value must exactly match the path specified in the `action` payload.
-- **data** (`Any`): Optional. Can be used as an alternative to the `action` port to provide the payload containing `path`.
+- **path** (`str`): Optional. If provided, the value must exactly match the path specified in the `action` payload.
+- **data** (`Data`): Optional. Can be used as an alternative to the `action` port to provide the payload containing `path`.
 
 ### Output Ports
-- **data** (`Any`): A dictionary containing the results:
+- **data** (`Data`): A dictionary containing the results:
   - `path`: The resolved absolute path.
   - `content`: An object containing `dirs` (list of directory names) and `files` (list of file names).
 - **error** (`str`): Contains the error message if the operation fails (e.g., `FileNotFoundError`), otherwise `None`.

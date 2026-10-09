@@ -22,10 +22,10 @@ from runtime.executor import BackgroundCoro
 from units.registry import UnitSpec, register_unit
 
 GREP_INPUT_PORTS = [
-    ("in", "Any"),
-    ("parser_output", "Any"),
+    ("in", "str"),
+    ("parser_output", "Data"),
 ]
-GREP_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
+GREP_OUTPUT_PORTS = [("out", "str"), ("error", "str")]
 
 
 def _clean_str(value: object | None) -> str:
@@ -179,11 +179,10 @@ def _grep_step(
 
     source = par.get("source") or par.get("path") or par.get("file")
 
-    parser_output = inputs.get("parser_output") if inputs else None
+    parser_output: object | None = inputs.get("parser_output") if inputs else None
 
     if isinstance(parser_output, dict):
         payload: Data | None = None
-
         nested_payload = parser_output.get("grep")
 
         if isinstance(nested_payload, dict):
