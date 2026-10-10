@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_INJECT_KEY: Literal["inject_graph"] = "inject_graph"
 
+@dataclass(frozen=True)
+class ImportResult:
+    graph: ProcessGraph | None
+    error: str
+    picked_workflow_path: str
+
 
 def _pick_latest_workflow_json(workflows_dir: Path, project_name: str) -> Path | None:
     """
@@ -83,14 +89,6 @@ async def _run_workflow_async(
         }
 
     return await asyncio.to_thread(_run)
-
-
-
-@dataclass(frozen=True)
-class ImportResult:
-    graph: ProcessGraph | None
-    error: str
-    picked_workflow_path: str
 
 
 async def run_auto_import_workflow_async(

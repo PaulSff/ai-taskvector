@@ -11,6 +11,7 @@ Change detection uses an MD5 hash of the canonical JSON.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -29,6 +30,13 @@ from core.schemas.process_graph import ProcessGraph
 
 PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"
 PLACEHOLDER_TIMESTAMP = "$YY-MM-DD-HHMMSS$"
+DEFAULT_KEEP_WORKFLOW_VERSIONS_COUNT = 30
+
+@dataclass(frozen=True)
+class SaveResult:
+    saved: bool
+    path: Path | None
+    reason: str  # "saved" | "no_changes" | "no_graph" | "error"
 
 
 def _now_timestamp() -> str:
@@ -104,13 +112,6 @@ def _latest_saved_json(project_dir: Path) -> Path | None:
     return files[-1] if files else None
 
 
-@dataclass(frozen=True)
-class SaveResult:
-    saved: bool
-    path: Path | None
-    reason: str  # "saved" | "no_changes" | "no_graph" | "error"
-
-
 async def save_workflow_version(
     graph: ProcessGraph | None,
     *,
@@ -151,3 +152,52 @@ async def save_workflow_version(
         return SaveResult(saved=True, path=path, reason="saved")
     except OSError:
         return SaveResult(saved=False, path=path, reason="error")
+
+
+async def cleanup_workflow_versions(
+    project_dir: Path | None = None,
+    keep_count: int = DEFAULT_KEEP_WORKFLOW_VERSIONS_COUNT,
+) -> int:
+    """
+    Removes old workflow versions from the project directory,
+    keeping only the most recent `keep_count` files.
+    Returns the number of files deleted.
+    """
+    if project_dir is None:
+        project_name = (get_workflow_project_name().strip() or "my_project")
+        template = (get_workflow_save_path_template().strip() or "")
+        if not template:
+            return 0
+        # Because the cleanup function only needs the folder,
+        # not the actual file name, it builds a path from the save
+        # template with a fake timestamp:
+        dummy_path = resolve_workflow_save_path(
+            template,
+            project_name=project_name,
+            timestamp="00-00-00-000000",
+        )
+
+        resolved = Path(dummy_path)
+        project_dir = resolved if resolved.is_absolute() else (REPO_ROOT / resolved)
+        project_dir = project_dir.parent
+
+    if not project_dir.exists() or not project_dir.is_dir():
+        return 0
+
+    files = sorted(
+        [p for p in project_dir.glob("*.json") if p.is_file()],
+        reverse=True,
+    )
+
+    if len(files) <= keep_count:
+        return 0
+
+    deleted_count = 0
+    for file_path in files[keep_count:]:
+        try:
+            await asyncio.to_thread(file_path.unlink)
+            deleted_count += 1
+        except OSError:
+            continue
+
+    return deleted_count

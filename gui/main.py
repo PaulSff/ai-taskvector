@@ -22,6 +22,7 @@ from agents.chat.agent_workflow.helpers import (
 )
 from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.utils.save_workflow import (
+    cleanup_workflow_versions,
     save_workflow_version,
 )
 from config.settings import (
@@ -964,8 +965,14 @@ async def main(page: ft.Page) -> None:
         elif msg and ok and "already" not in msg.lower():
             await show_toast(page, "Ollama started")
 
+    async def _cleanup_workflows_startup() -> None:
+        deleted = await cleanup_workflow_versions()
+        if deleted:
+            await show_toast(page, f"Cleaned up {deleted} old workflows")
+
     # register handlers once and store returned futures (could be concurrent.futures.Future or asyncio.Future)
     _tasks = [
+        page.run_task(_cleanup_workflows_startup),
         page.run_task(_rag_startup),
         page.run_task(_ollama_startup),
     ]
