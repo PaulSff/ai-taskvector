@@ -6,7 +6,7 @@ from units.rag.canonical_workflow_extractor.canonical_workflow_extractor import 
 )
 
 __all__ = [
-    "register_canonical_workflow_extract",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS",
+    "register_canonical_workflow_extract",
 ]

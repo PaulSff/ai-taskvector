@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TypeGuard
 
+from core.schemas.primitives import Data, JsonObject, is_data, safe_int
 from units.registry import UnitSpec, register_unit
 
-RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
+RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS = [("data", "JsonObject"), ("file_path", "str")]
+RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS = [("items", "JsonArray"), ("error", "str")]
 
 
 # Defaults (configurable via params)
@@ -21,7 +22,7 @@ DEFAULT_DESC_LIMIT = 4000
 # -----------------------------
 
 
-def _to_string(val: Any) -> str:
+def _to_string(val: object) -> str:
     if val is None:
         return ""
     if isinstance(val, str):
@@ -34,14 +35,20 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _extract_units(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    units = raw.get("units") or []
-    return [u for u in units if isinstance(u, dict)]
+def is_data_list(value: object) -> TypeGuard[list[Data]]:
+    return isinstance(value, list) and all(is_data(item) for item in value)
+
+
+def _extract_units(raw: JsonObject) -> list[Data]:
+    units = raw.get("units")
+    if not is_data_list(units):
+        return []
+    return units
 
 
 def _extract_meta(
-    raw: dict[str, Any], source: str, *, label_limit: int, desc_limit: int
-) -> dict[str, Any]:
+    raw: JsonObject, source: str, *, label_limit: int, desc_limit: int
+) -> Data:
     units = _extract_units(raw)
 
     unit_types: set[str] = set()
@@ -50,9 +57,12 @@ def _extract_meta(
     for u in units:
         if not isinstance(u, dict):
             continue
-        utype = (u.get("type") or "").strip()
-        if utype:
-            unit_types.add(utype)
+
+        utype_val = u.get("type")
+        if isinstance(utype_val, str):
+            utype = utype_val.strip()
+            if utype:
+                unit_types.add(utype)
 
         uid = u.get("id")
         if uid is not None:
@@ -61,10 +71,11 @@ def _extract_meta(
     name = _to_string(raw.get("name") or DEFAULT_NAME_FALLBACK)
 
     desc = _to_string(raw.get("description") or "")
-    if not desc.strip() and isinstance(raw.get("metadata"), dict):
-        desc = _to_string(raw["metadata"].get("description") or "")
+    metadata = raw.get("metadata")
+    if not desc.strip() and isinstance(metadata, dict):
+        desc = _to_string(metadata.get("description") or "")
 
-    result: dict[str, Any] = {
+    result: Data = {
         "content_type": "workflow",
         "format": "canonical",
         "name": name,
@@ -78,7 +89,7 @@ def _extract_meta(
     return result
 
 
-def _to_text(meta: dict[str, Any]) -> str:
+def _to_text(meta: Data) -> str:
     parts = [
         f"Workflow: {meta.get('name', '')}",
     ]
@@ -87,38 +98,38 @@ def _to_text(meta: dict[str, Any]) -> str:
         parts.append(f"Origin: {meta['origin']}")
 
     if meta.get("description"):
-        # follow extractors.py behavior: truncate description for text to 2000 chars
         parts.append(_to_string(meta.get("description"))[:2000])
 
-    if meta.get("unit_types"):
-        parts.append(f"Node types: {', '.join(meta['unit_types'])}")
+    unit_types = meta.get("unit_types")
+    if isinstance(unit_types, list):
+        parts.append(f"Node types: {', '.join(str(x) for x in unit_types)}")
 
-    if meta.get("integrations"):
-        parts.append(f"Integrations: {', '.join(meta['integrations'])}")
+    integrations = meta.get("integrations")
+    if isinstance(integrations, list):
+        parts.append(f"Integrations: {', '.join(str(x) for x in integrations)}")
 
-    if meta.get("labels"):
-        parts.append(f"Nodes: {', '.join(meta['labels'][:10])}")
+    labels = meta.get("labels")
+    if isinstance(labels, list):
+        parts.append(f"Nodes: {', '.join(str(x) for x in labels[:10])}")
 
     if meta.get("summary"):
-        parts.append(meta.get("summary", ""))
+        parts.append(str(meta.get("summary", "")))
 
     if meta.get("readme"):
-        parts.append((meta.get("readme") or "")[:500])
+        parts.append(str(meta.get("readme") or "")[:500])
 
     parts.append(f"Format: {meta.get('format', '')}")
 
     return " | ".join(p for p in parts if p)
 
-
 # -----------------------------
 # Step
 # -----------------------------
 
-
 def _canonical_extract_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:
@@ -160,8 +171,11 @@ def _canonical_extract_step(
         # -----------------------------
         # params
         # -----------------------------
-        label_limit = int(params.get("label_limit", DEFAULT_LABEL_LIMIT))
-        desc_limit = int(params.get("desc_limit", DEFAULT_DESC_LIMIT))
+        label_limit_val = safe_int(params.get("label_limit"))
+        desc_limit_val = safe_int(params.get("desc_limit"))
+
+        label_limit = label_limit_val if label_limit_val is not None else DEFAULT_LABEL_LIMIT
+        desc_limit = desc_limit_val if desc_limit_val is not None else DEFAULT_DESC_LIMIT
 
         # -----------------------------
         # extraction
@@ -202,12 +216,9 @@ def _canonical_extract_step(
     except (KeyError, AttributeError) as e:
         return {"items": [], "error": str(e)}, state
 
-
-
 # -----------------------------
 # Registration
 # -----------------------------
-
 
 def register_canonical_workflow_extract() -> None:
     register_unit(

@@ -10,9 +10,9 @@ Normalize and extract metadata from a "canonical" workflow JSON/dict into a sing
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
-| **Inputs** | `data` | Any | Root object (expected dict) containing the workflow; may be the full wrapper, `graph`, or `parsed` field. |
-|  | `file_path` | Any | Optional path override (string) used to read JSON file or set source/file path. |
-| **Outputs** | `items` | Any | List with one item: {"text": "<summary>", "metadata": {…extracted meta…"}} or empty on error. |
+| **Inputs** | `data` | JsonObject | Root object (expected dict) containing the workflow; may be the full wrapper, `graph`, or `parsed` field. |
+|  | `file_path` | str | Optional path override (string) used to read JSON file or set source/file path. |
+| **Outputs** | `items` | JsonArray | List with one item: {"text": "<summary>", "metadata": {…extracted meta…"}} or empty on error. |
 |  | `error` | str | Error message when extraction fails; normally empty. |
 | **Params** | `label_limit` | int | Max number of labels to include (default: 20). |
 |  | `desc_limit` | int | Max length for stored description (default: 4000). |
