@@ -182,7 +182,7 @@ async def _schedule_name_from_first_message_async(
 
     # Note: In production, we should store a reference to this task to prevent
     # it from being garbage collected mid-execution.
-    _ = asyncio.create_task(_run())
+    asyncio.create_task(_run())
 
 
 # ---------------------------------------------------------------------------
