@@ -149,7 +149,7 @@ async def run_report_follow_up(
     from agents.tools.report.action_block import ReportActionBlock
 
     try:
-        ctx.set_inline_status("Generating file…")
+        ctx.set_inline_status("Generating a file…")
     except (AttributeError, TypeError):
         pass
 
