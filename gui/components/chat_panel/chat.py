@@ -78,6 +78,7 @@ CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
 MESSENGER = "taskvector"
 LAST_UI_UPDATE_TS = 0.0
 UI_UPDATE_INTERVAL_S = 0.05 # 50ms throttle
+STREAMING_BUBBLE_MAX_LENGTH = 1200
 
 
 logger = logging.getLogger(__name__)
@@ -971,13 +972,17 @@ async def build_agents_chat_panel(
                     async def _redo_wrapper() -> None:
                         if on_redo: page.run_task(on_redo)
 
-                    # Rebuild rich body
+                    # Rebuild rich body with truncated content for visual limit
+                    display_chunk = chunk
+                    if len(chunk) > STREAMING_BUBBLE_MAX_LENGTH:
+                        display_chunk = "..." + chunk[-STREAMING_BUBBLE_MAX_LENGTH:]
+
                     rich_body = await build_agent_streaming_body(
                         page=page,
                         toast=_toast_now,
                         on_undo=_undo_wrapper if on_undo else None,
                         on_redo=_redo_wrapper if on_redo else None,
-                        content=chunk,
+                        content=display_chunk,
                         bubble_width=None,
                     )
                     wrapper.controls[:] = [rich_body]
@@ -985,7 +990,10 @@ async def build_agents_chat_panel(
                 else:
                     t = stream_plain_txt_ref[0]
                     if t is not None:
-                        t.value = chunk
+                        display_chunk = chunk
+                        if len(chunk) > STREAMING_BUBBLE_MAX_LENGTH:
+                            display_chunk = "..." + chunk[-STREAMING_BUBBLE_MAX_LENGTH:]
+                        t.value = display_chunk
                         t.update()
 
                 _set_inline_status(None)
