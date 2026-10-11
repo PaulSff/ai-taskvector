@@ -346,7 +346,7 @@ async def build_agents_chat_panel(
                 return
             await persist_session(_td_sid, agent_selected=agent_dd.value)
 
-        _ = page.run_task(_run)
+        page.run_task(_run)
 
     async def _toast_now(msg: str) -> None:
         async def _run_toast() -> None:
@@ -571,7 +571,7 @@ async def build_agents_chat_panel(
             async def _restore() -> None:
                 await _restore_scroll_after_replace(anchor_scroll_key)
 
-            _ = page.run_task(_restore)
+            page.run_task(_restore)
 
 
         elif stream_row is not None and stream_row in messages_col.controls:
@@ -602,12 +602,12 @@ async def build_agents_chat_panel(
                     _recent_menu_refresh_and_select(_td_session.chat_path.name)
                     _persist_session_debounced()
 
-                _ = page.run_task(_menu_refresh_and_snapshot)
+                page.run_task(_menu_refresh_and_snapshot)
 
             if after_io is not None:
                 await after_io()
 
-        _ = page.run_task(_flush_append_io)
+        page.run_task(_flush_append_io)
         return msg
 
 
@@ -706,7 +706,7 @@ async def build_agents_chat_panel(
     def _on_stop() -> None:
         if not state.busy:
             return
-        _ = _next_run_token()  # prevent stale stream callbacks from updating the UI
+        _next_run_token()  # prevent stale stream callbacks from updating the UI
         stop_run(_td_sid)  # signal turn_driver's streaming consumer to stop
         status_bar.set_status(None)
         _clear_stream_row()
@@ -736,7 +736,7 @@ async def build_agents_chat_panel(
             async def _toast_load_fail() -> None:
                 await _toast(page, "Could not load chat file")
 
-            _ = page.run_task(_toast_load_fail)
+            page.run_task(_toast_load_fail)
             return
 
         # Restore session state into turn_driver (history, language, path, etc.)
@@ -935,6 +935,8 @@ async def build_agents_chat_panel(
             _ui_update_interval = UI_UPDATE_INTERVAL_S
 
             async def _stream_cb(session_id: str, chunk: str) -> None:
+                if not _is_current_run(token):
+                    return
                 nonlocal _last_ui_update_ts
 
                 if chunk.startswith(INLINE_STATUS_PREFIX):
@@ -1046,10 +1048,10 @@ async def build_agents_chat_panel(
                 if callable(cb):
                     try:
                         # Preferred: pass raw outputs dict
-                        _ = cb(orch_out)
+                        cb(orch_out)
                     except TypeError:
                         # Fallback: pass with wrapper used by some implementations
-                        _ = cb({"outputs": orch_out})
+                        cb({"outputs": orch_out})
 
 
             # ── resolve_role output → update dropdown + model label ──
@@ -1119,7 +1121,7 @@ async def build_agents_chat_panel(
                 async def _restore_after_end() -> None:
                     await _restore_scroll_after_anchor(_scroll_anchor)
 
-                _ = page.run_task(_restore_after_end)
+                page.run_task(_restore_after_end)
 
 
     def _remove_previous_turn_from_ui() -> None:
@@ -1423,7 +1425,7 @@ async def build_agents_chat_panel(
                     continue
 
 
-        _ = page.run_task(_focus_first)
+        page.run_task(_focus_first)
         focus_handler.set_preference("first")
 
     if chat_panel_api is not None:
