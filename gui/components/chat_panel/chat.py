@@ -60,6 +60,7 @@ from gui.components.chat_panel.ui.message_renderer import (
     streaming_agent_opened_code_fence,
 )
 from gui.components.chat_panel.ui.recent_chats_menu import RecentChatsMenu
+from gui.components.chat_panel.ui.render_helpers import truncate_fence_safe
 from gui.components.chat_panel.ui.status_bar import StatusBarController
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.workflow_tab.process_graph import ProcessGraph
@@ -78,7 +79,7 @@ CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
 MESSENGER = "taskvector"
 LAST_UI_UPDATE_TS = 0.0
 UI_UPDATE_INTERVAL_S = 0.05 # 50ms throttle
-STREAMING_BUBBLE_MAX_LENGTH = 1200
+STREAMING_BUBBLE_MAX_LENGTH = 2480
 
 
 logger = logging.getLogger(__name__)
@@ -973,9 +974,7 @@ async def build_agents_chat_panel(
                         if on_redo: page.run_task(on_redo)
 
                     # Rebuild rich body with truncated content for visual limit
-                    display_chunk = chunk
-                    if len(chunk) > STREAMING_BUBBLE_MAX_LENGTH:
-                        display_chunk = "..." + chunk[-STREAMING_BUBBLE_MAX_LENGTH:]
+                    display_chunk = truncate_fence_safe(chunk, STREAMING_BUBBLE_MAX_LENGTH)
 
                     rich_body = await build_agent_streaming_body(
                         page=page,
@@ -990,9 +989,7 @@ async def build_agents_chat_panel(
                 else:
                     t = stream_plain_txt_ref[0]
                     if t is not None:
-                        display_chunk = chunk
-                        if len(chunk) > STREAMING_BUBBLE_MAX_LENGTH:
-                            display_chunk = "..." + chunk[-STREAMING_BUBBLE_MAX_LENGTH:]
+                        display_chunk = truncate_fence_safe(chunk, STREAMING_BUBBLE_MAX_LENGTH)
                         t.value = display_chunk
                         t.update()
 

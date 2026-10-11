@@ -59,6 +59,7 @@ _TODO_DISPLAY_ACTIONS = frozenset(
          "add_task",
          "remove_task",
          "mark_completed",
+         "set_implementer",
      }
  )
 
@@ -109,6 +110,44 @@ _ACTION_RE = re.compile(
     r'set_curator|set_todo_list_title|read_current_workflow|make_dir|replace_graph|mark_completed)"'
 )
 
+_LEADING_GARBAGE_RE = re.compile(r'^[\s\]\}\)`"\'.,;:|>]+')
+
+def start_from_sentence(text: str) -> str:
+    matches = list(re.finditer(r'(?<=[.!?])\s+(?=[A-Z0-9])', text))
+    if matches:
+        return text[matches[-1].end():].lstrip()
+    return text.lstrip()
+
+def truncate_fence_safe(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+
+    tail = text[-max_len:]
+
+    boundaries = [
+        "\n```",
+        "\n{",
+        "\n[",
+        "\n**",
+        "\n__",
+        "\n- ",
+        "\n* ",
+        "\n",
+    ]
+
+    cut = -1
+    for b in boundaries:
+        i = tail.find(b)
+        if i != -1 and (cut == -1 or i < cut):
+            cut = i
+
+    if cut != -1:
+        tail = tail[cut + 1:]
+
+    tail = _LEADING_GARBAGE_RE.sub("", tail)
+    tail = start_from_sentence(tail)
+
+    return "..." + tail
 
 def fence_is_hidden_action(text: str) -> bool:
     return _ACTION_RE.search(text) is not None
@@ -473,7 +512,7 @@ def todo_mutator_summary_lines(
     return lines
 
 
-def simulate_todo_actions(
+async def simulate_todo_actions(
     items: list[dict[str, Any]],
 ) -> tuple[
     TodoList | None,

@@ -120,7 +120,7 @@ async def render_agent_content(
                             )
                     continue
 
-                final_list, twarnings, removed_flag = simulate_todo_actions(todo_items)
+                final_list, twarnings, removed_flag = await simulate_todo_actions(todo_items)
                 todo_controls = build_todo_preview_controls(
                     final_list,
                     twarnings,
@@ -231,7 +231,7 @@ async def render_agent_content(
                         )
                 continue
 
-            final_list, twarnings, removed_flag = simulate_todo_actions(todo_items)
+            final_list, twarnings, removed_flag = await simulate_todo_actions(todo_items)
             todo_controls = build_todo_preview_controls(
                 final_list,
                 twarnings,
