@@ -30,26 +30,30 @@ Streaming:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import Any
 
+from mcp import Client
+
+from core.schemas.primitives import Data, Output
+from mcp_integrations.schemas import MCPParams
 from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, register_unit
 
 RUN_MCP_SOURCE_INPUT_PORTS = [
-    ("parser_output", "Any"),
+    ("parser_output", "dict"),
 ]
 
 RUN_MCP_SOURCE_OUTPUT_PORTS = [
-    ("data", "Any"),
+    ("data", "dict"),
     ("error", "str"),
 ]
 
 
-def _as_dict(x: Any) -> dict[str, Any] | None:
+def _as_dict(x: Any) -> Data | None:
     return x if isinstance(x, dict) else None
 
 
-def _get_stream_cb(params: dict[str, Any]) -> Any | None:
+def _get_stream_cb(params: MCPParams) -> Any | None:
     cb = params.get("_stream_callback")
     return cb if callable(cb) else None
 
@@ -63,12 +67,21 @@ def _maybe_status(cb: Any | None, token: Any) -> None:
         pass
 
 
+def _to_data(result: Any) -> Data:
+    if isinstance(result, dict):
+        return result
+    sc = getattr(result, "structured_content", None)
+    if isinstance(sc, dict):
+        return sc
+    return {}
+
+
 async def _call_mcp_source_async(
     *,
     resource_uri: str,
     stream_cb: GraphStreamCallback | None,
-    params: dict[str, Any],
-) -> Any:
+    params: MCPParams,
+) -> Data:
     try:
         from runtime.run import INLINE_STATUS_FOR_STREAMING
         from runtime.stream_ui_signals import inline_status_stream_chunk
@@ -81,10 +94,7 @@ async def _call_mcp_source_async(
     try:
         host = params.get("mcp_host")
         if host is not None:
-            return await host.read_resource(resource_uri)
-
-        # Fallback: direct client (same style as MCPTool, but without auth support yet)
-        from mcp import Client
+            return _to_data(await host.read_resource(resource_uri))
 
         if params.get("mcp_in_memory") is True:
             server_object = params.get("mcp_server_object")
@@ -92,25 +102,15 @@ async def _call_mcp_source_async(
                 raise ValueError("params['mcp_server_object'] required when params['mcp_in_memory'] is true")
 
             async with Client(server_object) as client:
-                if hasattr(client, "read_resource"):
-                    res = await client.read_resource(resource_uri)
-                else:
-                    raise RuntimeError("SDK client has no read_resource()")
+                result = await client.read_resource(resource_uri)
+                return _to_data(result)
 
-                return getattr(res, "content", None) or getattr(res, "structured_content", res)
-
-        # Custom transport
         custom_transport = params.get("mcp_custom_transport")
         if custom_transport is not None:
             async with Client(custom_transport) as client:
-                if hasattr(client, "read_resource"):
-                    res = await client.read_resource(resource_uri)
-                else:
-                    raise RuntimeError("SDK client has no read_resource()")
+                result = await client.read_resource(resource_uri)
+                return _to_data(result)
 
-                return getattr(res, "content", None) or getattr(res, "structured_content", res)
-
-        # HTTP transport
         mcp_url = params.get("mcp_url")
         if not isinstance(mcp_url, str) or not mcp_url.strip():
             raise ValueError("params['mcp_url'] (HTTP) required when not using in_memory/custom_transport")
@@ -121,22 +121,20 @@ async def _call_mcp_source_async(
             raise ValueError("mcp_http_headers / mcp_bearer_token require mcp_custom_transport in this component.")
 
         async with Client(mcp_url.strip()) as client:
-            if hasattr(client, "read_resource"):
-                res = await client.read_resource(resource_uri)
-            else:
-                raise RuntimeError("SDK client has no read_resource()")
-            return getattr(res, "content", None) or getattr(res, "structured_content", res)
+            result = await client.read_resource(resource_uri)
+            return _to_data(result)
 
     finally:
         _maybe_status(stream_cb, inline_status_stream_chunk(None))
 
 
+
 def _mcp_source_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: MCPParams,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     parser_output = inputs.get("parser_output")
     parser_dict = _as_dict(parser_output) if parser_output is not None else None
     stream_cb = _get_stream_cb(params)
@@ -152,7 +150,7 @@ def _mcp_source_step(
     if not isinstance(resource_uri, str) or not resource_uri.strip():
         return ({"data": {}, "error": "mcp_source: resource_uri must be a non-empty string"}, state)
 
-    async def _go() -> dict[str, Any]:
+    async def _go() -> Data:
         res = await _call_mcp_source_async(
             resource_uri=resource_uri.strip(),
             stream_cb=stream_cb,
@@ -172,7 +170,7 @@ def _mcp_source_step(
         else:
             outputs = asyncio.run(_go())
 
-        return (cast(dict[str, Any], outputs), state)
+        return (outputs, state)
 
     except (TypeError, ValueError, NotImplementedError) as e:
         return ({"data": {}, "error": f"mcp_source execute failed: {e}"}, state)
