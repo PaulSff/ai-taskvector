@@ -20,11 +20,23 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from mcp import Client
 
-from mcp_integrations.schemas import MCPServerConfig
+
+@dataclass(frozen=True)
+class MCPServerConfig:
+    server_id: str
+    mode: str  # "in_memory" | "http" | "custom_transport"
+    mcp_url: str | None = None
+    mcp_server_object: Any | None = None
+    custom_transport: Any | None = None
+
+    # Optional HTTP auth (only if you switch to custom_transport in your setup)
+    mcp_http_headers: dict[str, str] | None = None
+    mcp_bearer_token: str | None = None
 
 
 class MCPHost:

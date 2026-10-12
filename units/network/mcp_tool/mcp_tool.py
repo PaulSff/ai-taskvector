@@ -34,29 +34,25 @@ Streaming:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
-from mcp import Client
-
-from core.schemas.primitives import Data, Output
-from mcp_integrations.schemas import MCPParams
 from runtime.executor import GraphStreamCallback
 from units.registry import UnitSpec, register_unit
 
 RUN_MCP_TOOL_INPUT_PORTS = [
-    ("parser_output", "dict"),
+    ("parser_output", "Any"),
 ]
 RUN_MCP_TOOL_OUTPUT_PORTS = [
-    ("data", "dict"),
+    ("data", "Any"),
     ("error", "str"),
 ]
 
 
-def _as_dict(x: Any) -> Data | None:
+def _as_dict(x: Any) -> dict[str, Any] | None:
     return x if isinstance(x, dict) else None
 
 
-def _get_stream_cb(params: MCPParams) -> Any | None:
+def _get_stream_cb(params: dict[str, Any]) -> Any | None:
     cb = params.get("_stream_callback")
     return cb if callable(cb) else None
 
@@ -69,22 +65,15 @@ def _maybe_status(cb: Any | None, token: Any) -> None:
     except (TypeError, RuntimeError, BrokenPipeError, OSError):
         pass
 
-def _to_data(result: Any) -> Data:
-    if isinstance(result, dict):
-        return result
-    sc = getattr(result, "structured_content", None)
-    if isinstance(sc, dict):
-        return sc
-    return {}
-
 
 async def _call_mcp_tool_async(
     *,
     tool_name: str,
-    arguments: Data,
+    arguments: dict[str, Any],
     stream_cb: GraphStreamCallback | None,
-    params: MCPParams,
-) -> Data:
+    params: dict[str, Any],
+) -> Any:
+    from mcp import Client
 
     try:
         from runtime.run import INLINE_STATUS_FOR_STREAMING
@@ -111,14 +100,14 @@ async def _call_mcp_tool_async(
 
             async with Client(server_object) as client:
                 result = await client.call_tool(tool_name, arguments)
-                return _to_data(result)
+                return getattr(result, "structured_content", result)
 
         # Custom transport (if provided by your runtime)
         custom_transport = params.get("mcp_custom_transport")
         if custom_transport is not None:
             async with Client(custom_transport) as client:
                 result = await client.call_tool(tool_name, arguments)
-                return _to_data(result)
+                return getattr(result, "structured_content", result)
 
         # HTTP transport
         mcp_url = params.get("mcp_url")
@@ -138,18 +127,18 @@ async def _call_mcp_tool_async(
 
         async with Client(mcp_url.strip()) as client:
             result = await client.call_tool(tool_name, arguments)
-            return _to_data(result)
+            return getattr(result, "structured_content", result)
 
     finally:
         _maybe_status(stream_cb, inline_status_stream_chunk(None))
 
 
 def _mcp_tool_step(
-    params: MCPParams,
-    inputs: Data,
-    state: Data,
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> Output:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     parser_output = inputs.get("parser_output")
     parser_dict = _as_dict(parser_output) if parser_output is not None else None
     stream_cb = _get_stream_cb(params)
@@ -165,22 +154,18 @@ def _mcp_tool_step(
     if not isinstance(tool_name, str) or not tool_name.strip():
         return ({"data": {}, "error": "mcp_tool: tool_name must be a non-empty string"}, state)
 
-    arguments_obj = payload.get("arguments", {})
-    if not isinstance(arguments_obj, dict):
+    arguments = payload.get("arguments", {})
+    if not isinstance(arguments, dict):
         return ({"data": {}, "error": "mcp_tool: arguments must be an object/dict"}, state)
 
-    arguments: Data = arguments_obj
-
-    async def _go() -> Data:
+    async def _go() -> dict[str, Any]:
         res = await _call_mcp_tool_async(
             tool_name=tool_name.strip(),
-            arguments=arguments,
+            arguments=cast(dict[str, Any], arguments),
             stream_cb=stream_cb,
             params=params,
         )
         return {"data": res, "error": ""}
-
-    outputs: Data
 
     try:
         try:
@@ -194,7 +179,7 @@ def _mcp_tool_step(
         else:
             outputs = asyncio.run(_go())
 
-        return (outputs, state)
+        return (cast(dict[str, Any], outputs), state)
 
     except (TypeError, ValueError, NotImplementedError) as e:
         return ({"data": {}, "error": f"mcp_source execute failed: {e}"}, state)
