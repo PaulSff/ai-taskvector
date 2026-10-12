@@ -18,12 +18,12 @@ Params:
 from __future__ import annotations
 
 import json
-from typing import Any
 
+from core.schemas.primitives import Data, JsonObject, JsonValue, safe_int
 from units.registry import UnitSpec, register_unit
 
-JSON_FLATTEN_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-JSON_FLATTEN_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
+JSON_FLATTEN_EXTRACT_INPUT_PORTS = [("data", "JsonValue"), ("file_path", "str")]
+JSON_FLATTEN_EXTRACT_OUTPUT_PORTS = [("items", "list"), ("error", "str")]
 
 # Fields that are worth promoting into the metadata dict if present at the top level
 _WELL_KNOWN_META_KEYS: frozenset[str] = frozenset(
@@ -50,6 +50,7 @@ _DEFAULT_MAX_DEPTH = 5
 _DEFAULT_MAX_VALUE_LEN = 400
 _DEFAULT_MAX_PAIRS = 80
 
+type StepParams = dict[str, int | frozenset[str]]
 
 # -----------------------------
 # Recursive flattener
@@ -57,7 +58,7 @@ _DEFAULT_MAX_PAIRS = 80
 
 
 def _flatten_to_pairs(
-    obj: Any,
+    obj: JsonValue,
     prefix: str,
     max_depth: int,
     current_depth: int,
@@ -145,9 +146,9 @@ def _flatten_to_pairs(
 # -----------------------------
 
 
-def _build_metadata(obj: dict[str, Any], file_path: str, origin: str) -> dict[str, Any]:
+def _build_metadata(obj: JsonObject, file_path: str, origin: str) -> JsonObject:
     """Promote well-known top-level fields into the metadata dict."""
-    meta: dict[str, Any] = {
+    meta: JsonObject = {
         "file_path": file_path,
         "origin": origin or "generic_json",
     }
@@ -171,9 +172,8 @@ def _build_metadata(obj: dict[str, Any], file_path: str, origin: str) -> dict[st
 # Per-object item builder
 # -----------------------------
 
-
 def _make_item(
-    obj: dict[str, Any],
+    obj: JsonObject,
     file_path: str,
     origin: str,
     *,
@@ -181,7 +181,7 @@ def _make_item(
     max_value_len: int,
     max_pairs: int,
     skip_keys: frozenset[str],
-) -> dict[str, Any]:
+) -> JsonObject:
     pairs = _flatten_to_pairs(obj, "", max_depth, 0, max_value_len, skip_keys)[
         :max_pairs
     ]
@@ -190,22 +190,25 @@ def _make_item(
     return {"text": text, "metadata": meta}
 
 
+def safe_clamped_int(value: object, default: int, low: int, high: int) -> int:
+    n = safe_int(value)
+    if n is None:
+        n = default
+    return max(low, min(n, high))
+
 # -----------------------------
 # Unit step
 # -----------------------------
 
-
 def _json_flatten_extract_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:
         raw = inputs.get("data")
 
-        # Unwrap the context envelope produced by RagDetectOrigin:
-        # {"file_path": "...", "parsed": <json root>, "origin": "..."}
         if isinstance(raw, dict):
             parsed = raw.get("parsed") or raw.get("graph") or raw
             fp = str(raw.get("file_path") or "").strip()
@@ -215,98 +218,95 @@ def _json_flatten_extract_step(
             fp = ""
             origin = "generic_json"
 
-        # file_path input port takes precedence if provided
         fp_port = inputs.get("file_path")
         if isinstance(fp_port, str) and fp_port.strip():
             fp = fp_port.strip()
 
-        # --- params with safety guards ---
-        max_depth = max(1, min(int(params.get("max_depth", _DEFAULT_MAX_DEPTH)), 10))
-        max_value_len = max(
-            50, min(int(params.get("max_value_len", _DEFAULT_MAX_VALUE_LEN)), 2000)
-        )
-        max_pairs = max(1, min(int(params.get("max_pairs", _DEFAULT_MAX_PAIRS)), 500))
-        raw_skip = params.get("skip_keys") or []
-        skip_keys: frozenset[str] = (
-            frozenset(raw_skip) if isinstance(raw_skip, list) else frozenset()
-        )
+        max_depth = safe_clamped_int(params.get("max_depth"), _DEFAULT_MAX_DEPTH, 1, 10)
+        max_value_len = safe_clamped_int(params.get("max_value_len"), _DEFAULT_MAX_VALUE_LEN, 50, 2000)
+        max_pairs = safe_clamped_int(params.get("max_pairs"), _DEFAULT_MAX_PAIRS, 1, 500)
 
-        # Overrides
+        raw_skip = params.get("skip_keys") or []
+        skip_keys = frozenset(raw_skip) if isinstance(raw_skip, list) else frozenset()
+
         override_origin = str(params.get("origin") or "").strip()
         override_content_type = str(params.get("content_type") or "").strip()
         if override_origin:
             origin = override_origin
 
-        kwargs: dict[str, Any] = {
-            "max_depth": max_depth,
-            "max_value_len": max_value_len,
-            "max_pairs": max_pairs,
-            "skip_keys": skip_keys,
-        }
+        items: list[JsonObject] = []
 
-        items: list[dict[str, Any]] = []
+        def _set_content_type(item: JsonObject) -> None:
+            metadata = item.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                item["metadata"] = metadata
+            metadata["content_type"] = override_content_type
 
         if isinstance(parsed, list):
-            # Top-level array → one RAG item per dict element
             for el in parsed:
                 if isinstance(el, dict):
-                    item = _make_item(el, fp, origin, **kwargs)
+                    item = _make_item(
+                        el,
+                        fp,
+                        origin,
+                        max_depth=max_depth,
+                        max_value_len=max_value_len,
+                        max_pairs=max_pairs,
+                        skip_keys=skip_keys,
+                    )
                     if override_content_type:
-                        item.setdefault("metadata", {})["content_type"] = (
-                            override_content_type
-                        )
+                        _set_content_type(item)
                     items.append(item)
                 else:
-                    # Non-dict primitive in list: create a simple item
                     s = str(el).strip()
-
                     if s:
-                        metadata: dict[str, Any] = {
+                        item_metadata: JsonObject = {
                             "file_path": fp,
                             "origin": origin,
                         }
-
                         if override_content_type:
-                            metadata["content_type"] = override_content_type
+                            item_metadata["content_type"] = override_content_type
 
-                        item: dict[str, Any] = {
+                        items.append({
                             "text": s,
-                            "metadata": metadata,
-                        }
+                            "metadata": item_metadata,
+                        })
 
-                        items.append(item)
         elif isinstance(parsed, dict):
-            item = _make_item(parsed, fp, origin, **kwargs)
+            item = _make_item(
+                parsed,
+                fp,
+                origin,
+                max_depth=max_depth,
+                max_value_len=max_value_len,
+                max_pairs=max_pairs,
+                skip_keys=skip_keys,
+            )
             if override_content_type:
-                item.setdefault("metadata", {})["content_type"] = override_content_type
+                _set_content_type(item)
             items.append(item)
+
         else:
-            # parsed is a primitive value; create one text item.
             if parsed is not None:
                 s = str(parsed).strip()
-
                 if s:
-                    metadata: dict[str, Any] = {
+                    metadata: JsonObject = {
                         "file_path": fp,
                         "origin": origin,
                     }
-
                     if override_content_type:
                         metadata["content_type"] = override_content_type
 
-                    item: dict[str, Any] = {
+                    items.append({
                         "text": s,
                         "metadata": metadata,
-                    }
-
-                    items.append(item)
-
+                    })
 
         return {"items": items, "error": ""}, state
 
     except (ValueError, TypeError) as e:
         return {"items": [], "error": str(e)}, state
-
 
 # -----------------------------
 # Registration

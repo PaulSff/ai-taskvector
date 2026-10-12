@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.app_settings_param import coerce_int_param
 from units.registry import UnitSpec, register_unit
+
+FORMAT_RAG_PROMPT_INPUT_PORTS = [("table", "Any")]
+FORMAT_RAG_PROMPT_OUTPUT_PORTS = [("data", "str")]
 
 
 def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
@@ -64,11 +68,7 @@ def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
     return block
 
 
-FORMAT_RAG_PROMPT_INPUT_PORTS = [("table", "Any")]
-FORMAT_RAG_PROMPT_OUTPUT_PORTS = [("data", "str")]
-
-
-def _limits_from_params(params: dict[str, Any]) -> tuple[int, int] | None:
+def _limits_from_params(params: Data) -> tuple[int, int] | None:
     mc = coerce_int_param(params.get("max_chars"))
     sm = coerce_int_param(params.get("snippet_max"))
     if mc is None or sm is None:
@@ -77,11 +77,11 @@ def _limits_from_params(params: dict[str, Any]) -> tuple[int, int] | None:
 
 
 def _format_rag_prompt_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     """Format RAG results table into prompt block string. Params: max_chars, snippet_max (literals or settings.<key>)."""
     table = inputs.get("table")
     if not isinstance(table, list):

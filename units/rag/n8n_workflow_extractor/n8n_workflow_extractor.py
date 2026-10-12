@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data
 from units.registry import UnitSpec, register_unit
 
-N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
+N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS = [("data", "dict"), ("file_path", "str")]
+N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS = [("items", "list"), ("error", "str")]
 
 
 # -----------------------------
@@ -15,7 +15,7 @@ N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
 # -----------------------------
 
 
-def _to_string(val: Any) -> str:
+def _to_string(val: object) -> str:
     """Normalize to string: keep str, convert list/dict to JSON string, else str()."""
     if val is None:
         return ""
@@ -29,8 +29,10 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _extract_n8n_meta(raw: dict[str, Any], source: str) -> dict[str, Any]:
-    nodes = raw.get("nodes") or []
+def _extract_n8n_meta(raw: Data, source: str) -> Data:
+    nodes = raw.get("nodes")
+    if not isinstance(nodes, list):
+        nodes = []
 
     integrations: set[str] = set()
     labels: list[str] = []
@@ -47,9 +49,13 @@ def _extract_n8n_meta(raw: dict[str, Any], source: str) -> dict[str, Any]:
         if name is not None:
             labels.append(_to_string(name))
 
+    # Extract meta separately to satisfy type checker
+    meta_obj = raw.get("meta")
+    instance_id = meta_obj.get("instanceId") if isinstance(meta_obj, dict) else None
+
     wf_name = _to_string(
         raw.get("name")
-        or (isinstance(raw.get("meta"), dict) and raw["meta"].get("instanceId"))
+        or instance_id
         or "Unknown"
     )
 
@@ -64,14 +70,16 @@ def _extract_n8n_meta(raw: dict[str, Any], source: str) -> dict[str, Any]:
     }
 
 
-def _to_text(meta: dict[str, Any]) -> str:
+def _to_text(meta: Data) -> str:
     parts = [f"Workflow: {meta.get('name', '')}"]
 
-    if meta.get("integrations"):
-        parts.append(f"Integrations: {', '.join(meta['integrations'])}")
+    integrations = meta.get("integrations")
+    if isinstance(integrations, list):
+        parts.append(f"Integrations: {', '.join(str(i) for i in integrations)}")
 
-    if meta.get("labels"):
-        parts.append(f"Nodes: {', '.join(meta['labels'][:10])}")
+    labels = meta.get("labels")
+    if isinstance(labels, list):
+        parts.append(f"Nodes: {', '.join(str(l) for l in labels[:10])}")
 
     parts.append(f"Format: {meta.get('format', '')}")
 
@@ -81,12 +89,10 @@ def _to_text(meta: dict[str, Any]) -> str:
 # -----------------------------
 # Step
 # -----------------------------
-
-
 def _n8n_workflow_extract_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     try:

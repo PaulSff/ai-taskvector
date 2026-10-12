@@ -10,8 +10,8 @@ Normalize and extract metadata from an n8n workflow JSON/dict into a single meta
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
-| **Inputs** | `data` | Any | Root object (dict) containing the workflow; may be the full wrapper, `graph`, `parsed`, or the workflow dict. |
-|  | `file_path` | Any | Optional path override (string) used to read JSON file or set source/file path. |
+| **Inputs** | `data` | dict | Root object containing the workflow; may be the full wrapper, `graph`, `parsed`, or the workflow dict. |
+|  | `file_path` | str | Optional path override used to read JSON file or set source/file path. |
 | **Outputs** | `items` | Any | List with one item: {"text": "<summary>", "metadata": {…extracted meta…"}} or empty on error. |
 |  | `error` | str | Error message when extraction fails; normally empty. |
 | **Params** | (none required) | — | Unit is self-contained; truncation defaults documented below. |
@@ -37,8 +37,8 @@ Normalize and extract metadata from an n8n workflow JSON/dict into a single meta
 
 ## Defaults
 
-- DEFAULT_NAME_FALLBACK: "Unknown"  
-- DEFAULT_LABEL_LIMIT: 20
+- Name fallback: "Unknown"
+- Label limit: 20
 
 ## Example
 

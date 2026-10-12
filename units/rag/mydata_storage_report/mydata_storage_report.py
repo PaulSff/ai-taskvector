@@ -4,14 +4,14 @@ MydataStorageReport unit: directory listing + storage summary + pie chart payloa
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from rag.mydata_file_manager_ops import build_mydata_refresh_view_model
 from units.registry import UnitSpec, register_unit
 
 # organize_moved is wired from MydataOrganize so this unit runs after organize (value unused).
-MYDATA_STORAGE_REPORT_INPUT_PORTS = [("organize_moved", "int"), ("rel_parts", "Any")]
-MYDATA_STORAGE_REPORT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+MYDATA_STORAGE_REPORT_INPUT_PORTS = [("organize_moved", "int"), ("rel_parts", "str | list[str]")]
+MYDATA_STORAGE_REPORT_OUTPUT_PORTS = [("data", "Data"), ("error", "str")]
 
 
 def _repo_root() -> Path:
@@ -25,7 +25,7 @@ def _resolve_under_repo(raw: str) -> Path:
     return p.resolve()
 
 
-def _coerce_rel_parts(raw: Any) -> list[str]:
+def _coerce_rel_parts(raw: object) -> list[str]:
     if raw is None:
         return []
     if isinstance(raw, list):
@@ -36,12 +36,16 @@ def _coerce_rel_parts(raw: Any) -> list[str]:
 
 
 def _mydata_storage_report_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    raw_dir = (params.get("mydata_dir") or "").strip()
+) -> Output:
+    raw_dir = params.get("mydata_dir")
+    if not isinstance(raw_dir, str) or not raw_dir.strip():
+        return ({"data": {}, "error": "mydata_dir is required"}, state)
+
+    raw_dir = raw_dir.strip()
     if not raw_dir:
         return ({"data": {}, "error": "mydata_dir is required"}, state)
     mydata = _resolve_under_repo(str(raw_dir))

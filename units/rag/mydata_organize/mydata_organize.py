@@ -4,8 +4,8 @@ MydataOrganize unit: move root-level files under mydata into RAG layout (rag.myd
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from core.schemas.primitives import Data, Output
 from rag.mydata_file_manager_ops import organize_mydata_root
 from units.registry import UnitSpec, register_unit
 
@@ -25,12 +25,13 @@ def _resolve_under_repo(raw: str) -> Path:
 
 
 def _mydata_organize_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    raw = (params.get("mydata_dir") or "").strip()
+) -> Output:
+    raw_value = params.get("mydata_dir")
+    raw = str(raw_value or "").strip()
     if not raw:
         return ({"moved": 0, "error": "mydata_dir is required"}, state)
     mydata = _resolve_under_repo(str(raw))
@@ -39,7 +40,6 @@ def _mydata_organize_step(
     except (TypeError, ValueError) as e:
         return ({"moved": 0, "error": str(e)[:300]}, state)
     return ({"moved": int(n), "error": ""}, state)
-
 
 
 def register_mydata_organize() -> None:

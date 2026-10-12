@@ -10,13 +10,13 @@ This unit scans a specified directory (`mydata_dir`) and produces a view model c
 
 ## Input Ports
 
-- `rel_parts` (Any): A list of strings or a single string representing the relative path parts to navigate within the root directory.
+- `rel_parts` (str | list[str]): A list of strings or a single string representing the relative path parts to navigate within the root directory.
 - `organize_moved` (int): A trigger port. When wired from a `MydataOrganize` unit, it ensures the report is refreshed after files have been moved.
 
 
 ## Output Ports
 
-- `data` (Any): The resulting view model payload, including folder entries, `summary_text`, `pie_src`, and `rel_parts_effective`.
+- `data` (Data): The resulting view model payload, including folder entries, `summary_text`, `pie_src`, and `rel_parts_effective`.
 - `error` (str): Contains error messages if directory resolution or processing fails.
 
 

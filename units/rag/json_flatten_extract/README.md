@@ -30,7 +30,7 @@ RagDetectOrigin
 
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `data` | Any | Accepts a bare file-path string, a parsed JSON dict/list, or a `RagDetectOrigin` context envelope `{file_path, parsed, origin}`. |
+| `data` | JsonValue | Accepts a bare file-path string, a parsed JSON dict/list, or a `RagDetectOrigin` context envelope `{file_path, parsed, origin}`. |
 | `file_path` | Any | Optional override. When provided as a non-empty string, takes precedence over any path found in `data`. |
 
 ---
@@ -39,7 +39,7 @@ RagDetectOrigin
 
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `items` | Any | List of `{text, metadata}` dicts ready for `RagChunkBuilder`. One item per top-level dict; one item per element if the JSON root is an array. |
+| `items` | list | List of `{text, metadata}` dicts ready for `RagChunkBuilder`. One item per top-level dict; one item per element if the JSON root is an array. |
 | `error` | str | Non-empty on failure; `items` is `[]` in that case. |
 
 ---

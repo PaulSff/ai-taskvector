@@ -22,10 +22,10 @@
       },
       "input_ports": [
         {"name": "organize_moved", "type": "int"},
-        {"name": "rel_parts", "type": "Any"}
+        {"name": "rel_parts", "type": "str | list[str]"}
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
+        {"name": "data", "type": "Data"},
         {"name": "error", "type": "str"}
       ]
     }

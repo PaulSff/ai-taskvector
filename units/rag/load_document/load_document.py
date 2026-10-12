@@ -3,8 +3,15 @@ from __future__ import annotations
 import base64
 import io
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from docling.datamodel.document import ConversionResult
+    from docling.document_converter import DocumentConverter
+    from docling_core.types.doc.document import DoclingDocument, TableItem
+
+
+from core.schemas.primitives import Data
 from units.registry import UnitSpec, register_unit
 
 LOAD_DOCUMENT_INPUT_PORTS = [("path", "str")]
@@ -91,7 +98,7 @@ def _build_schema_from_columns(cols: list[Any]) -> list[dict[str, Any]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _body_text_excluding_tables(document: Any) -> str:
+def _body_text_excluding_tables(document: DoclingDocument) -> str:
     try:
         from docling_core.types.doc.labels import (
             DocItemLabel,  # type: ignore[import-not-found]
@@ -111,7 +118,7 @@ def _body_text_excluding_tables(document: Any) -> str:
 
 
 
-def _export_markdown(document: Any) -> str:
+def _export_markdown(document: DoclingDocument) -> str:
     try:
         return (document.export_to_markdown() or "").strip()
     except (AttributeError, TypeError, ValueError):
@@ -119,14 +126,14 @@ def _export_markdown(document: Any) -> str:
 
 
 
-def _export_html(document: Any) -> str:
+def _export_html(document: DoclingDocument) -> str:
     try:
         return (document.export_to_html() or "").strip()
     except (AttributeError, TypeError, ValueError):
         return ""
 
 
-def _export_doctags(document: Any) -> str:
+def _export_doctags(document: DoclingDocument) -> str:
     """Export to DocTags format. Returns the raw string representation."""
     try:
         dt = document.export_to_doctags()
@@ -141,7 +148,7 @@ def _export_doctags(document: Any) -> str:
 
 
 
-def _export_json_doc(document: Any) -> dict[str, Any]:
+def _export_json_doc(document: DoclingDocument) -> dict[str, Any]:
     """Lossless DoclingDocument serialisation."""
     try:
         result = document.export_to_dict()
@@ -157,7 +164,7 @@ def _export_json_doc(document: Any) -> dict[str, Any]:
 
 
 
-def _get_page_count(document: Any) -> float:
+def _get_page_count(document: DoclingDocument) -> float:
     try:
         pages = getattr(document, "pages", None)
         if pages is not None:
@@ -168,7 +175,7 @@ def _get_page_count(document: Any) -> float:
 
 
 
-def _extract_headings(document: Any) -> list[dict[str, Any]]:
+def _extract_headings(document: DoclingDocument) -> list[dict[str, Any]]:
     """Extract section headings and the document title as {level, text, page} dicts."""
     out: list[dict[str, Any]] = []
     try:
@@ -196,7 +203,7 @@ def _extract_headings(document: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _extract_furniture(document: Any) -> list[dict[str, Any]]:
+def _extract_furniture(document: DoclingDocument) -> list[dict[str, Any]]:
     """Extract page headers and footers as {label, text, page} dicts."""
     out: list[dict[str, Any]] = []
     try:
@@ -229,7 +236,7 @@ def _extract_furniture(document: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _extract_key_value_items(document: Any) -> list[dict[str, Any]]:
+def _extract_key_value_items(document: DoclingDocument) -> list[dict[str, Any]]:
     """Extract key-value pairs found by Docling's KV extraction pipeline."""
     out: list[dict[str, Any]] = []
     try:
@@ -244,8 +251,8 @@ def _extract_key_value_items(document: Any) -> list[dict[str, Any]]:
 
 
 def _extract_pictures_enhanced(
-    document: Any,
-    conv_result: Any,
+    document: DoclingDocument,
+    conv_result: ConversionResult,
     include_images: bool,
 ) -> list[dict[str, Any]]:
     """Extract picture metadata. image_base64 is only populated when include_images=True.
@@ -315,7 +322,7 @@ def _extract_pictures_enhanced(
     return out
 
 
-def _make_converter(params: dict[str, Any]) -> Any:
+def _make_converter(params: dict[str, Any]) -> DocumentConverter:
     """
     Build a ``DocumentConverter`` with optional enrichment pipeline options.
 
@@ -473,9 +480,9 @@ def _make_converter(params: dict[str, Any]) -> Any:
 
 
 def _build_table_rows(
-    table_item: Any,
-    conv_result: Any,
-) -> dict[str, Any] | None:
+    table_item: TableItem,
+    conv_result: ConversionResult,
+) -> Data | None:
     """Convert a Docling TableItem to {rows, schema} dict. Returns None on failure."""
     try:
         df = table_item.export_to_dataframe(doc=conv_result.document)
@@ -502,9 +509,9 @@ def _build_table_rows(
 
 
 def _load_document_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
 ):
     path_val = inputs.get("path") or params.get("path")
