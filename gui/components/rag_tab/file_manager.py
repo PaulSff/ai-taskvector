@@ -395,7 +395,7 @@ def build_rag_file_browser_panel(
                     def _copy_file_path(e: Event[IconButton], p: str = abs_path_str) -> None:
                         async def _do() -> None:
                             try:
-                                await page.clipboard.set(p)
+                                await ft.Clipboard().set(p)
                             except (OSError, ValueError):
                                 return
                             await show_toast(page, "Path copied")
