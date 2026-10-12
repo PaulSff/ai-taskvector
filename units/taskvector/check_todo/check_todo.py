@@ -103,13 +103,13 @@ logger = setup_colored_logging(logging.DEBUG)
 
 
 CHECK_TODO_INPUT_PORTS = [
-    ("check_todo", "Any"),
-    ("graph", "Any"),
+    ("check_todo", "dict"),
+    ("graph", "ProcessGraph"),
 ]
 
 CHECK_TODO_OUTPUT_PORTS = [
-    ("tasks_todo", "Any"),
-    ("error", "Any"),
+    ("tasks_todo", "dict"),
+    ("error", "dict"),
 ]
 
 

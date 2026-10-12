@@ -71,21 +71,21 @@
       "input_ports": [
         {
           "name": "check_todo",
-          "type": "Any"
+          "type": "dict"
         },
         {
           "name": "graph",
-          "type": "Any"
+          "type": "ProcessGraph"
         }
       ],
       "output_ports": [
         {
           "name": "tasks_todo",
-          "type": "Any"
+          "type": "dict"
         },
         {
           "name": "error",
-          "type": "Any"
+          "type": "dict"
         }
       ]
     },

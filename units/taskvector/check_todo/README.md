@@ -19,14 +19,14 @@ To ensure flexibility, the unit attempts to locate a workflow graph in the follo
 ### Input Ports
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `check_todo` | `Any` | Required. Must be a dictionary: `{"action": "check_todo"}`. |
-| `graph` | `Any` | Optional. A dictionary representing the `ProcessGraph` to be analyzed. |
+| `check_todo` | `dict` | Required. Must be a dictionary: `{"action": "check_todo"}`. |
+| `graph` | `ProcessGraph` | Optional. A dictionary representing the `ProcessGraph` to be analyzed. |
 
 ### Output Ports
 | Port | Type | Description |
 | :--- | :--- | :--- |
-| `tasks_todo` | `Any` | Returns an update object containing a list of incomplete tasks, or `None` on error. |
-| `error` | `Any` | Returns an error object if the operation fails, or `None` on success. |
+| `tasks_todo` | `dict` | Returns an update object containing a list of incomplete tasks, or `None` on error. |
+| `error` | `dict` | Returns an error object if the operation fails, or `None` on success. |
 
 ## Data Formats
 
