@@ -1,11 +1,14 @@
 # batch_update_publisher.py
 from __future__ import annotations
 
+import logging
 import time
 
 from core.schemas.primitives import Data, JsonObject, JsonValue
+from services.logging import setup_colored_logging
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
+logger = setup_colored_logging(logging.DEBUG)
 
 class BatchUpdatePublisher:
     """
@@ -40,9 +43,16 @@ class BatchUpdatePublisher:
     def run_id(self) -> str | None:
         return self._run_id
 
+    def close(self, linger: int | None = None) -> None:
+        self._publisher.close(linger)
+
     def publish_update(self, batch_payload: JsonObject) -> None:
-        # unchanged: caller (publish_progress) now sets top-level "run_id"
         self._publisher.publish_update_batch(batch_payload)
+        logger.info(
+            "[agent_orchestrator] BatchUpdatePublisher: Published agent progress update endpoint=%s run_id=%s",
+            self.pub_endpoint,
+            self._run_id,
+        )
 
     def publish_progress(
         self,

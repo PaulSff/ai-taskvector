@@ -361,16 +361,6 @@ async def run_orchestrator_turn(
         history=history,
     )
 
-    runtime = TurnRuntimeProxy(
-        graph_ref=graph_ref,
-        stream_callback=stream_callback,
-        stream_buffer_ref=stream_buffer_ref,
-        state=state,
-        token=token,
-        recent_changes=recent_changes,
-        role_id=role_id,
-    )
-
     _publish_in_progress = make_publish_in_progress(
         batch_update_publisher=batch_update_publisher,
         run_id=run_id,
@@ -392,6 +382,18 @@ async def run_orchestrator_turn(
             else {}
         ),
         get_source=lambda: "agent_response",
+    )
+
+    runtime = TurnRuntimeProxy(
+        graph_ref=graph_ref,
+        stream_callback=stream_callback,
+        stream_buffer_ref=stream_buffer_ref,
+        state=state,
+        token=token,
+        recent_changes=recent_changes,
+        role_id=role_id,
+        publish_in_progress=_publish_in_progress,
+        get_result_kind=lambda: result_ref[0].kind,
     )
 
     turn_context: Data = {

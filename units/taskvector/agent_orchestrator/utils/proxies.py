@@ -48,6 +48,8 @@ class TurnRuntimeProxy:
         token: int = 0,
         recent_changes: str | None = None,
         apply_from_agent: Callable[[ProcessGraph], None] | None = None,
+        publish_in_progress: Callable[..., None] | None = None,
+        get_result_kind: Callable[[], str],
     ) -> None:
         self.graph_ref = graph_ref
         self._stream_cb = stream_callback
@@ -57,6 +59,8 @@ class TurnRuntimeProxy:
         self._token = token
         self._recent_changes = recent_changes
         self._apply_from_agent = apply_from_agent
+        self._publish_in_progress = publish_in_progress
+        self._get_result_kind = get_result_kind
 
     def set_graph(self, graph: ProcessGraph) -> None:
         self.graph_ref[0] = graph
@@ -125,7 +129,7 @@ class TurnRuntimeProxy:
     ) -> AgentWorkflowResponse:
         del _run_token
 
-        return await func(
+        response = await func(
             initial_inputs,
             unit_param_overrides,
             execution_timeout_s,
@@ -133,3 +137,15 @@ class TurnRuntimeProxy:
             workflow_path=workflow_path,
             role_id=role_id,
         )
+
+        if self._publish_in_progress is not None:
+            try:
+                kind = self._get_result_kind()
+                self._publish_in_progress(
+                    stage="workflow:changed",
+                    kind=kind,
+                )
+            except Exception:
+                logger.exception("[orchestrator] publish_in_progress failed")
+
+        return response

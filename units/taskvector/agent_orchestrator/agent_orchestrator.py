@@ -52,17 +52,15 @@ def _agent_orchestrator_step(
     state: Data,
     dt: float,
 ) -> Output:
-    """Run one agent turn using run_orchestrator_turn scheduled on the
-    GraphExecutor background event loop (executor._loop). Blocks until done.
-    """
-    # Normalize data input
+    """Run one agent turn on the GraphExecutor background event loop."""
+    # Normalize data input.
     data = inputs.get("data") or {}
     if isinstance(data, str):
         data = {"user_message": data}
     if not isinstance(data, dict):
         data = {}
 
-    # messenger can come from the data dict or from the separate input port
+    # Messenger can come from the data dict or the separate input port.
     messenger_port = inputs.get("messenger")
     if messenger_port and "messenger" not in data:
         data = {**data, "messenger": str(messenger_port)}
@@ -71,6 +69,9 @@ def _agent_orchestrator_step(
         GraphStreamCallback | None,
         params.get("_stream_callback"),
     )
+
+    batch_update_publisher = None
+    publisher_cleanup_handed_off = False
 
     try:
         # Resolve background loop: prefer executor instance, then loop object directly.
@@ -104,7 +105,6 @@ def _agent_orchestrator_step(
             else None
         )
 
-        batch_update_publisher = None
         if pub_endpoint is not None:
             from .utils.batch_update_publisher import BatchUpdatePublisher
 
@@ -124,6 +124,15 @@ def _agent_orchestrator_step(
 
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
 
+        # Keep the publisher open for every update, including if result()
+        # times out. The callback closes it when the coroutine actually ends.
+        if batch_update_publisher is not None:
+            publisher = batch_update_publisher
+            fut.add_done_callback(
+                lambda _: publisher.close()
+            )
+            publisher_cleanup_handed_off = True
+
         timeout_value = params.get("timeout_s")
         timeout_s: float | None = (
             float(timeout_value)
@@ -132,7 +141,6 @@ def _agent_orchestrator_step(
         )
 
         result = fut.result(timeout=timeout_s)
-
 
     except TimeoutError as exc:
         error_payload: Data = {
@@ -149,6 +157,14 @@ def _agent_orchestrator_step(
             },
             state,
         )
+
+    finally:
+        # If the coroutine was never submitted, no completion callback owns cleanup.
+        if (
+            batch_update_publisher is not None
+            and not publisher_cleanup_handed_off
+        ):
+            batch_update_publisher.close()
 
     if result is None:
         return (
