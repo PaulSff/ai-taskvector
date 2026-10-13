@@ -4,7 +4,7 @@ Canonical unit that wraps GitHub REST API **GET** methods. Accepts an action com
 
 ## Interface
 
-- **Input:** `action` (Any) — dict with key `"action"` and action-specific parameters.
+- **Input:** `action` (dict) — A JSON-like dictionary containing a mandatory `"action"` key (the method name) and optional parameter keys (e.g., `{"action": "github_get_repo", "owner": "...", "repo": "..."}`).
 - **Output:** `data` (Any) — API response (list or object); `error` (str) — message on failure.
 - **Params:** `token` (str, optional) — GitHub personal access token. Without token, unauthenticated requests are limited to 60/hour (search) or 60/hour for other endpoints; with token, 5,000/hour.
 

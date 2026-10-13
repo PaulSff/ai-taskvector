@@ -28,7 +28,7 @@ class GithubPayload(BaseModel):
         strict=True,
     )
 
-    action: GithubAction
+    method: GithubAction
 
 
 class GithubActionBlock(

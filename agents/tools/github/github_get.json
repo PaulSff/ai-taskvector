@@ -15,7 +15,7 @@
       "type": "GithubGET",
       "controllable": false,
       "params": {},
-      "input_ports": [{ "name": "action", "type": "Any" }],
+      "input_ports": [{ "name": "action", "type": "dict" }],
       "output_ports": [
         { "name": "data", "type": "Any" },
         { "name": "error", "type": "str" }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 
@@ -71,12 +72,10 @@ def _format_github_result(github_output: object) -> str:
         error_message = error.get("error") or error.get("message")
         if error_message:
             return f"Error: {error_message}"
-
     elif error is not None and str(error).strip():
         return f"Error: {str(error).strip()}"
 
     data = github_output.get("data")
-
     if data is None:
         return ""
 
@@ -102,7 +101,6 @@ async def run_github_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    # Keep this import local to avoid the action-block/follow-up import cycle.
     from agents.tools.github.action_block import GithubActionBlock
 
     try:
@@ -120,80 +118,102 @@ async def run_github_follow_up(
                 "GitHub follow-up was requested, but no github action was found"
             )
 
-        if len(github_actions) != 1:
-            raise ValueError(
-                "GitHub follow-up expected exactly one github action, "
-                f"got {len(github_actions)}"
+        validated_actions = []
+        for raw_action in github_actions:
+            try:
+                action = GithubActionBlock.model_validate(raw_action)
+            except ValidationError as exc:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "Invalid GitHub action: "
+                            f"{str(exc)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+                raise
+            validated_actions.append(action)
+
+        tasks = []
+        for action in validated_actions:
+            payload: JsonValue = TypeAdapter(JsonValue).validate_python(
+                action.model_dump(mode="json")
+            )
+            initial_inputs = {
+                "inject_action": {
+                    "template": payload,
+                }
+            }
+            tasks.append(
+                run_workflow_with_errors(
+                    GITHUB_GET_WORKFLOW_PATH,
+                    initial_inputs=initial_inputs,
+                    format="dict",
+                    execution_timeout_s=EXECUTION_TIMEOUT_S,
+                )
             )
 
-        raw_action = github_actions[0]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Validate and normalize parser output using the authoritative schema.
-        try:
-            action = GithubActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(
-                        "Invalid GitHub action: "
-                        f"{str(exc)[:120]}"
-                    )
-            except (AttributeError, TypeError):
-                pass
+        chunks: list[str] = []
+        any_empty_tool = False
 
-            raise
+        for result in results:
+            if isinstance(result, Exception):
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            "GitHub workflow crashed: "
+                            f"{type(result).__name__}: {str(result)[:120]}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+                continue
 
-        # Pass the complete normalized action to the workflow.
-        payload: JsonValue = TypeAdapter(JsonValue).validate_python(
-            action.model_dump(mode="json")
-        )
+            if not isinstance(result, tuple) or len(result) != 2:
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(
+                            f"GitHub workflow returned invalid result: {type(result).__name__}"
+                        )
+                except (AttributeError, TypeError):
+                    pass
+                continue
 
-        initial_inputs = {
-            "inject_action": {
-                "template": payload,
-            }
-        }
+            out, errs = result
+            if errs:
+                error_text = _format_workflow_error(errs)
+                try:
+                    if ctx.is_current_run(ctx.token):
+                        await ctx.toast(f"GitHub error: {error_text}")
+                except (AttributeError, TypeError):
+                    pass
 
-        out, errs = await run_workflow_with_errors(
-            GITHUB_GET_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
+            github_output: object = {}
+            if isinstance(out, Mapping):
+                github_output = out.get("github_get") or {}
 
-        if errs:
-            error_text = _format_workflow_error(errs)
+            result_text = _format_github_result(github_output)
+            if not result_text.strip():
+                any_empty_tool = True
+                continue
 
-            try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"GitHub error: {error_text}")
-            except (AttributeError, TypeError):
-                pass
+            language = hint()
+            chunks.append(
+                GITHUB_FOLLOW_UP_PREFIX
+                + result_text
+                + GITHUB_FOLLOW_UP_SUFFIX.format(
+                    language=language,
+                    session_language=language,
+                )
+            )
 
-        github_output: object = {}
-
-        if isinstance(out, Mapping):
-            github_output = out.get("github_get") or {}
-
-        result = _format_github_result(github_output)
-
-        if not result.strip():
+        if not chunks:
             return _empty_github_contribution(hint)
 
-        language = hint()
-
-        chunk = (
-            GITHUB_FOLLOW_UP_PREFIX
-            + result
-            + GITHUB_FOLLOW_UP_SUFFIX.format(
-                language=language,
-                session_language=language,
-            )
-        )
-
         return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=False,
+            context_chunks=chunks,
+            any_empty_tool=any_empty_tool,
         )
 
     except TimeoutError:

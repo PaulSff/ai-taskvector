@@ -11,6 +11,15 @@ Input: action (Any) — dict with "action" key and action-specific params, e.g.:
   {"action": "github_list_releases", "owner": "owner", "repo": "repo", "per_page": 10}
   {"action": "github_list_commits", "owner": "owner", "repo": "repo", "path": "", "sha": "", "per_page": 10}
 
+Or it could be whrapped with an envelope like this (also supported):
+    {
+      "action": "github",
+      "payload": {
+        "method": "github_search_repos",
+        "q": "topic:workflow"
+      }
+    }
+
 Output: data (Any) — structured response (list or dict); error (str) — message on failure.
 Params: token (str, optional) — GitHub personal access token for higher rate limits and private repos.
 """
@@ -23,9 +32,10 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
-GITHUB_GET_INPUT_PORTS = [("action", "Any")]
+GITHUB_GET_INPUT_PORTS = [("action", "dict")]
 GITHUB_GET_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 _API_BASE = "https://api.github.com"
@@ -157,20 +167,34 @@ def _run_action(
 
 
 def _github_get_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     action_in = inputs.get("action")
     if not isinstance(action_in, dict):
         return ({"data": None, "error": "GithubGET: action must be a dict"}, state)
-    action_name = (action_in.get("action") or "").strip()
-    if not action_name:
-        return ({"data": None, "error": "GithubGET: action.action required"}, state)
-    token = (params.get("token") or "").strip() or None
-    data, err = _run_action(action_name, action_in, token)
+
+    # New envelope: {"action":"github","payload":{...}}
+    if action_in.get("action") == "github":
+        payload = action_in.get("payload")
+        if not isinstance(payload, dict):
+            return ({"data": None, "error": "GithubGET: action.payload must be a dict"}, state)
+        method = (payload.get("method") or "").strip()
+        if not method:
+            return ({"data": None, "error": "GithubGET: action.payload.method required"}, state)
+        action_name = method
+        action_payload = payload
+    else:
+        # Backward compatible with the old format
+        action_name = (action_in.get("action") or "").strip()
+        action_payload = action_in
+
+    token = str(params.get("token") or "").strip() or None
+    data, err = _run_action(action_name, action_payload, token)
     return ({"data": data, "error": err}, state)
+
 
 
 def register_github_get() -> None:
