@@ -9,35 +9,37 @@ from agents.tools.types import ActionBlock, ParsedActions
 from agents.tools.web_search import run_web_search_follow_up
 
 
-class WebSearchActionBlock(
-    ActionBlock[Literal["web_search"]]
-):
-    """Search the web with DuckDuckGo."""
-
+class WebSearchActionBlock(ActionBlock[Literal["web_search"]]):
     query: str
-    max_results: str
+    max_results: int
 
-    @field_validator("query", "max_results")
+    @field_validator("query")
     @classmethod
-    def validate_non_empty(cls, value: str) -> str:
+    def validate_query(cls, value: str) -> str:
         value = value.strip()
-
         if not value:
-            raise ValueError("value must not be empty")
-
+            raise ValueError("query must not be empty")
         return value
+
+    @field_validator("max_results", mode="before")
+    @classmethod
+    def normalize_max_results(cls, value: object) -> int:
+        if isinstance(value, bool):
+            raise TypeError("max_results must be an integer")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except ValueError:
+                pass
+        raise ValueError("max_results must be an integer or numeric string")
 
     @field_validator("max_results")
     @classmethod
-    def validate_max_results(cls, value: str) -> str:
-        if not value.isdigit():
-            raise ValueError(
-                "max_results must be a positive integer string"
-            )
-
-        if int(value) < 1:
+    def validate_max_results(cls, value: int) -> int:
+        if value < 1:
             raise ValueError("max_results must be greater than zero")
-
         return value
 
 
