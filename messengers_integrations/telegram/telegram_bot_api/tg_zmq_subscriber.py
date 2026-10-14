@@ -175,6 +175,21 @@ async def main() -> None:
             update_publishers[endpoint] = pub
         return pub
 
+    def _close_publishers() -> None:
+        for pub in response_publishers.values():
+            try:
+                pub.close()
+            except Exception:
+                logger.exception("Failed closing response publisher")
+        response_publishers.clear()
+
+        for pub in update_publishers.values():
+            try:
+                pub.close()
+            except Exception:
+                logger.exception("Failed closing update publisher")
+        update_publishers.clear()
+
     def _publish_response(
         *,
         response_endpoint: str | None,
@@ -282,6 +297,7 @@ async def main() -> None:
                 if action == "stop":
                     await poller.stop(force=True)
                     poller = None
+                    _close_publishers()
 
                     result_payload = {}
                     _publish_response(
@@ -522,6 +538,7 @@ async def main() -> None:
             await asyncio.sleep(0.2)
     finally:
         await sub.stop()
+        _close_publishers()
         if poller is not None:
             try:
                 await poller.stop(force=True)
