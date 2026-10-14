@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-from agents.roles.registry import (
-    get_role,
-)
+from agents.roles.registry import get_role
+from services.logging import setup_colored_logging
 
 from .registry import CHAT_NAME_CREATOR_ROLE_ID
+
+logger = setup_colored_logging(logging.DEBUG)
 
 _ROLES_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _ROLES_ROOT.parent.parent
@@ -17,6 +19,7 @@ _REPO_ROOT = _ROLES_ROOT.parent.parent
 _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
     CHAT_NAME_CREATOR_ROLE_ID: "create_filename.json",
 }
+
 
 def get_role_chat_workflow_path(role_id: str) -> Path:
     """
@@ -27,9 +30,9 @@ def get_role_chat_workflow_path(role_id: str) -> Path:
     - ``role.chat_enabled``
     - ``role.chat_workflow``
 
-    Relative workflow paths are resolved under:
-
-    ``agents/roles/<role_id>/``
+    Relative workflow paths are resolved under ``agents/roles/<role_id>/``,
+    unless they begin with ``agents/``, ``gui/``, or ``config/``; those are
+    resolved from the repository root.
     """
     key = (role_id or "").strip()
 
@@ -55,11 +58,17 @@ def get_role_chat_workflow_path(role_id: str) -> Path:
     workflow_path = Path(raw_workflow).expanduser()
 
     if workflow_path.is_absolute():
-        return workflow_path.resolve()
+        resolved_path = workflow_path.resolve()
+    else:
+        normalized_path = workflow_path.as_posix()
 
-    normalized_path = workflow_path.as_posix()
+        if normalized_path.startswith(("agents/", "config/")):
+            resolved_path = (_REPO_ROOT / workflow_path).resolve()
+        else:
+            resolved_path = (_ROLES_ROOT / key / workflow_path).resolve()
 
-    if normalized_path.startswith(("agents/", "gui/", "config/")):
-        return (_REPO_ROOT / workflow_path).resolve()
-
-    return (_ROLES_ROOT / key / workflow_path).resolve()
+    logger.debug("[get_role_chat_workflow_path] resolved role_id: %s, workflow: %s",
+        key,
+        resolved_path
+    )
+    return resolved_path

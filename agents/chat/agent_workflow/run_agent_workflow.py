@@ -10,6 +10,7 @@ from agents.chat.agent_workflow.collect_workflow_response import (
     merge_response_from_workflow_outputs,
 )
 from agents.chat.agent_workflow.wf_response_schema import AgentWorkflowResponse
+from agents.roles.workflow_path import get_role_chat_workflow_path
 from config.settings import (
     get_agents_workflows_job_pub_endpoint,
     get_agents_workflows_max_concurrent_calls,
@@ -31,7 +32,7 @@ from services.server import (
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 from .helpers import missing_workflow_msg
-from .paths import DEFAULT_EXECUTION_TIMEOUT_S, agent_WORKFLOW_PATH
+from .paths import DEFAULT_EXECUTION_TIMEOUT_S
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = get_agents_workflows_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
@@ -164,20 +165,20 @@ async def run_agent_workflow(
     role_id: str,
 ) -> AgentWorkflowResponse:
     print(
-        "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
-        type(initial_inputs),
-        type(unit_param_overrides),
-        execution_timeout_s,
-        getattr(stream_callback, "__name__", None)
-        if stream_callback is not None
-        else None,
-        str(workflow_path) if workflow_path is not None else None,
+        "[run_agent_workflow] called: "
+        f"role_id={role_id} "
+        f"workflow_path={workflow_path} "
+        f"initial_inputs={type(initial_inputs)} "
+        f"unit_param_overrides={type(unit_param_overrides)} "
+        f"execution_timeout_s={execution_timeout_s} "
+        f"stream_callback={getattr(stream_callback, '__name__', None) if stream_callback else None} "
     )
 
     wp = (
         Path(workflow_path).resolve()
         if workflow_path is not None
-        else agent_WORKFLOW_PATH
+        # Since role_id is required, we can resolve the workflow path anyway
+        else get_role_chat_workflow_path(role_id)
     )
 
     outputs = await _publish_and_wait(

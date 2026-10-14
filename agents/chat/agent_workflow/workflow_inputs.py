@@ -237,7 +237,7 @@ def build_agent_workflow_initial_inputs(
 
         inputs.inject_turn_state = (
             WORKFLOW_DESIGNER_TURN_STATE_PREFIX
-            + "Analyst: use tools and comments/todos only; "
+            + "Use tools and comments/todos only; "
             + "do not edit graph structure."
         )
 

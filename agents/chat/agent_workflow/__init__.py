@@ -31,7 +31,6 @@ from .paths import (
     RENAME_WORKFLOW_PATH,
     SEND_MESSAGE_WORKFLOW_PATH,
     WEB_SEARCH_WORKFLOW_PATH,
-    agent_WORKFLOW_PATH,
 )
 from .run_agent_workflow import run_agent_workflow
 from .run_tool_workflow import run_workflow_with_errors
@@ -63,7 +62,6 @@ __all__ = [
     "DirectUnitsResponse",
     "MergeErrors",
     "MergeResponse",
-    "agent_WORKFLOW_PATH",
     "build_agent_workflow_unit_param_overrides",
     "build_self_correction_retry_inputs",
     "get_runtime_for_prompts",
