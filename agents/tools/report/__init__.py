@@ -4,6 +4,7 @@ Report follow-up: execute the report workflow and summarize its result.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping
 
@@ -163,61 +164,60 @@ async def run_report_follow_up(
                 "Report follow-up was requested, but no report action was found"
             )
 
-        if len(report_actions) != 1:
-            raise ValueError(
-                "Report follow-up expected exactly one report action, "
-                f"got {len(report_actions)}"
-            )
+        # We support multiple concurrent report actions.
 
-        raw_action = report_actions[0]
-
-        # Validate and normalize the parser output using the authoritative
-        # report action schema.
-        try:
-            action = ReportActionBlock.model_validate(raw_action)
-        except ValidationError as exc:
-            raise ValueError(
-                "Invalid report action block: "
-                f"errors={exc.errors()!r}"
-            ) from exc
-
-        # Pass the complete normalized action to the workflow.
-        payload = TypeAdapter(JsonValue).validate_json(
-            action.model_dump_json()
-        )
-
-        initial_inputs: WorkflowInputs = {
-            "inject_action": {
-                "template": payload,
-            }
-        }
-
-        # Resolve the workflow from agents/tools/report/tool.yaml.
-        report_workflow_path = get_tool_workflow_path("report")
-
-        out, errs = await run_workflow_with_errors(
-            report_workflow_path,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
-
-        workflow_error = ""
-
-        if errs:
-            workflow_error = _format_workflow_error(errs)
-
+        async def execute_single_report(raw_act):
             try:
-                if ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Report error: {workflow_error}")
-            except (AttributeError, TypeError):
-                pass
+                # Validate and normalize
+                action = ReportActionBlock.model_validate(raw_act)
+                payload = TypeAdapter(JsonValue).validate_json(
+                    action.model_dump_json()
+                )
 
-        report_data, report_error = _extract_report_result(out)
+                initial_inputs: WorkflowInputs = {
+                    "inject_action": {"template": payload}
+                }
 
-        # Include errors in the contribution chunk. Explicit workflow output
-        # errors take precedence over runner-level errors, followed by data.
-        result = report_error or workflow_error or report_data
+                report_workflow_path = get_tool_workflow_path("report")
+                out, errs = await run_workflow_with_errors(
+                    report_workflow_path,
+                    initial_inputs=initial_inputs,
+                    format="dict",
+                    execution_timeout_s=EXECUTION_TIMEOUT_S,
+                )
+
+                workflow_error = _format_workflow_error(errs) if errs else ""
+                report_data, report_error = _extract_report_result(out)
+
+                return {
+                    "ok": not bool(report_error or workflow_error),
+                    "data": report_data,
+                    "error": report_error or workflow_error,
+                    "converted": False,
+                }
+
+            except (TypeError, ValueError, KeyError, AttributeError) as e:
+                logger.error("Single report action failed: %s", e)
+                return {
+                    "ok": False,
+                    "data": "",
+                    "error": str(e),
+                    "converted": True,
+                }
+
+
+        # Execute all actions concurrently
+        results = await asyncio.gather(*[execute_single_report(ra) for ra in report_actions])
+
+        # Filter out empty results and join them
+        valid_results = []
+        for r in results:
+            if r["ok"] and r["data"]:
+                valid_results.append(r["data"])
+            elif r["error"]:
+                valid_results.append(r["error"])
+
+        result = "\n\n".join(valid_results)
 
         if not result:
             return _empty_report_contribution(hint)
