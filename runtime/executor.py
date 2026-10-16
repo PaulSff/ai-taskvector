@@ -117,16 +117,17 @@ class GraphExecutor:
     _active_stream_callback: GraphStreamCallback | None
     _update_callback: GraphUpdateCallback | None
 
-    _state: dict[str, dict[str, object]]
-    _outputs: dict[str, dict[str, object]]
-    _initial_inputs: dict[str, dict[str, object]]
-    _event_inputs: dict[str, dict[str, object]]
+    _state: dict[str, Data]
+    _outputs: dict[str, Data]
+    _initial_inputs: dict[str, Data]
+    _event_inputs: dict[str, Data]
     _last_seq: dict[str, int]
 
     _code_block_compiled: dict[str, types.CodeType]
     _injected_action: list[float]
 
     _keep_alive_stop: threading.Event
+    _shutting_down: bool
 
     def __init__(self, graph: ProcessGraph) -> None:
         from units.app_settings_param import resolve_process_graph_param_refs
@@ -244,6 +245,7 @@ class GraphExecutor:
         self._active_stream_callback = None
         self._update_callback = None
         self._keep_alive_stop = threading.Event()
+        self._shutting_down = False
 
         for connection in self.graph.connections:
             to_unit = self._unit_ids.get(connection.to_id)
@@ -424,6 +426,8 @@ class GraphExecutor:
         payload: Data | None = None,
         seq: int | None = None,
     ) -> None:
+        if self._shutting_down:
+            return
         if isinstance(event, str):
             event = GraphWakeupEvent(
                 unit_id=event,
@@ -448,6 +452,8 @@ class GraphExecutor:
 
 
     def start_wakeup_consumer(self) -> None:
+        if self._shutting_down:
+            return
         with self._wakeup_start_lock:
             if self._wakeup_task is not None and not self._wakeup_task.done():
                 return
@@ -523,7 +529,7 @@ class GraphExecutor:
 
 
     async def _rerun_from_roots(self, roots: set[str]) -> None:
-        if not roots:
+        if self._shutting_down or not roots:
             return
 
         rerun_set = self._downstream_including_self(roots)
@@ -548,13 +554,13 @@ class GraphExecutor:
 
     def execute(
         self,
-        initial_inputs: dict[str, dict[str, object]] | None = None,
+        initial_inputs: dict[str, Data] | None = None,
         stream_callback: GraphStreamCallback | None = None,
         *,
         keep_alive: bool = False,
         execution_timeout_s: float | None = None,
         update_callback: GraphUpdateCallback | None = None,
-    ) -> dict[str, object]:
+    ) -> Data:
         """
         Run the graph once.
 
@@ -617,7 +623,7 @@ class GraphExecutor:
         self,
         unit_id: str,
         action: list[float] | None,
-        initial_inputs: dict[str, dict[str, object]] | None = None,
+        initial_inputs: dict[str, Data] | None = None,
     ) -> Data:
         unit = self._unit_ids.get(unit_id)
         if not unit:
@@ -679,6 +685,9 @@ class GraphExecutor:
         - sync unit specs executed in a thread via thread pool
         Returns (outputs, new_state).
         """
+        if self._shutting_down:
+            return {}, {}
+
         spec = get_unit_spec(unit.type)
         # Short-circuit if no spec or no step_fn/code_block_driven
         if not spec or (
@@ -811,10 +820,12 @@ class GraphExecutor:
             sync_fn,
         )
 
-        def _sync_step() -> tuple[dict[str, object], dict[str, object]]:
+        def _sync_step() -> Output:
             return sync_fn_typed(params, inputs, state, 0.0)
 
         loop = self._loop
+        if self._shutting_down:
+            return {}, {}
         if loop and not loop.is_closed():
             fut = loop.run_in_executor(self._thread_pool, _sync_step)
             outputs, new_state = await fut
@@ -823,9 +834,9 @@ class GraphExecutor:
 
         return (outputs or {}, new_state or {})
 
-    def _graph_state_for_code_block(self) -> dict[str, object]:
+    def _graph_state_for_code_block(self) -> Data:
         """Build a simple state mapping for code_block execution (same as prior _graph_state closure)."""
-        out: dict[str, object] = {}
+        out: Data = {}
         with self._lock:
             for nid in self._unit_ids:
                 o = self._outputs.get(nid) or {}
@@ -972,15 +983,18 @@ class GraphExecutor:
         self,
         dt: float,
         action: list[float] | None = None,
-        initial_inputs: dict[str, dict[str, object]] | None = None,
+        initial_inputs: dict[str, Data] | None = None,
         stream_callback: GraphStreamCallback | None = None,
-        state: dict[str, dict[str, object]] | None = None,
+        state: dict[str, Data] | None = None,
     ) -> ObservationInfo:
 
         """
         Async version of step: runs the entire topological execution on the shared loop.
         Preserves original semantics but runs each topological level in parallel.
         """
+        if self._shutting_down:
+            raise RuntimeError("Cannot call step() after shutdown has started")
+
         if state is not None:
             self._state = {
                 unit_id: dict(unit_state)
@@ -1042,7 +1056,7 @@ class GraphExecutor:
             else:
                 obs = []
 
-        info: dict[str, object] = {"outputs": dict(self._outputs)}
+        info: Data = {"outputs": dict(self._outputs)}
 
         if self._step_rewards_id:
             out = self._outputs.get(self._step_rewards_id, {})
@@ -1062,9 +1076,9 @@ class GraphExecutor:
         self,
         dt: float,
         action: list[float] | None = None,
-        initial_inputs: dict[str, dict[str, object]] | None = None,
+        initial_inputs: dict[str, Data] | None = None,
         stream_callback: GraphStreamCallback | None = None,
-        state: dict[str, dict[str, object]] | None = None,
+        state: dict[str, Data] | None = None,
     ) -> ObservationInfo:
         """
         Execute one step. Returns (observation, info).
@@ -1074,6 +1088,9 @@ class GraphExecutor:
         stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon.
         Canonical: action injected into Switch input; observation from Join output.
         """
+        if self._shutting_down:
+            raise RuntimeError("Cannot call step() after shutdown has started")
+
         # Run the entire step on the shared loop as a single coroutine to avoid per-unit blocking.
         return self._run_coro(
             self._step_async(
@@ -1087,7 +1104,7 @@ class GraphExecutor:
 
     def reset(
         self,
-        initial_state: dict[str, dict[str, object]] | None = None,
+        initial_state: dict[str, Data] | None = None,
     ) -> ObservationInfo:
         """Reset all unit states and run one step with valves closed (idle)."""
         self._state = dict(initial_state or {})
@@ -1121,12 +1138,9 @@ class GraphExecutor:
             )
 
     def shutdown(self, timeout: float = 2.0) -> None:
-        """
-        Request a graceful stop through the WorkflowTrigger unit, run unit
-        cleanup functions, then release per-executor resources.
-        """
-        stop_unit_id: str | None = None
+        self._shutting_down = True
 
+        stop_unit_id = None
         for unit in self.graph.units:
             if unit.type == "WorkflowTrigger" and unit.id == "control":
                 stop_unit_id = unit.id
@@ -1134,33 +1148,18 @@ class GraphExecutor:
 
         if stop_unit_id is not None:
             completion = threading.Event()
-
             self.start_wakeup_consumer()
-
             self._wakeup_queue.put(
                 GraphWakeupEvent(
                     unit_id=stop_unit_id,
-                    payload={
-                        "payload": {
-                            "action": "stop",
-                        },
-                    },
+                    payload={"payload": {"action": "stop"}},
                     completion=completion,
                 )
             )
-
             if not completion.wait(timeout=timeout):
-                logger.warning(
-                    "Timed out waiting for stop wakeup execution for unit %s",
-                    stop_unit_id,
-                )
+                logger.warning("Timed out waiting for stop wakeup execution for unit %s", stop_unit_id)
 
-        # Stop accepting further wakeup events.
-        self.stop_wakeup_consumer()
-
-        # Run cleanup functions before releasing the thread pool.
         cleanup_futures: list[Future[None]] = []
-
         for unit in self.graph.units:
             spec = get_unit_spec(unit.type)
             if spec is None or spec.cleanup_fn is None:
@@ -1176,7 +1175,8 @@ class GraphExecutor:
             except TimeoutError:
                 logger.warning("Timed out waiting for unit cleanup")
 
-        # Release per-executor resources.
+        self.stop_wakeup_consumer()
+
         try:
             self._thread_pool.shutdown(wait=True)
         except Exception:
