@@ -456,7 +456,9 @@ def run_workflow(
         # )
 
         try:
-            executor.shutdown()
+            # Only shut down if not already stopped by the control queue
+            if not stop_requested.is_set():
+                executor.shutdown()
         except Exception:
             logger.exception(
                 "executor.shutdown() failed: run_id=%s",
