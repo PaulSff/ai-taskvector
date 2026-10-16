@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from agents.chat.context.follow_up_context import ExecutionFollowUpContext
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
@@ -20,7 +20,7 @@ from agents.tools.types import (
 )
 from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.primitives import (
-    Data,
+    JsonObject,
     WorkflowInputs,
     require_json_object_from_object,
 )
@@ -56,7 +56,7 @@ def _coerce_merged_formulas_output(raw: object) -> object:
 
 def _format_workflow_error(errs: object) -> str:
     if not errs:
-        return ""
+        return "unknown workflow error"
 
     try:
         first_error = errs[0]  # type: ignore[index]
@@ -69,85 +69,105 @@ def _format_workflow_error(errs: object) -> str:
     return str(first_error).strip()
 
 
-async def _run_formulas_calc_workflow(
-    action: Data,
-) -> str:
-    """
-    Execute the validated formulas_calc action.
-
-    Expected action shape:
-
-        {
-            "action": "formulas_calc",
-            "method": "calculate",
-            "path": "...xlsx",
-            "inputs": {...},
-            "outputs": ["..."],
-            "output_format": "json"
-        }
-    """
+async def _run_formulas_calc_workflow(action: JsonObject) -> str:
+    """Execute a validated formulas_calc action."""
     from agents.chat.agent_workflow import run_workflow_with_errors
 
     command = dict(action)
     command.setdefault("action", "formulas_calc")
 
     if command.get("action") != "formulas_calc":
-        return ""
-
-    try:
-        workflow_path = get_tool_workflow_path("formulas_calc")
-
-        if not workflow_path.is_file():
-            return ""
-
-        command_json = require_json_object_from_object(
-            command,
-            field="formulas_calc command",
+        raise ValueError(
+            f"Unsupported formulas_calc command: {command.get('action')!r}"
         )
 
-        initial_inputs: WorkflowInputs = {
-            "inject_formulas_calc": {
-                "template": command_json,
-            }
+    workflow_path = get_tool_workflow_path("formulas_calc")
+
+    if not workflow_path.is_file():
+        raise FileNotFoundError(
+            f"Formulas-calc workflow not found: {workflow_path}"
+        )
+
+    command_json = require_json_object_from_object(
+        command,
+        field="formulas_calc command",
+    )
+
+    initial_inputs: WorkflowInputs = {
+        "inject_formulas_calc": {
+            "template": command_json,
         }
+    }
 
-        out, errs = await run_workflow_with_errors(
-            workflow_path,
-            initial_inputs=initial_inputs,
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
+    out, errs = await run_workflow_with_errors(
+        workflow_path,
+        initial_inputs=initial_inputs,
+        format="dict",
+        execution_timeout_s=EXECUTION_TIMEOUT_S,
+    )
+
+    if errs:
+        raise RuntimeError(
+            f"Formulas-calc workflow failed: {_format_workflow_error(errs)}"
         )
 
-
-        if not isinstance(out, Mapping):
-            return ""
-
-        slot = out.get("formulas_calc")
-
-        if not isinstance(slot, Mapping):
-            return ""
-
-        raw_error = slot.get("error")
-        slot_error = (
-            raw_error.strip()
-            if isinstance(raw_error, str)
-            else ""
+    if not isinstance(out, Mapping):
+        raise TypeError(
+            f"Expected mapping from formulas-calc workflow, got {type(out).__name__}"
         )
 
-        if not slot_error:
-            slot_error = _format_workflow_error(errs)
+    slot = out.get("formulas_calc")
 
-        body = _format_calc_body(
-            slot.get("results"),
-            slot_error or None,
+    if not isinstance(slot, Mapping):
+        raise KeyError("Workflow output is missing the 'formulas_calc' mapping")
+
+    raw_error = slot.get("error")
+    if isinstance(raw_error, str) and raw_error.strip():
+        return _format_calc_body(slot.get("results"), raw_error)
+
+    return _format_calc_body(slot.get("results"), None)
+
+
+def _empty_contribution(
+    hint: LanguageHintGetter,
+) -> FollowUpContribution:
+    chunk = (
+        FORMULAS_CALC_FOLLOW_UP_PREFIX
+        + TOOL_EMPTY_RESULT_LINE
+        + FORMULAS_CALC_FOLLOW_UP_SUFFIX.format(
+            language=hint(),
+            session_language=hint(),
         )
+    )
 
-        return body.strip()
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=True,
+        extra={
+            FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True,
+        },
+    )
 
-    except (RuntimeError, TypeError):
-        # This helper intentionally preserves the previous behavior:
-        # workflow failures become an empty follow-up result.
-        return ""
+def _error_contribution(
+    hint: LanguageHintGetter,
+    message: str,
+) -> FollowUpContribution:
+    chunk = (
+        FORMULAS_CALC_FOLLOW_UP_PREFIX
+        + f"Error: {message}"
+        + FORMULAS_CALC_FOLLOW_UP_SUFFIX.format(
+            language=hint(),
+            session_language=hint(),
+        )
+    )
+
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=False,
+        extra={
+            FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True,
+        },
+    )
 
 
 async def run_formulas_calc_follow_up(
@@ -156,18 +176,11 @@ async def run_formulas_calc_follow_up(
     *,
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
-    """
-    Build follow-up context from a formulas_calc action.
-
-    If the original workflow already returned formulas_calc_output,
-    reuse it instead of executing the workflow a second time.
-    """
     try:
         setter = getattr(ctx, "set_inline_status", None)
-
         if callable(setter):
             setter("Excel formulas…")
-    except RuntimeError:
+    except (AttributeError, RuntimeError, TypeError):
         pass
 
     hint = language_hint
@@ -193,43 +206,26 @@ async def run_formulas_calc_follow_up(
             )
 
             raw_error = workflow_response.get("formulas_calc_error")
-
             if isinstance(raw_error, str):
                 merged_error = raw_error.strip()
 
-        formulas_calc_actions = po.actions.get_tool_actions(
-            "formulas_calc"
-        )
-
-        text = ""
-
+        # Reuse results from the original workflow when present.
         if merged_error:
-            text = _format_calc_body(
-                merged_results,
-                merged_error,
-            )
+            text = _format_calc_body(merged_results, merged_error)
+        elif isinstance(merged_results, dict) or merged_results not in (None, ""):
+            text = _format_calc_body(merged_results, None)
+        else:
+            actions = po.actions.get_tool_actions("formulas_calc")
 
-        elif isinstance(merged_results, dict) or (
-            merged_results not in (None, "")
-        ):
-            text = _format_calc_body(
-                merged_results,
-                None,
-            )
-
-        elif formulas_calc_actions:
-            if len(formulas_calc_actions) != 1:
+            if len(actions) != 1:
                 raise ValueError(
                     "Formulas-calc follow-up expected exactly one "
-                    "formulas_calc action, got "
-                    f"{len(formulas_calc_actions)}"
+                    f"formulas_calc action, got {len(actions)}"
                 )
-
-            raw_action = formulas_calc_actions[0]
 
             try:
                 action_block = FormulasCalcActionBlock.model_validate(
-                    raw_action
+                    actions[0]
                 )
             except ValidationError as exc:
                 raise ValueError(
@@ -237,25 +233,23 @@ async def run_formulas_calc_follow_up(
                     f"errors={exc.errors()!r}"
                 ) from exc
 
-            # as_json_object() returns the complete normalized action:
-            #
-            # {
-            #     "action": "formulas_calc",
-            #     "method": "calculate",
-            #     "path": "...",
-            #     "inputs": {...},
-            #     "outputs": [...],
-            #     "output_format": "json",
-            # }
-            action = action_block.as_json_object()
+            # Pass a normalized JSON payload to the workflow.
+            payload = TypeAdapter(JsonValue).validate_json(
+                action_block.model_dump_json()
+            )
+            action = require_json_object_from_object(
+                payload,
+                field="formulas_calc action",
+            )
 
             text = await _run_formulas_calc_workflow(action)
 
-        body = text if text else TOOL_EMPTY_RESULT_LINE
+        if not text:
+            return _empty_contribution(hint)
 
         chunk = (
             FORMULAS_CALC_FOLLOW_UP_PREFIX
-            + body
+            + text
             + FORMULAS_CALC_FOLLOW_UP_SUFFIX.format(
                 language=hint(),
                 session_language=hint(),
@@ -264,29 +258,40 @@ async def run_formulas_calc_follow_up(
 
         return FollowUpContribution(
             context_chunks=[chunk],
-            any_empty_tool=not bool(text),
+            any_empty_tool=False,
             extra={
                 FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True,
             },
         )
 
-    except (RuntimeError, TypeError):
-        chunk = (
-            FORMULAS_CALC_FOLLOW_UP_PREFIX
-            + TOOL_EMPTY_RESULT_LINE
-            + FORMULAS_CALC_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
-            )
-        )
+    except TimeoutError:
+        message = "Formulas-calc operation timed out"
 
-        return FollowUpContribution(
-            context_chunks=[chunk],
-            any_empty_tool=True,
-            extra={
-                FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True,
-            },
-        )
+        try:
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast("Excel formulas operation timed out")
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+
+        return _error_contribution(hint, message)
+
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        OSError,
+    ) as exc:
+        message = f"{type(exc).__name__}: {exc}"
+
+        try:
+            if ctx.is_current_run(ctx.token):
+                await ctx.toast(f"Excel formulas error: {message[:120]}")
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+
+        return _error_contribution(hint, message)
 
 
 __all__ = ["run_formulas_calc_follow_up"]
