@@ -1,20 +1,24 @@
-# Analyst turn handler
+# Coder turn handler
 
-Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
+Implements `CoderChatHandler` (`handler.py`): manages a single chat turn for the **coder** role.
 
 ## Behaviour
 
-- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `light_graph_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
-- Tool follow-ups use in the order of the tools section in the `role.yaml`
-- `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
+The handler executes a multi-phase process to ensure graph consistency and allow for iterative tool use:
+
+1. **Initial Workflow**: Runs the coder agent workflow. If the user cancels the request, the process stops immediately.
+2. **Graph Reconciliation**: Validates the resulting graph and augments it with client-side tasks (e.g., coding tasks) before applying it to the state.
+3. **Execution Follow-ups**: If the model produces tool actions, it enters a follow-up chain to execute those tools and refine the response.
+4. **Post-Execution Follow-ups**: A final round of follow-ups to ensure the result is complete and polished.
+
+### Cancellation Logic
+- The handler monitors the `cancelled` flag from the workflow response. If `True`, it logs the cancellation and aborts subsequent phases (reconciliation and follow-ups) to prevent unnecessary state updates.
+
+### Graph Validation
+- Uses `validate_graph_to_apply_inline` to ensure that any graph modifications proposed by the LLM are structurally sound before they are persisted.
 
 ## Related config
 
-- Role: `agents/roles/analyst/role.yaml`
-- Workflow: `agents/roles/analyst/analyst_workflow.json`
-- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
-- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
-
-## Registry
-
-Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.
+- Role: `agents/roles/coder/role.yaml`
+- Workflow: Defined by `get_role_chat_workflow_path(CODER_ROLE_ID)`
+- Registry: Registered in `agents/chat/role_turns/registry.py` as the handler for the `coder` role.

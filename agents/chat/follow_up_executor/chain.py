@@ -108,7 +108,7 @@ async def run_execution_follow_up_chain_async(
         reason: str,
         **extra: object,
     ) -> None:
-        logger.info(
+        logger.warning(
             "[parser_follow_up_chain] exiting: reason=%s "
             "turn_id=%s agent=%s extra=%s",
             reason,
@@ -642,6 +642,11 @@ async def run_execution_follow_up_chain_async(
                 workflow_path=ctx.agent_workflow_path,
                 role_id=ctx.agent_role_id,
             )
+        # Exit if the workflow was cancelled
+        if response.cancelled:
+            logger.info("[parser_follow_up_chain]: stopped reason: cancelled by user")
+            await _checkpoint(f"cancelled_after_run_workflow_streaming:{i}")
+            return None
 
         # update the action context with new actions
         update_action_context(response)
@@ -894,6 +899,11 @@ async def run_post_execution_follow_up_chain_async(
                     workflow_path=ctx.agent_workflow_path,
                     role_id=ctx.agent_role_id,
                 )
+                # Break if cancelled
+                if response.cancelled:
+                    logger.info("[post_apply_follow_up_rounds]: stopped reason: cancelled by user")
+                    break
+
                 # invoke the callback to reconcile the graph
                 if ctx.on_workflow_response is not None:
                     await ctx.on_workflow_response(

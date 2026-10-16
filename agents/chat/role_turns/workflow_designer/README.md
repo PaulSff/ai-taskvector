@@ -4,11 +4,13 @@ Implements `WorkflowDesignerChatHandler` (`handler.py`): one agents-chat turn fo
 
 ## Behaviour
 
-- Runs `workflow_designer_workflow.json` (or **Run current graph** when enabled) via `gui.chat.agent_workflow.run_agent_workflow` / `workflow_runner.run_current_graph`.
-- Builds `initial_inputs` with `build_agent_workflow_initial_inputs` and unit overrides from `build_agent_workflow_unit_param_overrides` (LLM, RAG, prompt, graph summary, report dir).
-- Tool follow-ups use in the order of the tools section in the `role.yaml`
-- Chains parser-driven tool follow-ups (`gui.chat.parser_follow_up.run_parser_output_follow_up_chain`): RAG, files, web, code blocks, run_workflow, etc.
-- Applies parsed graph edits to the canvas when valid; runs post-apply review rounds (import / todo / comment) and same-turn self-correction on apply failure.
+- **Execution Flow**: 
+    1. **Initial Run**: Executes `workflow_designer_workflow.json` (or current graph) via `run_agent_workflow`.
+    2. **Parser Follow-ups**: Chains tool-driven follow-ups (RAG, files, web, etc.) via `run_execution_follow_up_chain_async` based on the `role.yaml` tool order.
+    3. **Post-Execution Review**: Runs final review rounds for specific actions (import / todo / comment) via `run_post_execution_follow_up_chain_async`.
+- **Cancellation**: Supports user-initiated cancellation at multiple stages (initial run, parser follow-ups, and post-execution), which halts the turn and skips subsequent phases.
+- **Graph Integration**: Applies parsed edits to the canvas after validation; includes self-correction logic on apply failure.
+- **Inputs**: Builds `initial_inputs` using `build_agent_workflow_initial_inputs` and role-specific unit overrides.
 
 ## Related config
 

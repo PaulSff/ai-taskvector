@@ -1,20 +1,21 @@
-# Analyst turn handler
+# Demiurge turn handler
 
-Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
+Implements `DemiurgeChatHandler` (`handler.py`): one agents-chat turn for the **Demiurge** (Workflow Designer) role.
 
 ## Behaviour
 
-- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `light_graph_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
-- Tool follow-ups use in the order of the tools section in the `role.yaml`
-- `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
+- **Workflow Execution**: Runs the Demiurge agent workflow to process user requests, apply graph edits, and execute tool actions.
+- **Multi-Phase Process**:
+    1. **Initial Workflow**: Executes the primary agent workflow.
+    2. **Execution Follow-ups**: Runs a chain of follow-up rounds based on parser output to refine actions or seek clarification.
+    3. **Post-Execution Follow-ups**: Final rounds to verify the result or perform cleanup.
+- **Cancellation Logic**: 
+    - The handler monitors for user cancellation at multiple stages (Phase 1, Phase 2, and during follow-up chains).
+    - If a cancellation is detected, the handler logs the event and immediately halts further execution, skipping subsequent follow-up phases to ensure responsiveness.
+- **Graph Integration**: Validates the graph before and after application, augmenting it with client-side tasks (TODOs) where applicable.
 
 ## Related config
 
-- Role: `agents/roles/analyst/role.yaml`
-- Workflow: `agents/roles/analyst/analyst_workflow.json`
-- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
-- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
-
-## Registry
-
-Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.
+- Role: `agents/roles/demiurge/role.yaml`
+- Workflow: Defined via `get_role_chat_workflow_path(DEMIURGE_ROLE_ID)`
+- Registry: Registered in `agents/chat/role_turns/registry.py` as the handler for `demiurge`.

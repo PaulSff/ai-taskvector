@@ -20,9 +20,9 @@ from .session_management import (
     _sessions_lock,  # pyright: ignore[reportPrivateUsage]
     create_session,
     get_session,
+    invalidate_run,
     remove_session,
     reset_session,
-    stop_run,
 )
 from .state import (
     ChatSessionState,
@@ -44,12 +44,12 @@ __all__ = [
     "get_session",
     "get_typed",
     "history_dedupe_prefer_applied",
+    "invalidate_run",
     "load_chat_session",
     "message_for_persist",
     "remove_session",
     "reset_session",
     "slugify_filename",
-    "stop_run",
     "suggest_initial_chat_path",
     "to_snapshot",
     "unique_path",

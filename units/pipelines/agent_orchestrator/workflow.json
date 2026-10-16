@@ -146,15 +146,15 @@
         "update_pub_endpoint": "settings.orchestrator_update_endpoint"
       },
       "input_ports": [
-        { "name": "data", "type": "Any" },
+        { "name": "data", "type": "dict" },
         { "name": "messenger", "type": "str" }
       ],
       "output_ports": [
-        { "name": "status", "type": "Any" },
-        { "name": "token", "type": "Any" },
-        { "name": "message", "type": "Any" },
-        { "name": "role", "type": "Any" },
-        { "name": "error", "type": "Any" }
+        { "name": "status", "type": "dict" },
+        { "name": "token", "type": "dict" },
+        { "name": "message", "type": "Data" },
+        { "name": "role", "type": "dict" },
+        { "name": "error", "type": "dict" }
       ]
     },
     {

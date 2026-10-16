@@ -1,20 +1,23 @@
-# Analyst turn handler
+# Receptionist turn handler
 
-Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
+Implements `ReceptionistChatHandler` (`handler.py`): manages the chat turn execution for the **receptionist** role.
 
 ## Behaviour
 
-- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `light_graph_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
-- Tool follow-ups use `ORDERED_ANALYST_TOOLS` (grep, read_file, RAG, web, browse, GitHub, report, add_comment, todo_manager) — no `read_code_block` or `run_workflow` in the ordered chain.
-- `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
+- **Workflow Execution**: Runs the receptionist agent workflow with specific overrides for role ID and graph summaries.
+- **Cancellation Logic**: The handler implements a two-phase cancellation check:
+    - **Phase 1**: Immediately after the initial workflow run, if `response.cancelled` is true, the process stops and logs the cancellation.
+    - **Phase 2**: Before proceeding to response reconciliation and follow-up chains, it verifies the cancellation status again to ensure the turn is aborted if requested by the user.
+- **Follow-up Chains**: 
+    - **Execution Follow-ups**: If the workflow produces parser output, it triggers a follow-up chain to handle tool actions or clarifications.
+    - **Post-Execution Follow-ups**: After the main result is determined, it may run a post-apply follow-up chain to finalize the turn.
+- **Graph Integration**: Validates the graph before and after workflow execution, applying supplements (like client-side tasks) to the graph state.
 
 ## Related config
 
-- Role: `agents/roles/analyst/role.yaml`
-- Workflow: `agents/roles/analyst/analyst_workflow.json`
-- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
-- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
+- Role: Defined by `RECEPTIONIST_ROLE_ID`.
+- Workflow: Path resolved via `get_role_chat_workflow_path` for the receptionist role.
 
 ## Registry
 
-Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.
+Registered in `agents/chat/role_turns/registry.py` as the handler for the receptionist role.

@@ -67,7 +67,7 @@ def get_role_chat_workflow_path(role_id: str) -> Path:
         else:
             resolved_path = (_ROLES_ROOT / key / workflow_path).resolve()
 
-    logger.debug("[get_role_chat_workflow_path] resolved role_id: %s, workflow: %s",
+    logger.info("[get_role_chat_workflow_path] resolved role_id: %s, workflow: %s",
         key,
         resolved_path
     )

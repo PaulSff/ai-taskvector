@@ -241,6 +241,56 @@
       "topic_idx": "0"
     },
     {
+      "name": "zmq_jobs_client_10",
+      "sub_endpoint": "tcp://127.0.0.1:6601",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_11",
+      "sub_endpoint": "tcp://127.0.0.1:6603",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_12",
+      "sub_endpoint": "tcp://127.0.0.1:6605",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_13",
+      "sub_endpoint": "tcp://127.0.0.1:6607",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_14",
+      "sub_endpoint": "tcp://127.0.0.1:6609",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_15",
+      "sub_endpoint": "tcp://127.0.0.1:6611",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_16",
+      "sub_endpoint": "tcp://127.0.0.1:6613",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_17",
+      "sub_endpoint": "tcp://127.0.0.1:6615",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_18",
+      "sub_endpoint": "tcp://127.0.0.1:6617",
+      "topic_idx": "5"
+    },
+    {
+      "name": "zmq_jobs_client_19",
+      "sub_endpoint": "tcp://127.0.0.1:6619",
+      "topic_idx": "5"
+    },
+    {
       "name": "run_agent_workflow_0",
       "sub_endpoint": "tcp://127.0.0.1:6121",
       "topic_idx": "0"

@@ -19,30 +19,40 @@ Output ports:
 
 Streaming: LLM token chunks stream through _stream_callback in params (same
 mechanism as all other streaming units).
-Params: "_needs_executor": true - MUST be set in params, so that the executor injects the async loop
+Params: "_needs_executor": true - MUST be set in params, so that the executor injects the async loop 'executor'
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
+from concurrent.futures import Future
 from typing import cast
 
+from agents.chat.agent_workflow.wf_response_schema import CancelToken
 from core.schemas.primitives import Data, Output
 from runtime.executor import GraphStreamCallback
+from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
+from units.taskvector.agent_orchestrator.utils.batch_update_publisher import (
+    BatchUpdatePublisher,
+)
 
 from .turn_runner import run_orchestrator_turn
 
+logger = setup_colored_logging(logging.DEBUG)
+_current_cancel_token: CancelToken | None = None
+
 AGENT_ORCHESTRATOR_INPUT_PORTS = [
-    ("data", "Any"),  # context dict (see module docstring)
+    ("data", "dict"),  # context dict (see module docstring)
     ("messenger", "str"),  # optional — also accepted inside data["messenger"]
 ]
 AGENT_ORCHESTRATOR_OUTPUT_PORTS = [
-    ("status", "Any"),
-    ("token", "Any"),
-    ("message", "Any"),
-    ("role", "Any"),
-    ("error", "Any"),
+    ("status", "dict"),
+    ("token", "dict"),
+    ("message", "Data"),
+    ("role", "dict"),
+    ("error", "dict"),
 ]
 
 
@@ -52,15 +62,15 @@ def _agent_orchestrator_step(
     state: Data,
     dt: float,
 ) -> Output:
-    """Run one agent turn on the GraphExecutor background event loop."""
-    # Normalize data input.
     data = inputs.get("data") or {}
     if isinstance(data, str):
         data = {"user_message": data}
     if not isinstance(data, dict):
         data = {}
 
-    # Messenger can come from the data dict or the separate input port.
+    state.pop("orchestrator_future", None)
+    state.pop("orchestrator_publisher", None)
+
     messenger_port = inputs.get("messenger")
     if messenger_port and "messenger" not in data:
         data = {**data, "messenger": str(messenger_port)}
@@ -71,7 +81,6 @@ def _agent_orchestrator_step(
     )
 
     batch_update_publisher = None
-    publisher_cleanup_handed_off = False
 
     try:
         # Resolve background loop: prefer executor instance, then loop object directly.
@@ -114,24 +123,26 @@ def _agent_orchestrator_step(
             )
 
         context: Data = {str(key): value for key, value in data.items()}
+        global _current_cancel_token
+
+        cancel_token = CancelToken()
+        _current_cancel_token = cancel_token
+        state["cancel_token"] = cancel_token  # optional
+        logger.debug(
+            f"[agent_orchestrator] STEP: cancel_token id={id(cancel_token)} requested={cancel_token.requested}"
+        )
 
         coro = run_orchestrator_turn(
             context,
             stream_callback=stream_cb,
             batch_update_publisher=batch_update_publisher,
             run_id=run_id,
+            cancel_token=cancel_token,
         )
 
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
-
-        # Keep the publisher open for every update, including if result()
-        # times out. The callback closes it when the coroutine actually ends.
-        if batch_update_publisher is not None:
-            publisher = batch_update_publisher
-            fut.add_done_callback(
-                lambda _: publisher.close()
-            )
-            publisher_cleanup_handed_off = True
+        state["orchestrator_future"] = fut
+        state["orchestrator_publisher"] = batch_update_publisher
 
         timeout_value = params.get("timeout_s")
         timeout_s: float | None = (
@@ -143,28 +154,33 @@ def _agent_orchestrator_step(
         result = fut.result(timeout=timeout_s)
 
     except TimeoutError as exc:
-        error_payload: Data = {
-            "type": "error",
-            "error": f"{type(exc).__name__}: {exc}",
-        }
         return (
             {
                 "status": None,
                 "token": None,
                 "message": None,
                 "role": None,
-                "error": error_payload,
+                "error": {
+                    "type": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
             },
             state,
         )
-
-    finally:
-        # If the coroutine was never submitted, no completion callback owns cleanup.
-        if (
-            batch_update_publisher is not None
-            and not publisher_cleanup_handed_off
-        ):
-            batch_update_publisher.close()
+    except (TypeError, ValueError) as exc:
+        return (
+            {
+                "status": None,
+                "token": None,
+                "message": None,
+                "role": None,
+                "error": {
+                    "type": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            },
+            state,
+        )
 
     if result is None:
         return (
@@ -222,6 +238,49 @@ def _agent_orchestrator_step(
     return (ports, state)
 
 
+def _wait_for_future(fut: Future[object] | None) -> None:
+    if fut is None:
+        return
+    try:
+        fut.result(timeout=5)
+    except Exception:
+        logger.exception("Future did not complete cleanly")
+
+
+def _close_publisher(publisher: BatchUpdatePublisher | None) -> None:
+    if publisher is None:
+        return
+    try:
+        publisher.close()
+    except Exception:
+        logger.exception("Failed to close publisher")
+
+
+def _agent_orchestrator_cleanup(
+    params: Data,
+    state: Data,
+) -> None:
+    del params
+
+    if _current_cancel_token is not None:
+        logger.debug(
+            f"[agent_orchestrator] CLEANUP: cancelling remaining tasks, token id={id(_current_cancel_token)}"
+        )
+        _current_cancel_token.requested = True
+    else:
+        logger.warning("[agent_orchestrator] CLEANUP: no current cancel token")
+
+    fut = state.get("orchestrator_future")
+    if isinstance(fut, Future):
+        _wait_for_future(fut)
+
+    publisher = state.get("orchestrator_publisher")
+    if isinstance(publisher, BatchUpdatePublisher):
+        _close_publisher(publisher)
+
+    print("AgentOrchestrator: stopping...")
+
+
 def register_agent_orchestrator() -> None:
     """Register the AgentOrchestrator unit type."""
     register_unit(
@@ -230,6 +289,7 @@ def register_agent_orchestrator() -> None:
             input_ports=AGENT_ORCHESTRATOR_INPUT_PORTS,
             output_ports=AGENT_ORCHESTRATOR_OUTPUT_PORTS,
             step_fn=_agent_orchestrator_step,
+            cleanup_fn=_agent_orchestrator_cleanup,
             environment_tags=["taskvector"],
             environment_tags_are_agnostic=False,
             description=(

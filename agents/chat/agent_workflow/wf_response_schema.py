@@ -141,6 +141,8 @@ class AgentWorkflowResponse:
         default_factory=DirectUnitsResponse
     )
     direct_units_errors: WorkflowErrors = field(default_factory=list)
+    # Determines if the workflow was cancelled by the User (e.g. via the agent_orchestrator unit)
+    cancelled: bool = False
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> Self:
@@ -149,6 +151,7 @@ class AgentWorkflowResponse:
             "merged_errors",
             "direct_units_response",
             "direct_units_errors",
+            "cancelled",
         }
 
         unknown_fields = set(data) - valid_fields
@@ -161,18 +164,18 @@ class AgentWorkflowResponse:
         merged_errors = data.get("merged_errors", {})
         direct_units_response = data.get("direct_units_response", {})
         direct_units_errors = data.get("direct_units_errors", [])
+        cancelled = data.get("cancelled", False)
 
         if not isinstance(merged_response, Mapping):
             raise TypeError("merged_response must be a mapping")
-
         if not isinstance(merged_errors, Mapping):
             raise TypeError("merged_errors must be a mapping")
-
         if not isinstance(direct_units_response, Mapping):
             raise TypeError("direct_units_response must be a mapping")
-
         if not isinstance(direct_units_errors, list):
             raise TypeError("direct_units_errors must be a list")
+        if not isinstance(cancelled, bool):
+            raise TypeError("cancelled must be a bool")
 
         return cls(
             merged_response=MergeResponse.from_dict(merged_response),
@@ -181,4 +184,10 @@ class AgentWorkflowResponse:
                 direct_units_response
             ),
             direct_units_errors=direct_units_errors,
+            cancelled=cancelled,
         )
+
+
+@dataclass
+class CancelToken:
+    requested: bool = False

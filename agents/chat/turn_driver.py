@@ -46,10 +46,11 @@ from agents.chat.session import (
     unique_path,
     write_chat_payload,
 )
+from agents.chat.session.session_management import invalidate_run
 from agents.chat.utils.workflow_run_utils import (
     _workflow_debug_log,  # pyright: ignore[reportPrivateUsage]
 )
-from agents.chat.zmq_jobs_client import publish_job_and_wait
+from agents.chat.zmq_jobs_client import publish_job_and_wait, publish_stop_workflow
 from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
 from agents.roles.registry import ANALYST_ROLE_ID, CHAT_NAME_CREATOR_ROLE_ID
 from config.settings import (
@@ -267,7 +268,6 @@ async def append_session_message(session_id: str, msg: Data) -> None:
         logger.warning("Failed to append chat delta: %s", e)
 
 
-
 async def persist_session(session_id: str, *, agent_selected: str | None = None) -> bool:
     """Write a full history snapshot for the session to disk. Returns True on success."""
     with _sessions_lock:
@@ -305,7 +305,29 @@ async def persist_session(session_id: str, *, agent_selected: str | None = None)
         logger.warning("Failed to persist session: %s", e)
         return False
 
+# Stops the agentic loop for a specific run_id by sending the stop_workflow command to the server
+async def stop_run(session_id: str) -> None:
+    """Stop the current running workflow for the given session
+    run_id = f"{s.session_id}:{run_token}"
+    the server will receive:
+        {
+          "action": "stop_workflow",
+          "run_id": "...",
+          "ts": ...
+        }
+    """
+    run_id = invalidate_run(session_id)
+    if run_id is None:
+        logger.warning("stop_run: session %s not found", session_id)
+        return
 
+    try:
+        await publish_stop_workflow(run_id=run_id, action="stop_workflow")
+        logger.info("stop_run: workflow stopped for run_id=%s", run_id)
+    except Exception:
+        logger.exception("stop_run: failed to publish stop action for run_id=%s", run_id)
+
+# Stars one single agentic loop by running the orchextrator pipeline workflow via server
 async def handle_turn(
     session_id: str | None,
     user_message: str,

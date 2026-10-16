@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from agents.chat.agent_workflow import AgentWorkflowResponse
+from agents.chat.agent_workflow.wf_response_schema import CancelToken
 from agents.chat.context.role_turn_context import RoleChatTurnContext
 from agents.chat.handlers.chat_turn_context import (
     normalize_user_message_for_workflow,
@@ -57,6 +58,7 @@ async def run_orchestrator_turn(
     stream_callback: GraphStreamCallback | None = None,
     batch_update_publisher: BatchUpdatePublisher | None = None,
     run_id: str | None,
+    cancel_token: CancelToken | None = None,
 ) -> Data:
     """
     Role-handler orchestration layer.
@@ -392,6 +394,7 @@ async def run_orchestrator_turn(
         token=token,
         recent_changes=recent_changes,
         role_id=role_id,
+        cancel_token=cancel_token,
         publish_in_progress=_publish_in_progress,
         get_result_kind=lambda: result_ref[0].kind,
     )
@@ -454,6 +457,21 @@ async def run_orchestrator_turn(
             message_for_workflow=user_message,
         )
 
+        if runtime.stop_requested:
+            return {
+                "status": {
+                    "type":"status",
+                    "status":"cancelled"
+                },
+                "token": None,
+                "message": None,
+                "role": {
+                    "role_id": role_id,
+                    "name": agent_label
+                },
+                "error": None,
+            }
+
         _publish_in_progress(
             stage="turn:response_ready",
             kind=result_ref[0].kind
@@ -464,7 +482,7 @@ async def run_orchestrator_turn(
 
     except Exception as exc:
         logger.exception(
-            "[orchestrator] role handler failed",
+            "[agent_orchestrator] role handler failed",
             extra={
                 "role_id": role_id,
                 "turn_id": turn_id,
@@ -515,7 +533,10 @@ async def run_orchestrator_turn(
             )
 
             return {
-                "status": None,
+                "status": {
+                    "type":"status",
+                    "status":"delegated"
+                },
                 "token": None,
                 "message": {
                     "type": "delegate",
@@ -609,7 +630,7 @@ async def run_orchestrator_turn(
     )
 
     out = {
-        "status": None,
+        "status": {"type":"status", "status":"completed"},
         "token": {"type": "token", "token": display_content},
         "message": {"type": "final", "message": final_message},
         "role": {"role_id": role_id, "name": agent_label},

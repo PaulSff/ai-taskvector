@@ -10,8 +10,9 @@ from agents.chat.session.state import AgentChatHistory, ChatSessionState
 from core.schemas.primitives import Data, WorkflowInputs
 from core.schemas.process_graph import ProcessGraph
 from runtime.executor import GraphStreamCallback
+from services.logging import setup_colored_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.DEBUG)
 
 class SessionProxy(ChatSessionState):
     """
@@ -47,6 +48,7 @@ class TurnRuntimeProxy:
         role_id: str,
         token: int = 0,
         recent_changes: str | None = None,
+        cancel_token=None,
         apply_from_agent: Callable[[ProcessGraph], None] | None = None,
         publish_in_progress: Callable[..., None] | None = None,
         get_result_kind: Callable[[], str],
@@ -61,6 +63,11 @@ class TurnRuntimeProxy:
         self._apply_from_agent = apply_from_agent
         self._publish_in_progress = publish_in_progress
         self._get_result_kind = get_result_kind
+        self._cancel_token = cancel_token
+
+    @property
+    def stop_requested(self) -> bool:
+        return bool(getattr(self._cancel_token, "requested", False))
 
     def set_graph(self, graph: ProcessGraph) -> None:
         self.graph_ref[0] = graph
@@ -72,7 +79,7 @@ class TurnRuntimeProxy:
         return self._recent_changes
 
     async def toast(self, message: str) -> None:
-        logger.info("[orchestrator] toast: %s", message)
+        logger.warning("[agent_orchestrator] toast: %s", message)
 
     def set_inline_status(self, message: str | None) -> None:
         if self._stream_cb is None:
@@ -114,7 +121,7 @@ class TurnRuntimeProxy:
         return
 
     def workflow_debug_log(self, message: str) -> None:
-        logger.debug("[orchestrator] %s", message)
+        logger.debug("[agent_orchestrator] %s", message)
 
     async def run_workflow_streaming(
         self,
@@ -129,6 +136,10 @@ class TurnRuntimeProxy:
     ) -> AgentWorkflowResponse:
         del _run_token
 
+        if self.stop_requested:
+            logger.warning("[agent_orchestrator] stop requested, preventing workflow execution")
+            return AgentWorkflowResponse(cancelled=True)
+
         response = await func(
             initial_inputs,
             unit_param_overrides,
@@ -138,6 +149,10 @@ class TurnRuntimeProxy:
             role_id=role_id,
         )
 
+        if self.stop_requested:
+            logger.warning("[agent_orchestrator] stop requested, returning cancelled=True")
+            return AgentWorkflowResponse(cancelled=True)
+
         if self._publish_in_progress is not None:
             try:
                 kind = self._get_result_kind()
@@ -146,6 +161,6 @@ class TurnRuntimeProxy:
                     kind=kind,
                 )
             except Exception:
-                logger.exception("[orchestrator] publish_in_progress failed")
+                logger.exception("[agent_orchestrator] publish_in_progress failed")
 
         return response

@@ -258,18 +258,20 @@ The processing order is therefore:
             merged_errors=_build_merge_errors(outputs),
             direct_units_response=_build_direct_units_response(outputs),
             direct_units_errors=workflow_errors,
+            cancelled=get_bool(outputs, "cancelled"),
         )
 
     logger.debug(
         "MergeWorkflowResponse finished: reply_length=%d, "
         "has_result=%s, has_status=%s, has_graph=%s, has_diff=%s, "
-        "workflow_error_count=%d, merged_errors=%r",
+        "workflow_error_count=%d, cancelled=%s, merged_errors=%r",
         len(response.merged_response.reply),
         response.merged_response.result is not None,
         response.merged_response.status is not None,
         response.merged_response.graph is not None,
         bool(response.merged_response.diff),
         len(response.direct_units_errors),
+        response.cancelled,
         response.merged_errors,
     )
 

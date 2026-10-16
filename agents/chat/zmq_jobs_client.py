@@ -22,13 +22,16 @@ from core.schemas.primitives import (
     WorkflowInputs,
     require_json_object_from_object,
 )
+from services.logging import setup_colored_logging
 from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.DEBUG)
+GRAY = "\033[90m"
+RESET = "\033[0m"
 
 OnToken = Callable[
     [str, str], Awaitable[None]
@@ -39,6 +42,7 @@ OnToken = Callable[
 class JobState:
     final_error: str | None = None
     final_outputs: Data | None = None
+    stopped: bool = False
 
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
@@ -140,7 +144,36 @@ def _serialize_initial_inputs(
 
     return normalized
 
-# ------- Publish the orchestration workflow job to workflow-server -------
+# ------- Publish stop_workflow command to the workflow-server -------
+
+async def publish_stop_workflow(*, run_id: str, action: str) -> None:
+    """Publishes the 'stop_workflow' action to the server.
+    The server will receive:
+        {
+          "action": "stop_workflow",
+          "run_id": "...",
+          "ts": ...
+        }
+    """
+    slot = await _slot_allocator.acquire()
+    pub = None
+    try:
+        pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINTS[slot], topics=ZmqTopics())
+        # Assuming publish_stop_job is the intended method on ZmqPublisher
+        pub.publish_action(run_id=run_id, action=action)
+        logger.warning(
+            "[zmq_jobs_client] stop workflow published run_id=%r slot=%d",
+            run_id,
+            slot
+        )
+    finally:
+        if pub:
+            # Close the pub socket
+            pub.close()
+            # Relase the slot
+        await _slot_allocator.release()
+
+# ------- Publish the orchestration workflow job to the workflow-server -------
 
 async def publish_job_and_wait(
     *,
@@ -199,24 +232,28 @@ async def publish_job_and_wait(
         state = JobState()
         last_update: JsonObject = in_progress if in_progress is not None else {}
 
+        token_count = 0
+        last_log_at = time.monotonic()
+
         async def _on_token(_topic: str, payload: JsonObject) -> None:
+            nonlocal token_count, last_log_at
+
             if payload.get("run_id") != run_id:
                 return
 
-            # Ensure token_piece is cast to a string immediately
             token_piece = str(payload.get("token") or "")
+            if not token_piece:
+                return
 
-            logger.debug(
-                "zmq_jobs_client: token received run_id=%r session_id=%r piece=%r",
-                run_id,
-                session_id,
-                token_piece,
-            )
+            token_count += 1
 
-            if token_piece and token_callback is not None:
-                # Now token_piece is definitely a 'str', so this is allowed
+            if token_callback is not None:
                 await token_callback(session_id, token_piece)
 
+            now = time.monotonic()
+            if token_count % 25 == 0 or (now - last_log_at) >= 2.0:
+                print(f"\r{GRAY}[zmq_jobs_client] Receiving stream tokens from LLM... {token_count}{RESET}", end="", flush=True)
+                last_log_at = now
 
         async def _on_result(_topic: str, payload: JsonObject) -> None:
             if payload.get("run_id") != run_id:
@@ -228,7 +265,7 @@ async def publish_job_and_wait(
                 state.final_outputs = cast(dict[str, object], outs)
 
                 logger.info(
-                    "zmq_jobs_client: result received run_id=%r outputs_keys=%r",
+                    "[zmq_jobs_client] result received: run_id=%r outputs_keys=%r",
                     run_id,
                     list(state.final_outputs.keys()),
                 )
@@ -242,7 +279,7 @@ async def publish_job_and_wait(
             state.final_error = err if isinstance(err, str) else str(err)
 
             logger.error(
-                "zmq_jobs_client: error received run_id=%r error=%r",
+                "[zmq_jobs_client] error received: run_id=%r error=%r",
                 run_id,
                 state.final_error,
             )
@@ -256,12 +293,12 @@ async def publish_job_and_wait(
 
             last_update = payload
 
+            msg_type: JsonValue | None = None
+            msg_keys: list[str] = []
+            inner_keys: list[str] = []
+
             try:
                 msg_wrap = payload.get("message")
-
-                msg_type: JsonValue| None = None
-                msg_keys: list[str] = []
-                inner_keys: list[str] = []
 
                 if isinstance(msg_wrap, dict):
                     msg_type = msg_wrap.get("type")
@@ -272,7 +309,7 @@ async def publish_job_and_wait(
                         inner_keys = list(inner.keys())
 
                 logger.info(
-                    "zmq_jobs_client: batch_update run_id=%r "
+                    "[zmq_jobs_client] batch_update received: run_id=%r "
                     + "message.type=%r message.keys=%r inner.message.keys=%r",
                     run_id,
                     msg_type,
@@ -281,10 +318,15 @@ async def publish_job_and_wait(
                 )
             except (ValueError, TypeError):
                 logger.info(
-                    "zmq_jobs_client: batch_update run_id=%r "
+                    "[zmq_jobs_client] batch_update: run_id=%r "
                     + "(logger shape extraction failed)",
                     run_id,
                 )
+
+            # Handle stop confirmation
+            if payload.get("workflow_status") == "stopped":
+                logger.info("[zmq_jobs_client] stop confirmation received for run_id=%r", run_id)
+                state.stopped = True
 
             if in_progress_callback is not None:
                 try:
@@ -293,7 +335,7 @@ async def publish_job_and_wait(
                     raise
                 except (ValueError, TypeError) as e:
                     logger.warning(
-                        "in_progress_callback failed (run_id=%r): %r",
+                        "[zmq_jobs_client] in_progress_callback failed (run_id=%r): %r",
                         run_id,
                         e,
                     )
@@ -310,7 +352,7 @@ async def publish_job_and_wait(
         await update_sub.start()
 
         logger.info(
-            "zmq_jobs_client: job published run_id=%r workflow_path=%r slot=%d session_id=%r update_batch_endpoint=%r",
+            "[zmq_jobs_client] job published: run_id=%r workflow_path=%r slot=%d session_id=%r update_batch_endpoint=%r",
             run_id,
             workflow_path,
             slot,
@@ -358,7 +400,7 @@ async def publish_job_and_wait(
             if serialization_problems:
                 for path, type_name, representation in serialization_problems:
                     logger.error(
-                        "Non-JSON-serializable job payload value: "
+                        "[zmq_jobs_client] Non-JSON-serializable job payload value: "
                         + "path=%s type=%s value=%s",
                         path,
                         type_name,
@@ -371,7 +413,7 @@ async def publish_job_and_wait(
                 )
 
                 raise TypeError(
-                    f"Cannot publish job {run_id!r}; "
+                    f"[zmq_jobs_client] Cannot publish job: {run_id!r}; "
                     + f"payload contains non-JSON-serializable values: {details}"
                 )
 
@@ -387,10 +429,14 @@ async def publish_job_and_wait(
             )
 
             start = time.monotonic()
-            while state.final_error is None and state.final_outputs is None:
+            while (
+                state.final_error is None
+                and state.final_outputs is None
+                and not state.stopped
+            ):
                 if is_stale is not None and is_stale():
                     logger.info(
-                        "zmq_jobs_client: stale run_id=%r (stopping wait)", run_id
+                        "[zmq_jobs_client] stale: run_id=%r (stopping wait)", run_id
                     )
                     break
 
@@ -423,6 +469,9 @@ async def publish_job_and_wait(
             return {
                 "orchestrator": state.final_outputs,
             }
+
+        if state.stopped:
+            return {"orchestrator": last_update}
 
         return {"orchestrator": last_update}
 

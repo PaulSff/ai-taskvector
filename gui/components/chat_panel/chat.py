@@ -26,7 +26,6 @@ from agents.chat.session import (
     get_session,
     history_dedupe_prefer_applied,
     reset_session,
-    stop_run,
 )
 from agents.chat.session.chat_persistence import suggest_initial_chat_path
 from agents.chat.session.history_store import load_chat_payload
@@ -37,6 +36,7 @@ from agents.chat.turn_driver import (
     handle_turn,
     persist_session,
     restore_session,
+    stop_run,
 )
 from agents.chat.utils.workflow_run_utils import _workflow_debug_log
 from agents.roles import (
@@ -167,10 +167,13 @@ async def build_agents_chat_panel(
                 unit_type = (getattr(u, "type", None) or "") or ""
         return (label, unit_type)
 
+    def _handle_stop(_e: object) -> None:
+        page.run_task(_on_stop)
+
     chat_component = ChatLayoutComponent(
         min_lines=4,
         max_lines=12,
-        on_stop_click=lambda _e: _on_stop(),
+        on_stop_click=_handle_stop,
         on_upload_click=lambda _e: (
             page.run_task(run_rag_file_pick_copy_and_index, page),
             None,
@@ -182,7 +185,7 @@ async def build_agents_chat_panel(
     bottom_component = ChatLayoutComponent(
         min_lines=2,
         max_lines=6,
-        on_stop_click=lambda _e: _on_stop(),
+        on_stop_click=_handle_stop,
         on_upload_click=lambda _e: (
             page.run_task(run_rag_file_pick_copy_and_index, page),
             None,
@@ -705,11 +708,11 @@ async def build_agents_chat_panel(
     def _is_current_run(token: int) -> bool:
         return token == run_token_ref[0]
 
-    def _on_stop() -> None:
+    async def _on_stop() -> None:
         if not state.busy:
             return
         _next_run_token()  # prevent stale stream callbacks from updating the UI
-        stop_run(_td_sid)  # signal turn_driver's streaming consumer to stop
+        await stop_run(_td_sid)  # signal turn_driver's streaming consumer to stop
         status_bar.set_status(None)
         _clear_stream_row()
         _set_busy(False)

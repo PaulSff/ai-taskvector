@@ -37,14 +37,18 @@ def reset_session(session_id: str) -> None:
         s.applied_flag = True
 
 
-def stop_run(session_id: str) -> None:
-    """Signal stopping the currently active run by advancing the run token."""
+
+def invalidate_run(session_id: str) -> str | None:
+    """Invalidate the current run and return the run_id that was active."""
     with _sessions_lock:
         s = _sessions.get(session_id)
         if s is None:
-            return
+            return None
+
         with s.run_lock:
+            run_id = f"{s.session_id}:{s.run_token}"
             s.run_token += 1
+            return run_id
 
 
 def get_session(session_id: str) -> _Session | None:

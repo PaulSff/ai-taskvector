@@ -395,7 +395,7 @@ class AnalystChatHandler:
         async def run_workflow_turn(
             inputs: WorkflowInputs,
         ) -> AgentWorkflowResponse:
-            return await turn_ctx.run_workflow_streaming(
+            response = await turn_ctx.run_workflow_streaming(
                 run_agent_workflow,
                 inputs,
                 overrides,
@@ -404,6 +404,13 @@ class AnalystChatHandler:
                 workflow_path=_AGENT_WORKFLOW_PATH,
                 role_id=_AGENT_ROLE_ID,
             )
+            # Exit if the workflow returned cancelled: True
+            if response.cancelled:
+                logger.info("AnalystChatHandler: PHASE 1 stopped reason: cancelled by user")
+                return response
+
+            return response
+
 
         async def parser_output_follow_up_chain(
             resp: AgentWorkflowResponse,
@@ -514,7 +521,13 @@ class AnalystChatHandler:
             )
 
             response = await run_workflow_turn(initial_inputs)
+            # Exit if the wirkflow returned cancelled: True
+            if response.cancelled:
+                logger.info("AnalystChatHandler: PHASE 2 stopped reason: cancelled by user")
+                return
+
             await on_workflow_response(response)
+
 
             chained = await parser_output_follow_up_chain(response)
 

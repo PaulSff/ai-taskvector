@@ -1,20 +1,24 @@
-# Analyst turn handler
+# Planner turn handler
 
-Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
+Implements `PlannerChatHandler` (`handler.py`): manages the execution of a single chat turn for the **planner** role.
 
 ## Behaviour
 
-- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `light_graph_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
-- Tool follow-ups use in the order of the tools section in the `role.yaml`
-- `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
+- **Multi-Phase Execution**: The turn is processed in several stages:
+    1. **Initial Workflow**: Runs the agent workflow to generate a response and potential graph edits.
+    2. **Reconciliation**: Validates the resulting graph and augments it with client-side tasks via `augment_graph_with_client_tasks`.
+    3. **Execution Follow-ups**: Runs a chain of follow-up rounds if the parser output indicates further actions are needed.
+    4. **Post-Execution Follow-ups**: Final rounds to refine the response or handle post-apply logic.
+
+- **Cancellation Logic**: The handler explicitly monitors for user cancellation at multiple stages. If `response.cancelled` is true after the initial workflow run or during the transition to subsequent phases, the process is halted immediately to prevent unnecessary LLM calls or state updates.
+
+- **Graph Management**: Ensures that the `ProcessGraph` is validated before and after application. It supports `light_graph_mode` to optimize prompt context.
 
 ## Related config
 
-- Role: `agents/roles/analyst/role.yaml`
-- Workflow: `agents/roles/analyst/analyst_workflow.json`
-- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
-- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
+- Role: Defined by `PLANNER_ROLE_ID`.
+- Workflow: Path resolved via `get_role_chat_workflow_path`.
 
 ## Registry
 
-Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.
+Registered in `agents/chat/role_turns/registry.py` as the handler for the planner role.
