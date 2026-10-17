@@ -1,17 +1,18 @@
 # AI TaskVector
 
-Your personal AI assistant and agents factory that runs explicitly on your machine.
+Your local-first AI assistant and agent factory that runs explicitly on your machine.
 --- 
-- **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
-- **Custom automations**: creates and runs automations, maintains them in the context (Create an automation -> Put on context -> Enjoy the output injected every loop);
-- **Skills/Roles**: talks to your data/manages data, works with documents/spreadsheets, does analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, writes code, etc.;
-- **Local models**: via llama.cpp and Ollama;
-- **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
-- **MCP host**: tools and resources via MCP; MCPTool and MCPSource units providing the calls inside workflows;
-- **RAG**: local RAG & memory;
-- **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
-- **Self-aware**: observes its own workflow/context, and is capable to modify it;
-- **Channels**: WEB & Desktop (Flet), Telegram.
+- **Co-pilot mode**: research, coding/file editing, spreadsheet tasks execution (.xlsx), workflow creation, process automations, etc.
+- **Long-polling mode**: works while you sleep using messengers, tools, custom workflows, calendar (iCal), RL training;
+
+It also includes:
+- **AI Factory**: create custom AI agents and teams with a built-in workflow assistant;
+- **Custom automations**: develop new workflows in minutes with the co-pilot using own low-code framework;
+- **Local models**: works with llama.cpp and Ollama;
+- **Tools and integrations**: built-in packages, MCP support;
+- **RAG**: local knowledge base, retrieval, and chat memory;
+- **Observability**: built-in visibility into workflows, sources, and agent activity
+- **Channels**: WEB & Desktop: (Flet), Messengers: Telegram.
 
 <img width="2352" height="1720" alt="ai-taskvector_screen" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
 
@@ -19,7 +20,7 @@ Your personal AI assistant and agents factory that runs explicitly on your machi
 
 **Rename**: `config/app_settings_example.json` -> `config/app_settings.json`
 
-### macOS / Linux
+### MacOS / Linux
 Install:
 ```bash
 curl -fsSL https://github.com/PaulSff/ai-taskvector/raw/master/install.sh | bash
@@ -98,7 +99,7 @@ pip install -e ".[rag,gui,llm-integrations,messengers-integrations,units-web,uni
 ```
 
 **2. Pull LLM**
-Make sure you have installed Ollama. 
+Make sure you have installed `Ollama` or `llama.cpp` (set up [llama.cpp](https://github.com/ggml-org/llama.cpp) for completely local inference)
 
 Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
 
@@ -143,7 +144,7 @@ python -m gui.main -dev
 - `chat_history/` - AI chat conversations and metadata ranked
 
 
-## Create your custom AI agent in one command
+## Create your custom AI agent package in one command
 You can create a new agent in one command by cloning the Analyst role package. 
 
 Execute From the repo root:
@@ -175,20 +176,20 @@ Restart the app and enjoy interacting with your agent through the chat. The `con
 ----
 - **Workflows:** 
   - You can either create a workflow from scratch or import one.
-  - Drop in a workflow graph (TaskVector, Node-RED, PyFlow, n8n, ..). External ones are translated to TaskVector canonical workflow format on import;
-  - Modify the workflow (export back if external)
+  - Drop in a workflow graph TaskVector native or external (Node-RED, PyFlow, n8n, ..). External ones are translated to TaskVector canonical workflow format on import;
+  - Modify the workflow (export back if needed)
   - Run the process inline (Python only)
   - Testing: Add a `Debug` unit with `/debug.log` in params to log the output. Use `Template` unit to pass mock/test data into the workflow. A simple test workflow would be as follows: `Template -> Inject -> YourUnitToTest -> Debug`
 - **RAG:** 
   - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
   - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `mydata/chat_history`) for the agents to remember conversations that happened in the past.
-- **Training:** 
+- **RL training (is being eveloped):** 
   - Load/edit training config (goal, rewards, callbacks). 
   - Run training or test Best model.
 
 ---
 
-## Creating new units and tools
+## Creating new Units and Tools
 
 - Follow this guide to create custom units (nodes): `units/CREATING-NEW-UNIT.md`
 - Explore new tools development guide: `agents/tools/README.md`
