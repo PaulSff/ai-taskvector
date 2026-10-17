@@ -1,4 +1,9 @@
 # AI TaskVector
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python: 3.12.6](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/downloads/release/python-3126/)
+
+
+
 
 Your local-first AI assistant and agent platform that runs explicitly on your machine.
 --- 
@@ -15,7 +20,28 @@ It also includes:
 - **Channels**: WEB & Desktop: (Flet), Messengers: Telegram;
 - **Workflow server & Inference**: API for external integrations.
 
-<img width="2352" height="1720" alt="ai-taskvector_screen" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+<table align="center">
+    <tr>
+        <td align="center" width=50%>
+            <img width="1310" height="888" alt="Workflow server AI TaskVector" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <i>Workflow server: <b>RAG indexig...</b></i>
+        </td>
+        <td align="center">
+            <img width="1392" height="958" alt="Built-in UI: Workflow Designer running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <i>Built-in UI: <b>Workflow Designer</b> Agent</i>
+        </td>
+    </tr>
+    <tr>
+        <td align="center">
+            <img width="1392" height="958" alt="Built-in UI: Analyst running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <i>Long-polling: <b>Agent chatting</b>  over Tg</i>
+        </td>
+        <td align="center" width=50%>
+            <img width="1310" height="888" alt="Built-in UI: Coder running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <i>Built-in UI: <b>Coder</b> Agent</i>
+        </td>
+    </tr>
+<table>
 
 ## Quick start
 
