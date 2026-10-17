@@ -4,7 +4,6 @@
 
 
 
-
 Your local-first AI assistant and agent platform that runs explicitly on your machine.
 --- 
 - **Co-pilot mode**: research, coding/file editing, spreadsheet tasks execution (.xlsx), workflow creation, process automations, etc.
@@ -23,8 +22,8 @@ It also includes:
 <table align="center">
     <tr>
         <td align="center" width=50%>
-            <img width="1310" height="888" alt="Workflow server AI TaskVector" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
-            <i>Workflow server: <b>RAG indexig...</b></i>
+            <img width="1310" height="888" alt="Workflow server AI TaskVector" src="https://github.com/user-attachments/assets/ab3dfe49-39ad-4d6d-b5e2-dee15923d7ea" />
+            <i>Workflow server: <b>RAG, Agent runtime, etc...</b></i>
         </td>
         <td align="center">
             <img width="1392" height="958" alt="Built-in UI: Workflow Designer running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
@@ -33,11 +32,11 @@ It also includes:
     </tr>
     <tr>
         <td align="center">
-            <img width="1392" height="958" alt="Built-in UI: Analyst running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <img width="1392" height="958" alt="Built-in UI: Analyst running gemma4 31:b" src="https://github.com/user-attachments/assets/9f59afcd-9d4d-4f3a-8125-1fd2b6a1533c" />
             <i>Long-polling: <b>Agent chatting</b>  over Tg</i>
         </td>
         <td align="center" width=50%>
-            <img width="1310" height="888" alt="Built-in UI: Coder running gemma4 31:b" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+            <img width="1310" height="888" alt="Built-in UI: Coder running gemma4 31:b" src="https://github.com/user-attachments/assets/4732e753-139f-4921-a15c-c826a9216017" />
             <i>Built-in UI: <b>Coder</b> Agent</i>
         </td>
     </tr>
