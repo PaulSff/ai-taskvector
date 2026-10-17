@@ -1,6 +1,6 @@
 # AI TaskVector
 
-Your local-first AI assistant and agent factory that runs explicitly on your machine.
+Your local-first AI assistant and agent platform that runs explicitly on your machine.
 --- 
 - **Co-pilot mode**: research, coding/file editing, spreadsheet tasks execution (.xlsx), workflow creation, process automations, etc.
 - **Long-polling mode**: works while you sleep using messengers, tools, custom workflows, calendar (iCal), RL training;
@@ -11,8 +11,9 @@ It also includes:
 - **Local models**: works with llama.cpp and Ollama;
 - **Tools and integrations**: built-in packages, MCP support;
 - **RAG**: local knowledge base, retrieval, and chat memory;
-- **Observability**: built-in visibility into workflows, sources, and agent activity
-- **Channels**: WEB & Desktop: (Flet), Messengers: Telegram.
+- **Observability**: built-in visibility into workflows, sources, and agent activity;
+- **Channels**: WEB & Desktop: (Flet), Messengers: Telegram;
+- **Workflow server & Inference**: API for external integrations.
 
 <img width="2352" height="1720" alt="ai-taskvector_screen" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
 
