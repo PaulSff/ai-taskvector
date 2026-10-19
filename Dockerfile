@@ -2,7 +2,7 @@
 # Python 3.10–3.12 per project requirements (PyTorch; RAG)
 # Compatible with classic Docker (2022) and BuildKit. For "No space left on device", free disk
 # or set TMPDIR/PIP_CACHE_DIR to a path on a larger drive before building.
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
@@ -46,6 +46,9 @@ COPY . .
 # Run Flet GUI (from repo root).
 # Ollama: the Python client (ollama) is installed; the Ollama server is separate.
 # Use docker-compose.yml to run app + Ollama together; set OLLAMA_HOST=http://ollama:11434.
-# For desktop: use X11 forwarding or a display. For web UI: override with
-#   flet run gui/main.py --web -p 8550
-CMD ["python", "-m", "gui.main"]
+#
+# Running in WEB mode (WEB UI): override with
+# CMD ["bash", "run.sh", "--web", "-p", "8550"]
+#
+# Running in headless mode:
+CMD ["bash", "./run.sh", "--no_gui"]

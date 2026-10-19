@@ -6,6 +6,12 @@
 # Run GUI web app:
 #   ./run.sh --web -p 8550
 #
+# Run without Ollama:
+#   SKIP_OLLAMA=1 ./run.sh
+#
+# Run without GUI:
+#   ./run.sh --no_gui
+#
 set -euo pipefail
 
 server_pid=""
@@ -15,6 +21,36 @@ ollama_pid=""
 gui_pid=""
 shutdown_started=0
 
+WEB=0
+PORT=""
+HOST="0.0.0.0"
+NO_GUI=0
+
+# Parse launcher args
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --web)
+      WEB=1
+      shift
+      ;;
+    -p|--port)
+      PORT="${2:-8550}"
+      shift 2
+      ;;
+    --host)
+      HOST="${2:-0.0.0.0}"
+      shift 2
+      ;;
+    --no_gui)
+      NO_GUI=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 # Start workflow server
 python -u services/server/workflow_server.py 2>&1 &
 server_pid=$!
@@ -23,43 +59,15 @@ server_pid=$!
 python -u messengers_integrations/telegram/telegram_bot_api/tg_zmq_subscriber.py 2>&1 &
 subscriber_pid=$!
 
-# Start the agentic loop poller.
-#
-# This process owns:
-#   - FollowupCtxSubscriber
-#   - AgenticTurnQueue
-#   - agentic loop worker tasks
+# Start the agentic loop poller
 python -u -m services.agentic_loop.loop_poller 2>&1 &
 poller_pid=$!
 
-# Start Ollama
-ollama serve 2>&1 &
-ollama_pid=$!
-
-# Forward arguments to Flet.
-flet_args=("$@")
-
-# If --web is supplied without -p/--port, use port 8550.
-if printf '%s\n' "$@" | grep -q -- '--web'; then
-  has_port=0
-
-  for arg in "$@"; do
-    if [[ "$arg" == "-p" || "$arg" == "--port" ]]; then
-      has_port=1
-      break
-    fi
-  done
-
-  if [[ "$has_port" -eq 0 ]]; then
-    flet_args+=("-p" "8550")
-  fi
-
-  flet run gui/main.py "${flet_args[@]}" 2>&1 &
-else
-  flet run gui/main.py 2>&1 &
+# Start Ollama unless explicitly skipped
+if [[ "${SKIP_OLLAMA:-0}" != "1" ]]; then
+  ollama serve 2>&1 &
+  ollama_pid=$!
 fi
-
-gui_pid=$!
 
 shutdown_all() {
   # The function may be called by both the signal trap and the final wait.
@@ -113,10 +121,28 @@ shutdown_all() {
   echo "Shutdown complete."
 }
 
-trap shutdown_all INT TERM
+trap shutdown_all INT TERM EXIT
 
-# Keep the launcher alive while the GUI is running.
+# Launch GUI unless headless
+if [[ "$NO_GUI" -eq 1 ]]; then
+  echo "Running in headless mode (--no_gui)..."
+  echo "Press Ctrl+C to stop services..."
+  pids=()
+  [[ -n "$server_pid" ]] && pids+=("$server_pid")
+  [[ -n "$subscriber_pid" ]] && pids+=("$subscriber_pid")
+  [[ -n "$poller_pid" ]] && pids+=("$poller_pid")
+  [[ -n "$ollama_pid" ]] && pids+=("$ollama_pid")
+  wait -n "${pids[@]}" 2>/dev/null || true
+  exit 0
+fi
+
+if [[ "$WEB" -eq 1 ]]; then
+  export FLET_WEB=1
+  export FLET_SERVER_HOST="$HOST"
+  export FLET_SERVER_PORT="${PORT:-8550}"
+fi
+
+python gui/main.py 2>&1 &
+gui_pid=$!
+
 wait "$gui_pid" 2>/dev/null || true
-
-# Normal GUI exit.
-shutdown_all
