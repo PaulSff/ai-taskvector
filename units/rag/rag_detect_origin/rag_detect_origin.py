@@ -261,10 +261,12 @@ def _rag_detect_origin_step(
             # Propagate parse/file errors to the unit's error port; keep behavior: graph output is None
             raise ValueError(parse_err)
 
-        raw = classify_content(
-            disc_path, data
-        )  # returns dict with keys: family, content_kind, id
-        origin = str(raw.get("content_kind") or raw.get("id") or "") or "json-generic"
+        raw = classify_content(disc_path, data)
+        origin = str(raw.get("content_kind") or raw.get("id") or "")
+        # Still set generic if "unknown" is returned by the classify_content,
+        # meaning no currently known json kinds of contentn has been recognized
+        if not origin or origin == "unknown":
+            origin = "json-generic"
 
     except (AttributeError, TypeError, ValueError) as e:
         origin = "json-generic"
