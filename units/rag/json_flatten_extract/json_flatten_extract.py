@@ -150,7 +150,7 @@ def _build_metadata(obj: JsonObject, file_path: str, origin: str) -> JsonObject:
     """Promote well-known top-level fields into the metadata dict."""
     meta: JsonObject = {
         "file_path": file_path,
-        "origin": origin or "generic_json",
+        "origin": origin or "json-generic",
     }
     for key in _WELL_KNOWN_META_KEYS:
         val = obj.get(key)
@@ -212,11 +212,11 @@ def _json_flatten_extract_step(
         if isinstance(raw, dict):
             parsed = raw.get("parsed") or raw.get("graph") or raw
             fp = str(raw.get("file_path") or "").strip()
-            origin = str(raw.get("origin") or "generic_json").strip()
+            origin = str(raw.get("origin") or "json-generic").strip()
         else:
             parsed = raw
             fp = ""
-            origin = "generic_json"
+            origin = "json-generic"
 
         fp_port = inputs.get("file_path")
         if isinstance(fp_port, str) and fp_port.strip():
