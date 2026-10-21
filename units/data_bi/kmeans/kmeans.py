@@ -1,7 +1,7 @@
 """KMeans: clustering (sklearn)."""
 from __future__ import annotations
 
-from typing import Any
+import numpy as np
 
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
@@ -30,8 +30,9 @@ def _kmeans_step(
         pred = model.predict(X)
         out_df = df.copy()
         out_df["_cluster"] = pred
+        pred = np.asarray(model.predict(X))
         return out_table(out_df, state, {"predictions": pred.tolist()})
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table(df, state)
 
 

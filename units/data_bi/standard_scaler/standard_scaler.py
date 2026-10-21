@@ -30,7 +30,7 @@ def _standard_scaler_step(
         out_df = df.copy()
         out_df[num_cols] = X
         return out_table(out_df, state)
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table(df, state)
 
 

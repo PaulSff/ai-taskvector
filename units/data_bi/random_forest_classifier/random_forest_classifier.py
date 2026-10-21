@@ -1,8 +1,6 @@
 """RandomForestClassifier: fit/predict classification (sklearn)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -36,7 +34,7 @@ def _random_forest_classifier_step(
         out_df["_pred"] = pred
         acc = float(accuracy_score(y, pred))
         return out_table(out_df, state, {"accuracy": acc, "predictions": pred.tolist()})
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table(df, state)
 
 

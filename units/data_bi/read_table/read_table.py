@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from units.data_bi._common import _HAS_PANDAS, df_to_table, out_table, table_to_df
+from units.data_bi._common import _HAS_PANDAS, df_to_table, out_table
 from units.registry import UnitSpec, register_unit
 
 
@@ -51,18 +50,21 @@ def _read_table_step(
                 import openpyxl
                 wb = openpyxl.load_workbook(path, data_only=False)
                 sheet = wb.active
-                rows = list(sheet.iter_rows(values_only=False))
-                if not rows:
+                if sheet is None:
                     df = pd.DataFrame()
                 else:
-                    headers = [cell.value for cell in rows[0]]
-                    data = [[cell.value for cell in r] for r in rows[1:]]
-                    df = pd.DataFrame(data, columns=headers)
+                    rows = list(sheet.iter_rows(values_only=False))
+                    if not rows:
+                        df = pd.DataFrame()
+                    else:
+                        headers = pd.Index(["" if cell.value is None else str(cell.value) for cell in rows[0]])
+                        data = [[cell.value for cell in r] for r in rows[1:]]
+                        df = pd.DataFrame(data, columns=headers)
             else:
                 df = pd.read_excel(path, engine=engine)
         else:
             df = pd.read_csv(path)
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table([], state)
 
     cols = list(df.columns)

@@ -1,8 +1,6 @@
 """MergeTables: join two tables (pandas merge)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -23,10 +21,20 @@ def _merge_tables_step(
         return out_table(left, state)
     import pandas as pd
     on = params.get("on") or inputs.get("on")
-    how = (params.get("how") or inputs.get("how") or "inner").lower()
+    how_raw = (params.get("how") or inputs.get("how") or "inner").lower()
+    if how_raw in ("left", "right", "inner", "outer", "cross"):
+        how = how_raw
+    else:
+        how = "inner"
+
     try:
-        df = pd.merge(left, right, on=on if isinstance(on, list) else [on] if on else None, how=how)
-    except Exception:
+        df = pd.merge(
+            left,
+            right,
+            on=on if isinstance(on, list) else [on] if on else None,
+            how=how,
+        )
+    except (KeyError, ValueError, TypeError):
         df = left
     return out_table(df, state)
 

@@ -36,7 +36,7 @@ def _one_hot_encoder_step(
         for i, name in enumerate(cat_names):
             out_df[name] = X[:, i]
         return out_table(out_df, state)
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table(df, state)
 
 

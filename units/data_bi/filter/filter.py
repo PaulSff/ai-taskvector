@@ -40,7 +40,6 @@ def _filter_step(
             else:
                 col = pd.Series(col_raw, index=getattr(df, "index", None), dtype="float64")
 
-
             # Avoid float() type-check complaints: convert to a python float
             # only after ensuring the value is scalar-like.
             val = None
@@ -76,9 +75,6 @@ def _filter_step(
 
         except (TypeError, ValueError) as _e:
             pass
-
-        tbl = df_to_table(df)
-        return {"row_count": float(len(tbl)), "table": tbl}, state
 
         tbl = df_to_table(df)
         return {"row_count": float(len(tbl)), "table": tbl}, state

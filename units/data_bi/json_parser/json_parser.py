@@ -9,18 +9,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from core.schemas.primitives import Data, Output
 from units.registry import UnitSpec, register_unit
 
-JSON_PARSER_INPUT_PORTS = [("data", "Any")]
+JSON_PARSER_INPUT_PORTS = [("data", "JsonValue")]
 JSON_PARSER_OUTPUT_PORTS = [("parsed", "Any"), ("file_path", "str"), ("error", "str")]
 
 
 def _json_parser_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Data,
+    inputs: Data,
+    state: Data,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> Output:
     raw = inputs.get("data")
     wrap = bool(params.get("wrap_top_level_list"))
     err = ""
@@ -37,7 +38,7 @@ def _json_parser_step(
     elif isinstance(raw, (bytes, bytearray)):
         try:
             parsed = json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception as e:
+        except json.JSONDecodeError as e:
             return {"parsed": None, "file_path": fp_out, "error": str(e)}, state
     else:
         s = str(raw).strip()
@@ -45,7 +46,7 @@ def _json_parser_step(
             return {"parsed": None, "file_path": fp_out, "error": "empty string"}, state
         try:
             parsed = json.loads(s)
-        except Exception as e:
+        except json.JSONDecodeError as e:
             return {"parsed": None, "file_path": fp_out, "error": str(e)}, state
 
     if wrap and isinstance(parsed, list):
@@ -66,4 +67,4 @@ def register_json_parser() -> None:
     )
 
 
-__all__ = ["register_json_parser", "JSON_PARSER_INPUT_PORTS", "JSON_PARSER_OUTPUT_PORTS"]
+__all__ = ["JSON_PARSER_INPUT_PORTS", "JSON_PARSER_OUTPUT_PORTS", "register_json_parser"]

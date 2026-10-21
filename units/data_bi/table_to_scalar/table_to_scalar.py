@@ -1,8 +1,6 @@
 """TableToScalar: extract a scalar from a table (first row, sum, mean, etc.)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -25,7 +23,6 @@ def _table_to_scalar_step(
         return {"row_count": float(len(df)), "value": default}, state
 
     if _HAS_PANDAS:
-        import pandas as pd
 
         if column not in df.columns:
             return {"row_count": float(len(df)), "value": default}, state
@@ -40,7 +37,7 @@ def _table_to_scalar_step(
                 val = float(df[column].count())
             else:
                 val = df[column].iloc[0]
-        except Exception:
+        except (ValueError, TypeError, ImportError, AttributeError):
             val = default
     else:
         tbl = df if isinstance(df, list) else []
@@ -64,7 +61,7 @@ def _table_to_scalar_step(
                     val = max((float(x) for x in vals if x is not None), default=default)
                 else:
                     val = tbl[0].get(column) if tbl else default
-        except Exception:
+        except (ValueError, TypeError, ImportError, AttributeError):
             val = default
 
     return {"row_count": float(len(df)), "value": val}, state
@@ -79,4 +76,3 @@ def register_table_to_scalar() -> None:
         controllable=True,
         description="Extracts a scalar from the table: column + agg (first, last, sum, mean, min, max). Outputs row_count and value; uses default when table is empty or column missing.",
     ))
-

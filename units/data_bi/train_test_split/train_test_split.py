@@ -1,8 +1,6 @@
 """TrainTestSplit: split table into train/test (sklearn)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import df_to_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -30,7 +28,7 @@ def _train_test_split_step(
             "train": train_tbl,
             "test": test_tbl,
         }, state
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return {"row_count": float(len(df)), "table": df_to_table(df), "train": [], "test": []}, state
 
 

@@ -1,8 +1,7 @@
 """DataSource unit: load table from params (path/format) or pass-through from state. Uses pandas when available for read."""
+from __future__ import annotations
 
-from typing import Any
-
-from units.data_bi._common import df_to_table, table_row_count, table_to_df
+from units.data_bi._common import df_to_table, table_row_count
 from units.registry import UnitSpec, register_unit
 
 
@@ -21,8 +20,9 @@ def _data_source_step(
         table = params["data"]
     if table is None and params.get("path"):
         try:
-            import pandas as pd
             from pathlib import Path
+
+            import pandas as pd
             path = Path(params["path"])
             fmt = (params.get("format") or "json").lower()
             if path.exists():
@@ -40,7 +40,7 @@ def _data_source_step(
                         else:
                             df = pd.DataFrame([df])
                 table = df_to_table(df)
-        except Exception:
+        except (ValueError, TypeError, ImportError, AttributeError):
             pass
     if table is None:
         table = []

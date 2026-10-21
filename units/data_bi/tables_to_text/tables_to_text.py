@@ -4,8 +4,6 @@ Cells that are dicts {"value": ..., "formula": ...} are exported using the "valu
 """
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -34,7 +32,7 @@ def _normalize_table_for_df(t):
         try:
             df = table_to_df(t)
             return df
-        except Exception:
+        except (ValueError, TypeError, ImportError, AttributeError):
             return pd.DataFrame()
 
     out_rows = []

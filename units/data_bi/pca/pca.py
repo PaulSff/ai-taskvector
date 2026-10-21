@@ -1,8 +1,6 @@
 """PCA: dimensionality reduction (sklearn)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -32,7 +30,7 @@ def _pca_step(
         for i in range(X.shape[1]):
             out_df[f"PC{i+1}"] = X[:, i]
         return out_table(out_df, state)
-    except Exception:
+    except (ValueError, TypeError, ImportError, AttributeError):
         return out_table(df, state)
 
 
