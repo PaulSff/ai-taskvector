@@ -1,0 +1,4 @@
+id: air_shopping_rq
+parser_keys:
+  - get_low_fare_flight_calendar
+workflow: air_shopping_rq.json

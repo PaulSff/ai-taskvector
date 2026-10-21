@@ -10,7 +10,6 @@ from units.data_bi.filter_rows import register_filter_rows
 from units.data_bi.formulas_calc import register_formulas_calc
 from units.data_bi.groupby_agg import register_groupby_agg
 from units.data_bi.head import register_head
-from units.data_bi.json2ndc_xml import register_ndc_json_to_xml
 from units.data_bi.json_parser import register_json_parser
 from units.data_bi.kmeans import register_kmeans
 from units.data_bi.linear_regression import register_linear_regression
@@ -18,7 +17,6 @@ from units.data_bi.logistic_regression import register_logistic_regression
 from units.data_bi.merge_tables import register_merge_tables
 from units.data_bi.metrics import register_metrics
 from units.data_bi.minmax_scaler import register_minmax_scaler
-from units.data_bi.ndc_xml2json import register_ndc_xml_to_json
 from units.data_bi.one_hot_encoder import register_one_hot_encoder
 from units.data_bi.pca import register_pca
 from units.data_bi.random_forest_classifier import register_random_forest_classifier
@@ -70,8 +68,6 @@ _DATA_BI_TYPE_NAMES = (
     "FormulasCalc",
     "JsonParser",
     "FileTypeDetector",
-    "NdcXmlToJson",
-    "NdcJsonToXml",
 )
 
 
@@ -110,8 +106,6 @@ def register_data_bi_units() -> None:
     register_formulas_calc()
     register_json_parser()
     register_file_type_detector()
-    register_ndc_xml_to_json()
-    register_ndc_json_to_xml()
     for name in _DATA_BI_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:

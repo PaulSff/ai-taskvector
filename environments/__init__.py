@@ -66,12 +66,22 @@ def load_native_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
         return load_data_bi_env(config, **kwargs)
     if env_type == "web":
         from environments.native.web import load_web_env
-
         return load_web_env(config, **kwargs)
     if env_type == "messengers":
         from environments.native.messengers import load_messengers_env
-
         return load_messengers_env(config, **kwargs)
+    if env_type == "travel":
+        from environments.native.travel import load_travel_env
+        return load_travel_env(config, **kwargs)
+    if env_type == "time":
+        from environments.native.time import load_time_env
+        return load_time_env(config, **kwargs)
+    if env_type == "semantics":
+        from environments.native.semantics import load_semantics_env
+        return load_semantics_env(config, **kwargs)
+    if env_type == "office":
+        from environments.native.office import load_office_env
+        return load_office_env(config, **kwargs)
     raise ValueError(f"Unknown native env type: {env_type}")
 
 
@@ -97,7 +107,6 @@ def get_env(
         return load_external_env(config)
     if source == EnvSource.NATIVE:
         return load_native_env(config, **kwargs)
-    raise ValueError(f"Unknown source: {source}")
 
 
 __all__ = [

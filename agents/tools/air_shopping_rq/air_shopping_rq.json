@@ -1,0 +1,198 @@
+{
+  "environment_type": "travel",
+  "environments": [
+    "canonical",
+    "taskvector",
+    "travel"
+  ],
+  "keep_alive": false,
+  "units": [
+    {
+      "id": "prompt",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "Parsed:\n{context}\n\nFrom:\n{file_path}"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "json2xml",
+      "type": "NdcJsonToXml",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "JsonValue"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "xml",
+          "type": "str"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "inject_request",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "xml2json",
+      "type": "NdcXmlToJson",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "json",
+          "type": "JsonValue"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "request",
+      "type": "NdcAirShoppingRQ",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "xml_request",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "xml_response",
+          "type": "str"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_request",
+      "to": "json2xml",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "xml2json",
+      "to": "prompt",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "json2xml",
+      "to": "request",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "request",
+      "to": "xml2json",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Read JSON tool subflow: This workflow extracts content from a JSON file, classifies and gets it formatted into a prompt - str."
+  },
+  "comments": [
+    {
+      "id": "comment_system_canonical",
+      "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
+      "commenter": "System",
+      "created_at": "2026-10-21T11:07:49Z",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_baf03007",
+      "info": "User wants to create a connection between the json2xml unit and the xml2json unit within a workflow.",
+      "commenter": "Dispatcher",
+      "created_at": "2026-10-21T11:28:22.878103Z",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_f22ce55f",
+      "info": "User wants to modify the workflow structure by connecting the prompt Unit after the xml2json Unit.",
+      "commenter": "Dispatcher",
+      "created_at": "2026-10-21T11:30:41.756262Z",
+      "x": null,
+      "y": null
+    }
+  ],
+  "todo_lists": []
+}

@@ -11,7 +11,7 @@ from typing import Any
 import gymnasium as gym
 
 from core.schemas.agent_node import (
-    # get_agent_action_output_ids,
+    get_agent_action_output_ids,
     get_agent_observation_input_ids,
     get_policy_node,
     has_canonical_topology,
@@ -405,6 +405,23 @@ def build_env(
             **kwargs,
         )
 
+    if process_graph.environment_type == EnvironmentType.TRAVEL:
+            from environments.graph_env import GraphEnv
+            from environments.native.travel import TravelEnvironmentSpec
+
+            spec = TravelEnvironmentSpec()
+            return GraphEnv(
+                process_graph,
+                goal,
+                spec,
+                dt=kwargs.get("dt", 0.1),
+                max_steps=max_steps,
+                rewards_config=rewards,
+                render_mode=render_mode,
+                randomize_params=randomize_params,
+                **kwargs,
+            )
+
     if process_graph.environment_type == EnvironmentType.CODING:
             from environments.graph_env import GraphEnv
             from environments.native.coding import CodingEnvironmentSpec
@@ -458,5 +475,5 @@ def build_env(
 
     raise ValueError(
         f"Unsupported environment_type: {process_graph.environment_type}. "
-        f"Supported: thermodynamic, data_bi, web, messengers, time, network, discovery, semantics, rag, office, taskvector, coding."
+        f"Supported: thermodynamic, data_bi, web, messengers, time, network, discovery, semantics, rag, office, taskvector, coding, travel."
     )

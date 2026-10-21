@@ -122,6 +122,47 @@ def get_agent_observation_input_ids(
     return []
 
 
+def get_agent_action_output_ids(graph: ProcessGraph) -> list[str]:
+    """Return the ids of action/output units that should be wired from the canonical switch.
+
+    Heuristic:
+    - Prefer ports or units explicitly marked as action/output.
+    - Fall back to controllable leaf units that are not simulator/internal plumbing.
+    """
+    action_ids: list[str] = []
+
+    for u in graph.units:
+        utype = (u.type or "").lower()
+        uid = u.id.lower()
+
+        # Explicit action/output semantics
+        if any(
+            key in utype or key in uid
+            for key in ("action", "act", "output", "policy_output", "actor")
+        ):
+            action_ids.append(u.id)
+            continue
+
+        # Port-name based hint
+        port_names = [p.name.lower() for p in getattr(u, "output_ports", []) or []]
+        if any(name in ("action", "act", "output", "out") for name in port_names):
+            action_ids.append(u.id)
+            continue
+
+        # Control-like leaf nodes are often the final action targets
+        if getattr(u, "controllable", False):
+            action_ids.append(u.id)
+
+    # Stable, unique ordering
+    seen: set[str] = set()
+    result: list[str] = []
+    for uid in action_ids:
+        if uid not in seen:
+            seen.add(uid)
+            result.append(uid)
+    return result
+
+
 def get_llm_agent_node(graph: ProcessGraph) -> Unit | None:
     """Return the first unit with type in LLM_AGENT_NODE_TYPES, or None."""
     for u in graph.units:

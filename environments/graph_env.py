@@ -119,9 +119,13 @@ class GraphEnv(gym.Env[FloatArray, FloatArray]):
         obs, info = self.executor.reset(initial_state=initial_state)
         self.step_count = 0
 
+        outputs = info.get("outputs", {})
+        if not isinstance(outputs, dict):
+            outputs = {}
+
         self.env_spec.extend_info(
             info,
-            info.get("outputs", {}),
+            outputs,
             initial_state,
             process_graph=self.process_graph,
             **self._kwargs,
@@ -130,60 +134,68 @@ class GraphEnv(gym.Env[FloatArray, FloatArray]):
         return np.asarray(obs, dtype=np.float32), info
 
 
-    def step(
-        self,
-        action: Action,
-    ) -> tuple[FloatArray, float, bool, bool, dict[str, Any]]:
-        setpoints = _action_to_setpoints(action)
+def step(
+    self,
+    action: Action,
+) -> tuple[FloatArray, float, bool, bool, dict[str, Any]]:
+    setpoints = _action_to_setpoints(action)
 
-        obs, info = self.executor.step(self.dt, setpoints)
-        self.step_count += 1
+    obs, info = self.executor.step(self.dt, setpoints)
+    self.step_count += 1
 
-        outputs = info.get("outputs", {})
-        goal_override = self.env_spec.get_goal_override(self, **self._kwargs)
+    outputs_raw = info.get("outputs", {})
+    outputs: dict[str, Any]
+    if isinstance(outputs_raw, dict):
+        outputs = outputs_raw
+    else:
+        outputs = {}
 
-        # Use reward/done from canonical StepRewards when present (same as external path)
-        if "reward" in info and "done" in info:
-            reward = float(info["reward"])
-            done_flag = bool(info["done"])
-            terminated = done_flag
-            truncated = False
-        else:
-            from core.gym.rewards import evaluate_reward
+    goal_override = self.env_spec.get_goal_override(self, **self._kwargs)
 
-            reward = evaluate_reward(
-                self.rewards_config,
-                outputs,
-                goal_override,
-                list(obs),
-                self.step_count,
-                self.max_steps,
-                action=list(setpoints),
-            )
-            terminated, truncated = self.env_spec.check_done(
-                outputs,
-                goal_override,
-                self.step_count,
-                self.max_steps,
-                **{**self._kwargs, "process_graph": self.process_graph},
-            )
+    # Use reward/done from canonical StepRewards when present (same as external path)
+    reward_raw = info.get("reward")
+    done_raw = info.get("done")
 
-        self.env_spec.extend_info(
-            info,
+    if isinstance(reward_raw, (int, float)) and isinstance(done_raw, bool):
+        reward = float(reward_raw)
+        terminated = done_raw
+        truncated = False
+    else:
+        from core.gym.rewards import evaluate_reward
+
+        reward = evaluate_reward(
+            self.rewards_config,
             outputs,
-            None,
-            process_graph=self.process_graph,
-            **self._kwargs,
+            goal_override,
+            list(obs),
+            self.step_count,
+            self.max_steps,
+            action=list(setpoints),
+        )
+        terminated, truncated = self.env_spec.check_done(
+            outputs,
+            goal_override,
+            self.step_count,
+            self.max_steps,
+            **{**self._kwargs, "process_graph": self.process_graph},
         )
 
-        return (
-            np.asarray(obs, dtype=np.float32),
-            float(reward),
-            bool(terminated),
-            bool(truncated),
-            info,
-        )
+    self.env_spec.extend_info(
+        info,
+        outputs,
+        None,
+        process_graph=self.process_graph,
+        **self._kwargs,
+    )
 
-    def render(self) -> None:
-        if self.render_mode == "human" and hasattr(self.spec, "render"):
-            self.env_env_spec.render(self)
+    return (
+        np.asarray(obs, dtype=np.float32),
+        float(reward),
+        bool(terminated),
+        bool(truncated),
+        info,
+    )
+
+def render(self) -> None:
+    if self.render_mode == "human" and hasattr(self.spec, "render"):
+        self.env_env_spec.render(self)
