@@ -297,6 +297,30 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         height=68,
         icon="dataset",
     ),
+    "NdcAirShoppingRQ": NodeStyle(
+        bgcolor="grey_800",
+        border_color="blue_600",
+        border_highlight="blue_400",
+        width=212,
+        height=69,
+        icon="airplane_ticket",
+    ),
+    "NdcJsonToXml": NodeStyle(
+        bgcolor="grey_800",
+        border_color="grey_500",
+        border_highlight="grey_400",
+        width=178,
+        height=69,
+        icon="transform",
+    ),
+    "NdcXmlToJson": NodeStyle(
+        bgcolor="grey_800",
+        border_color="grey_500",
+        border_highlight="grey_400",
+        width=178,
+        height=68,
+        icon="transform",
+    ),
 }
 
 DEFAULT_LINK_STYLES: dict[str, LinkStyle] = {
