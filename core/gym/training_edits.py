@@ -19,7 +19,7 @@ def expand_reward_actions(edit: dict[str, Any], current: dict[str, Any]) -> dict
     if action not in ("reward_formula_add", "reward_formula_set", "reward_rules_add", "reward_rules_set"):
         return edit
 
-    rewards = dict((current.get("rewards") or {}))
+    rewards = dict(current.get("rewards") or {})
     formula = list(rewards.get("formula") or [])
     rules = list(rewards.get("rules") or [])
 
