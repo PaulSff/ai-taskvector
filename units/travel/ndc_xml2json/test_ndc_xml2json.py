@@ -1,7 +1,7 @@
 # Run:
-# pytest units/data_bi/ndc_xml2json/test_ndc_xml2json.py -vv --singleton_file units/data_bi/ndc_xml2json/singletons/singletons-172.json
+# pytest units/travel/ndc_xml2json/test_ndc_xml2json.py -vv --singleton_file units/travel/ndc_xml2json/singletons/singletons-172.json
 # or if you would like the output printed:
-# pytest units/data_bi/ndc_xml2json/test_ndc_xml2json.py -s --singleton_file units/data_bi/ndc_xml2json/singletons/singletons-172.json
+# pytest units/travel/ndc_xml2json/test_ndc_xml2json.py -s --singleton_file units/travel/ndc_xml2json/singletons/singletons-172.json
 import json
 from pathlib import Path
 

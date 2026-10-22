@@ -1,7 +1,7 @@
 # Run:
-# pytest units/data_bi/json2ndc_xml/test_json2ndc_xml.py -vv --sequence_file units/data_bi/json2ndc_xml/sequences/sequences-172.json
+# pytest units/travel/json2ndc_xml/test_json2ndc_xml.py -vv --sequence_file units/travel/json2ndc_xml/sequences/sequences-172.json
 # or if you need the output printed:
-# # pytest units/data_bi/json2ndc_xml/test_json2ndc_xml.py -s --sequence_file units/data_bi/json2ndc_xml/sequences/sequences-172.json
+# # pytest units/travel/json2ndc_xml/test_json2ndc_xml.py -s --sequence_file units/travel/json2ndc_xml/sequences/sequences-172.json
 from pathlib import Path
 
 import pytest
