@@ -12,7 +12,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template": "Parsed:\n{context}\n\nFrom:\n{file_path}"
+        "template": "Low-fare flight calendar:\n{low_fare_calendar}\n\n"
       },
       "name": null,
       "input_ports": [
@@ -101,7 +101,19 @@
       "id": "request",
       "type": "NdcAirShoppingRQ",
       "controllable": false,
-      "params": {},
+      "params": {
+        "url": "tool.request.url",
+        "username": "tool.request.username",
+        "password": "tool.request.password",
+        "timeout": "tool.request.timeout",
+        "retries": "tool.request.retries",
+        "retry_delay": "tool.request.retry_delay",
+        "headers": {
+          "Content-Type": "application/xml",
+          "Accept": "application/xml",
+          "PriceTTLMaxHours": "24"
+        }
+      },
       "name": null,
       "input_ports": [
         {
@@ -119,19 +131,52 @@
           "type": "str"
         }
       ]
+    },
+    {
+      "id": "to_low-fare_cal",
+      "type": "PayloadTransform",
+      "controllable": true,
+      "params": {
+        "repeat_for_each": {
+          "field": "AirShoppingRS.OffersGroup.AirlineOffers.Offer",
+          "merge_key": "offer",
+          "output_key": "low_fare_calendar",
+          "item_template": {
+            "offer_id": "{offer.$.OfferID}",
+            "owner": "{offer.$.Owner}",
+            "carrier": "{offer.ValidatingCarrier._}",
+            "expires_at": "{offer.TimeLimits.OfferExpiration.$.DateTime}",
+            "currency": "{offer.TotalPrice.DetailCurrencyPrice.Total.$.Code}",
+            "total_price": "{offer.TotalPrice.DetailCurrencyPrice.Total._}",
+            "flights": "{offer.FlightsOverview.FlightRef}",
+            "offer_item_id": "{offer.OfferItem.0.$.OfferItemID}",
+            "service_id": "{offer.OfferItem.0.Service.0.$.ServiceID}",
+            "passenger_refs": "{offer.OfferItem.0.Service.0.PassengerRefs._}",
+            "flight_refs": "{offer.OfferItem.0.Service.0.FlightRefs._}",
+            "fare_components": "{offer.OfferItem.0.FareDetail.0.FareComponent}",
+            "base_amount": "{offer.OfferItem.0.TotalPriceDetail.BaseAmount._}"
+          }
+        }
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ]
     }
   ],
   "connections": [
     {
       "from": "inject_request",
       "to": "json2xml",
-      "from_port": "0",
-      "to_port": "0",
-      "connection_type": null
-    },
-    {
-      "from": "xml2json",
-      "to": "prompt",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
@@ -146,6 +191,20 @@
     {
       "from": "request",
       "to": "xml2json",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "xml2json",
+      "to": "to_low-fare_cal",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "to_low-fare_cal",
+      "to": "prompt",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
@@ -174,22 +233,6 @@
       "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
       "commenter": "System",
       "created_at": "2026-10-21T11:07:49Z",
-      "x": null,
-      "y": null
-    },
-    {
-      "id": "comment_baf03007",
-      "info": "User wants to create a connection between the json2xml unit and the xml2json unit within a workflow.",
-      "commenter": "Dispatcher",
-      "created_at": "2026-10-21T11:28:22.878103Z",
-      "x": null,
-      "y": null
-    },
-    {
-      "id": "comment_f22ce55f",
-      "info": "User wants to modify the workflow structure by connecting the prompt Unit after the xml2json Unit.",
-      "commenter": "Dispatcher",
-      "created_at": "2026-10-21T11:30:41.756262Z",
       "x": null,
       "y": null
     }

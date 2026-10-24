@@ -2,3 +2,10 @@ id: air_shopping_rq
 parser_keys:
   - get_low_fare_flight_calendar
 workflow: air_shopping_rq.json
+request:
+  url:
+  username:
+  password:
+  timeout: 30
+  retries: 3
+  retry_delay: 1

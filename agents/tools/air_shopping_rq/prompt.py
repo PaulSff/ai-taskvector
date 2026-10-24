@@ -1,4 +1,4 @@
-"""AirShoppingRQ: Request low fare flight calendar for a specific range of dates via NDC IATA protocol"""
+"""AirShoppingRQ: Request low-fare flight calendar for a specific range of dates via NDC IATA protocol"""
 
 TOOL_ACTION_PROMPT_LINE = """- air_shopping_rq: Request available flights prices for a specific range of dates via NDC IATA protocol:
     {
