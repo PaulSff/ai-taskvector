@@ -1,36 +1,55 @@
 # NdcAirShoppingRQ Unit
 
-A TaskVector unit for sending NDC AirShopping XML requests to a remote API endpoint with built-in retry logic and authentication support.
+This unit is designed to send NDC (New Distribution Capability) AirShopping requests in XML format to a specified API endpoint. It includes robust error handling and a configurable retry mechanism to ensure reliability in travel industry integrations.
 
+## Functionality
 
-## Overview
-
-The `NdcAirShoppingRQ` unit is designed to facilitate the communication between the TaskVector framework and NDC-compliant airline APIs. It handles the transmission of XML payloads and captures the resulting XML responses or error messages.
-
+The unit takes an XML payload and transmits it via an HTTP POST request. It supports Basic Authentication and allows for fine-tuning of the network request parameters such as timeouts and retry intervals.
 
 ## Interface
 
-**Input Ports:**
-- `xml_request` (str): The raw XML payload to be sent to the API.
+### Input Ports
+| Port | Type | Description |
+| :--- | :--- | :--- |
+| `xml_request` | `str` | The raw XML request body to be sent to the NDC endpoint. |
 
-**Output Ports:**
-- `xml_response` (str): The XML response received from the server upon success.
-- `error` (str): A description of the error if the request failed or the server returned a non-OK status.
-
+### Output Ports
+| Port | Type | Description |
+| :--- | :--- | :--- |
+| `xml_response` | `str` | The XML response received from the server upon a successful request. |
+| `error` | `str` | Error message if the request fails or if parameters are invalid. |
 
 ## Configuration Parameters
 
+These parameters should be provided in the unit's `params` dictionary:
+
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `url` | string | Required | The API endpoint URL |
-| `username` | string | None | Basic Auth username |
-| `password` | string | None | Basic Auth password |
-| `timeout` | float | 30 | Request timeout in seconds |
-| `retries` | int | 2 | Number of retry attempts on failure |
-| `retry_delay` | float | 1.0 | Delay between retries in seconds |
-| `headers` | dict | {} | Additional HTTP headers (Content-Type defaults to application/xml) |
-
+| `url` | `str` | (Required) | The target endpoint URL. |
+| `username` | `str` | `None` | Username for Basic Authentication. |
+| `password` | `str` | `None` | Password for Basic Authentication. |
+| `timeout` | `float` | `30` | Request timeout in seconds. |
+| `headers` | `dict` | `{}` | Additional HTTP headers. `Content-Type` and `Accept` default to `application/xml`. |
+| `retries` | `int` | `2` | Number of retry attempts after an initial failure. |
+| `retry_delay` | `float` | `1.0` | Delay between retries in seconds. |
 
 ## Implementation Details
 
-The unit utilizes a `requests.Session` for efficiency. It includes a private helper `_send_request` that manages the retry loop and exception handling for `Timeout` and `RequestException`. The main step function `_ndc_air_shopping_rq_step` handles parameter validation and coercion before triggering the network call.
+- **Encoding**: The XML body is encoded as `utf-8` before transmission.
+- **Retry Logic**: The unit catches `Timeout` and `RequestException` and retries the request up to the specified `retries` limit.
+- **Validation**: The unit validates that the `url` is present and that numeric parameters (timeout, retries, delay) are correctly typed.
+
+## Example Usage
+
+**Input:**
+`xml_request`: `<SITA:AirShoppingRQ>...</SITA:AirShoppingRQ>`
+
+**Params:**
+```json
+{
+  "url": "https://api.airline.com/ndc/shopping",
+  "username": "my_user",
+  "password": "my_pass",
+  "retries": 3
+}
+```

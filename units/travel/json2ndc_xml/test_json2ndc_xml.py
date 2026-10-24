@@ -22,11 +22,11 @@ JSON_INPUT = {
                 "OriginDestination": [
                     {
                         "Departure": {
-                            "AirportCode": {"_": "MOW"},
+                            "AirportCode": {"_": "FCO"},
                             "Date": {"_": "2026-10-09"}
                         },
                         "Arrival": {
-                            "AirportCode": {"_": "LED"}
+                            "AirportCode": {"_": "GIG"}
                         },
                         "CalendarDates": {
                             "$": {
@@ -37,11 +37,11 @@ JSON_INPUT = {
                     },
                     {
                         "Departure": {
-                            "AirportCode": {"_": "LED"},
+                            "AirportCode": {"_": "GIG"},
                             "Date": {"_": "2026-10-22"}
                         },
                         "Arrival": {
-                            "AirportCode": {"_": "MOW"}
+                            "AirportCode": {"_": "FCO"}
                         },
                         "CalendarDates": {
                             "$": {
@@ -71,7 +71,7 @@ JSON_INPUT = {
                             "LanguageMetadata": [
                                 {
                                     "$": {"MetadataKey": "LG1"},
-                                    "Code_ISO": {"_": "ru"}
+                                    "Code_ISO": {"_": "it"}
                                 }
                             ]
                         }

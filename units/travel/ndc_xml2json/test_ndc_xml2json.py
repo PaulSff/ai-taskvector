@@ -16,21 +16,21 @@ XML_INPUT = """<?xml version="1.0" encoding="UTF-8"?>
     <OriginDestinations>
       <OriginDestination>
         <Departure>
-          <AirportCode>MOW</AirportCode>
+          <AirportCode>FCO</AirportCode>
           <Date>2026-10-09</Date>
         </Departure>
         <Arrival>
-          <AirportCode>LED</AirportCode>
+          <AirportCode>GIG</AirportCode>
         </Arrival>
         <CalendarDates DaysBefore="7" DaysAfter="7"/>
       </OriginDestination>
        <OriginDestination>
         <Departure>
-          <AirportCode>LED</AirportCode>
+          <AirportCode>GIG</AirportCode>
           <Date>2026-10-22</Date>
         </Departure>
         <Arrival>
-          <AirportCode>MOW</AirportCode>
+          <AirportCode>FCO</AirportCode>
         </Arrival>
         <CalendarDates DaysBefore="7" DaysAfter="7"/>
       </OriginDestination>
@@ -48,7 +48,7 @@ XML_INPUT = """<?xml version="1.0" encoding="UTF-8"?>
 			<OtherMetadata>
 				<LanguageMetadatas>
 					<LanguageMetadata MetadataKey="LG1">
-						<Code_ISO>ru</Code_ISO>
+						<Code_ISO>it</Code_ISO>
 					</LanguageMetadata>
 				</LanguageMetadatas>
 			</OtherMetadata>
