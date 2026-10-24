@@ -5,6 +5,7 @@ Dialog to view/edit the process graph as JSON in a code editor, with code block 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 
 import flet as ft
@@ -512,7 +513,6 @@ def open_view_graph_code_dialog(
     chat_icon_btn_ref: list[ft.IconButton | None] = [None]
 
     async def _add_selection_to_chat():
-        # FIX #2: Remove `_e` parameter from signature and lambda — we don't use the event!
         api = chat_panel_api if chat_panel_api else {}
         fn = api.get("add_code_reference")
         if not callable(fn):
@@ -533,7 +533,9 @@ def open_view_graph_code_dialog(
             await show_toast(page, "Selection is empty.")
             return
         try:
-            fn(snippet=snippet, start=a, end=b)
+            result = fn(snippet=snippet, start=a, end=b)
+            if inspect.isawaitable(result):
+                await result
         except (RuntimeError, ValueError, TypeError) as ex:
             await show_toast(page, str(ex)[:120])
 
@@ -600,7 +602,6 @@ def open_view_graph_code_dialog(
                 pass
             await asyncio.sleep(0.25)
 
-    # FIX #2: change lambda to not pass `e`
     chat_icon_btn = ft.IconButton(
         icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
         tooltip="Add selection to agents chat",
