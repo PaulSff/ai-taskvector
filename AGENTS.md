@@ -119,6 +119,15 @@ Ask Demiurge for:
 - “Clone the Analyst role to create a role for my domain.”
 - “Generate role scaffolding and prompt config from my specs.”
 
+### Devin — Coder
+- Purpose: handle architecture, coding, software engineering, and codebase maintenance.
+
+Ask Devin for:
+- “Implement this new feature in the codebase.”
+- “Debug this issue and fix the files.”
+- “Design the software architecture for X.”
+- “Create a new folder structure and set up the project files.”
+
 
 ## AI agents
 
@@ -128,6 +137,7 @@ Ask Demiurge for:
 - Tom - **RL Coach** to train/fine-tune models.
 - Atlas - **Planner** to break down complex tasks into smaller actionable steps.
 - Demiurge - **Demiurge** to create new roles by cloning the Analyst.
+- Devin - **Coder** to handle software engineering, coding, and codebase maintenance.
 ----
 ## Quick start
 
