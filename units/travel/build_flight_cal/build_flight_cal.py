@@ -119,6 +119,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -126,10 +127,11 @@ from core.schemas.primitives import Data, safe_int
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
-BUILD_FLIGHT_CAL_INPUT_PORTS = [("data", "JsonValue"), ("file_path", "str")]
+BUILD_FLIGHT_CAL_INPUT_PORTS = [("data", "JsonValue")]
 BUILD_FLIGHT_CAL_OUTPUT_PORTS = [("item", "JsonValue"), ("error", "str")]
 
 _DEFAULT_MAX_OFFERS = 200
+_DEFAULT_TRAVEL_DIR = "mydata/travel"
 
 logger = setup_colored_logging(logging.DEBUG)
 
@@ -316,7 +318,7 @@ def _extract_trip(data: dict[str, Any]) -> str:
     for entry in od_list:
         if not isinstance(entry, dict):
             continue
-        
+
         # Navigate to ns2:OriginDestination
         od_nodes = entry.get("ns2:OriginDestination", []) or []
         if not isinstance(od_nodes, list):
@@ -325,7 +327,7 @@ def _extract_trip(data: dict[str, Any]) -> str:
         for od in od_nodes:
             if not isinstance(od, dict):
                 continue
-            
+
             dep = _scalar_text(od.get("ns2:DepartureCode"))
             arr = _scalar_text(od.get("ns2:ArrivalCode"))
             if dep and arr:
@@ -336,19 +338,19 @@ def _extract_trip(data: dict[str, Any]) -> str:
 
     # Construct the full path: "MOW -> LED LED -> MOW"
     path_str = " ".join(segments)
-    
+
     # Determine trip type based on first departure and last arrival
     first_dep = _scalar_text(_first(data, ["ns2:AirShoppingRS", "ns2:OriginDestinationList", 0, "ns2:OriginDestination", 0, "ns2:DepartureCode"]))
     # Fallback to parsing the segments list if _first fails
     if not first_dep and segments:
         first_dep = segments[0].split(" -> ")[0]
-    
+
     last_arr = ""
     if segments:
         last_arr = segments[-1].split(" -> ")[1]
 
     trip_type = "roundtrip" if first_dep and last_arr and first_dep == last_arr else "oneway"
-    
+
     return f"{path_str} ({trip_type})"
 
 
@@ -541,26 +543,50 @@ def _build_flight_calendar_step(
 ):
     try:
         parsed = inputs.get("data")
-        fp = ""
-
-        fp_port = inputs.get("file_path")
-        if isinstance(fp_port, str) and fp_port.strip():
-            fp = fp_port.strip()
-
-        _ = _safe_clamped_int(params.get("max_offers"), _DEFAULT_MAX_OFFERS, 1, 1000)
-
         if not isinstance(parsed, dict):
             return {"item": {}, "error": ""}, state
 
+        trip_str = _extract_trip(parsed)
+        price_cal = _extract_price_calendar(parsed)
+
+        # 1. Extract airport codes for filename (e.g., "MOW -> LED LED -> MOW" -> "MOW_LED_LED_MOW")
+        # Remove " (roundtrip)" or " (oneway)" and replace " -> " with "_"
+        clean_trip = trip_str.split(" (")[0].replace(" -> ", "_").replace(" ", "_")
+
+        # 2. Find nearest and latest dates
+        dates = []
+        for entry in price_cal:
+            flights = entry.get("Flights", {})
+            for f_val in flights.values():
+                # Flight string format: "FL1... 2026-11-02 18:00 -> 19:25"
+                match = re.search(r"(\d{4}-\d{2}-\d{2})", f_val)
+                if match:
+                    dates.append(match.group(1))
+
+        date_range = "unknown_date"
+        if dates:
+            date_range = f"{min(dates)}_{max(dates)}"
+
+        # 3. Construct file path
+        travel_dir = str(params.get("travel_dir", _DEFAULT_TRAVEL_DIR))
+        filename = f"{clean_trip}_{date_range}.json"
+        full_dir = os.path.abspath(travel_dir)
+        os.makedirs(full_dir, exist_ok=True)
+        fp = os.path.join(full_dir, filename)
+
         item = {
-            "trip": _extract_trip(parsed),
-            "price_calendar": _extract_price_calendar(parsed),
+            "trip": trip_str,
+            "price_calendar": price_cal,
             "metadata": {
                 "file_path": fp,
                 "origin": "airshopping-flatten-extract",
-                "content_type": "application/json",
+                "content_type": "json-generic",
             },
         }
+
+        # 4. Save the output as JSON
+        with open(fp, "w", encoding="utf-8") as f:
+            json.dump(item, f, indent=2, ensure_ascii=False)
 
         return {"item": item, "error": ""}, state
 
