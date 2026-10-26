@@ -130,7 +130,6 @@ BUILD_FLIGHT_CAL_INPUT_PORTS = [("data", "JsonValue"), ("file_path", "str")]
 BUILD_FLIGHT_CAL_OUTPUT_PORTS = [("item", "JsonValue"), ("error", "str")]
 
 _DEFAULT_MAX_OFFERS = 200
-_PASSENGER_REF_RE = re.compile(r"(?:^|[_-])([A-Z]{2,5})(?:$|[_-])")
 
 logger = setup_colored_logging(logging.DEBUG)
 
@@ -178,19 +177,6 @@ def _safe_clamped_int(value: object, default: int, low: int, high: int) -> int:
     if n is None:
         n = default
     return max(low, min(n, high))
-
-
-def _extract_passenger_code(ref: str) -> str:
-    ref = _as_text(ref)
-    if not ref:
-        return ""
-
-    matches = _PASSENGER_REF_RE.findall(ref)
-    if matches:
-        return matches[-1]
-
-    fallback = re.findall(r"[A-Z]{2,5}", ref)
-    return fallback[-1] if fallback else ""
 
 
 def _parse_price(price_str: str) -> float:
@@ -316,37 +302,54 @@ def _build_flight_str(flight_info: dict[str, str], flight_ref: str) -> str:
 
 
 def _extract_trip(data: dict[str, Any]) -> str:
-    offers_group = (data.get("ns2:AirShoppingRS", {}) or {}).get("ns2:OffersGroup", []) or []
-    first_offer = None
-
-    for group in offers_group:
-        for ao in group.get("ns2:AirlineOffers", []) or []:
-            offer_list = ao.get("ns2:Offer", []) or []
-            if offer_list:
-                first_offer = offer_list[0]
-                break
-        if first_offer:
-            break
-
-    if not first_offer:
+    """Extracts trip path from ns2:OriginDestinationList"""
+    od_lists = _find_all_keys(data, "ns2:OriginDestinationList")
+    if not od_lists:
         return ""
 
-    flights = []
-    for f in first_offer.get("ns2:FlightsOverview", []) or []:
-        for ref in f.get("ns2:FlightRef", []) or []:
-            rid = _as_text(ref.get("_"))
-            if rid:
-                flights.append(rid)
+    # The first OD list usually contains the itinerary structure
+    od_list = od_lists[0]
+    if not isinstance(od_list, list):
+        od_list = [od_list]
 
-    if len(flights) < 1:
+    segments = []
+    for entry in od_list:
+        if not isinstance(entry, dict):
+            continue
+        
+        # Navigate to ns2:OriginDestination
+        od_nodes = entry.get("ns2:OriginDestination", []) or []
+        if not isinstance(od_nodes, list):
+            od_nodes = [od_nodes]
+
+        for od in od_nodes:
+            if not isinstance(od, dict):
+                continue
+            
+            dep = _scalar_text(od.get("ns2:DepartureCode"))
+            arr = _scalar_text(od.get("ns2:ArrivalCode"))
+            if dep and arr:
+                segments.append(f"{dep} -> {arr}")
+
+    if not segments:
         return ""
 
-    dep = flights[0].split("_")[1][:3] if "_" in flights[0] and len(flights[0].split("_")) > 1 else ""
-    final_arr = flights[-1].split("_")[1][3:6] if "_" in flights[-1] and len(flights[-1].split("_")) > 1 else ""
-    if dep and final_arr:
-        trip_type = "roundtrip" if dep == final_arr else "oneway"
-        return f"{dep} -> {final_arr} ({trip_type})"
-    return ""
+    # Construct the full path: "MOW -> LED LED -> MOW"
+    path_str = " ".join(segments)
+    
+    # Determine trip type based on first departure and last arrival
+    first_dep = _scalar_text(_first(data, ["ns2:AirShoppingRS", "ns2:OriginDestinationList", 0, "ns2:OriginDestination", 0, "ns2:DepartureCode"]))
+    # Fallback to parsing the segments list if _first fails
+    if not first_dep and segments:
+        first_dep = segments[0].split(" -> ")[0]
+    
+    last_arr = ""
+    if segments:
+        last_arr = segments[-1].split(" -> ")[1]
+
+    trip_type = "roundtrip" if first_dep and last_arr and first_dep == last_arr else "oneway"
+    
+    return f"{path_str} ({trip_type})"
 
 
 def _extract_offer_by_id(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
