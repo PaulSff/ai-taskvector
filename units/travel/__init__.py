@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from units.registry import UNIT_REGISTRY
+from units.travel.build_flight_cal import register_build_flight_cal
 from units.travel.json2ndc_xml import register_ndc_json_to_xml
 from units.travel.ndc_air_shopping_rq import register_ndc_air_shopping_rq
 from units.travel.ndc_xml2json import register_ndc_xml_to_json
@@ -14,6 +15,7 @@ _TRAVEL_TYPE_NAMES = (
     "NdcAirShoppingRQ",
     "NdcJsonToXml",
     "NdcXmlToJson",
+    "BuildFlightCal",
 )
 
 def register_travel_units() -> None:
@@ -21,6 +23,7 @@ def register_travel_units() -> None:
     register_ndc_json_to_xml()
     register_ndc_xml_to_json()
     register_ndc_air_shopping_rq()
+    register_build_flight_cal()
 
     for name in _TRAVEL_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
