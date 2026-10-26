@@ -193,6 +193,19 @@ def _extract_passenger_code(ref: str) -> str:
     return fallback[-1] if fallback else ""
 
 
+def _parse_price(price_str: str) -> float:
+    """Extracts numeric value from a price string like '1694.00 EUR'"""
+    try:
+        # Extract digits, dots, and commas
+        match = re.search(r"([0-9.]+)", price_str)
+        if match:
+            val = match.group(1).replace(",", ".")
+            return float(val)
+    except (ValueError, TypeError):
+        pass
+    return float('inf')
+
+
 def _find_all_keys(obj: Any, target: str) -> list[Any]:
     found: list[Any] = []
     if isinstance(obj, dict):
@@ -510,7 +523,10 @@ def _extract_price_calendar(data: dict[str, Any]) -> list[dict[str, Any]]:
                     }
                 )
 
-    logger.info("Built %d price_calendar rows", len(rows))
+    # Sort by price ascending
+    rows.sort(key=lambda x: _parse_price(x.get("totalPrice", "")))
+
+    logger.info("Built and sorted %d price_calendar rows", len(rows))
     return rows
 
 
