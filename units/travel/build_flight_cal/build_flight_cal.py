@@ -62,7 +62,7 @@ Expected input is a standard NDC AirShoppingRS shape like this:
                 ],
                 "ns2:FlightReferences": [
                   {
-                    "_": "FL1_VKOLED_261102 FL3_SVOLED_261102 FL7_VKOLED_261103 ..."
+                    "_": "FL1_FCOGIG_261102 FL3_FCOGIG_261102 FL7_FCOGIG_261103 ..."
                   }
                 ]
               },
@@ -82,7 +82,7 @@ Expected input is a standard NDC AirShoppingRS shape like this:
                 ],
                 "ns2:FlightReferences": [
                   {
-                    "_": "FL2_LEDVKO_261116 FL4_LEDSVO_261116 FL5_LEDSVO_261118 ..."
+                    "_": "FL2_GIGFCO_261116 FL4_GIGFCO_261116 FL5_GIGFCO_261118 ..."
                   }
                 ]
               }
@@ -94,14 +94,14 @@ Expected input is a standard NDC AirShoppingRS shape like this:
 Output:
 
 {
-  "trip": "MOW -> LED -> MOW (roundtrip)",
+  "trip": "FCO -> GIG GIG -> FCO (roundtrip)",
 
   "price_calendar": [
     {
-      "OfferID": "OF1_VKOLED2611022611156R",
+      "OfferID": "...",
       "Flights": {
-           "outbound": "FL1_VKOLED_261102 2026-11-02 18:00 -> 19:25",
-           "return": "FL2_LEDVKO_261115 2026-11-15 16:00 -> 17:25"
+           "outbound": "FL1_FCOGIG_261102 2026-11-02 18:00 -> 19:25",
+           "return": "FL2_GIGFCO_261115 2026-11-15 16:00 -> 17:25"
      }
       "validatingCarrier": "6R",
       "cabinType": "Economy Y",
@@ -549,7 +549,7 @@ def _build_flight_calendar_step(
         trip_str = _extract_trip(parsed)
         price_cal = _extract_price_calendar(parsed)
 
-        # 1. Extract airport codes for filename (e.g., "MOW -> LED LED -> MOW" -> "MOW_LED_LED_MOW")
+        # 1. Extract airport codes for filename (e.g., "FCO -> GIG GIG -> FCO" -> "FCO_GIG_GIG_FCO")
         # Remove " (roundtrip)" or " (oneway)" and replace " -> " with "_"
         clean_trip = trip_str.split(" (")[0].replace(" -> ", "_").replace(" ", "_")
 
