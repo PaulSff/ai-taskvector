@@ -474,9 +474,9 @@ def _extract_price_calendar(data: dict[str, Any]) -> list[dict[str, Any]]:
                     if isinstance(node, dict):
                         # _scalar_text handles the nested lists/dicts automatically
                         name = _scalar_text(node.get("ns2:CabinTypeName"))
-                        code = _scalar_text(node.get("ns2:CabinTypeCode"))
+                        cabin_code = _scalar_text(node.get("ns2:CabinTypeCode"))
 
-                        parts = [p for p in [name, code] if p]
+                        parts = [p for p in [name, cabin_code] if p]
                         cabin_class = " ".join(parts) if parts else _scalar_text(node)
 
                 offer_expires_at = ""
