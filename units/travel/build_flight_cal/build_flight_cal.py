@@ -42,6 +42,55 @@ Expected input is a standard NDC AirShoppingRS shape like this:
 ..
     "ns2:PriceClassList": [..]
 
+...
+ "ns2:OriginDestinationList": [
+          {
+            "ns2:OriginDestination": [
+              {
+                "$": {
+                  "OriginDestinationKey": "OD1"
+                },
+                "ns2:DepartureCode": [
+                  {
+                    "_": "FCO"
+                  }
+                ],
+                "ns2:ArrivalCode": [
+                  {
+                    "_": "GIG"
+                  }
+                ],
+                "ns2:FlightReferences": [
+                  {
+                    "_": "FL1_VKOLED_261102 FL3_SVOLED_261102 FL7_VKOLED_261103 ..."
+                  }
+                ]
+              },
+              {
+                "$": {
+                  "OriginDestinationKey": "OD2"
+                },
+                "ns2:DepartureCode": [
+                  {
+                    "_": "GIG"
+                  }
+                ],
+                "ns2:ArrivalCode": [
+                  {
+                    "_": "FCO"
+                  }
+                ],
+                "ns2:FlightReferences": [
+                  {
+                    "_": "FL2_LEDVKO_261116 FL4_LEDSVO_261116 FL5_LEDSVO_261118 ..."
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+...
+
 Output:
 
 {
@@ -55,7 +104,7 @@ Output:
            "return": "FL2_LEDVKO_261115 2026-11-15 16:00 -> 17:25"
      }
       "validatingCarrier": "6R",
-      "cabinClass": "Economy",
+      "cabinType": "Economy Y",
       "passengers": "1 ADT"
       "totalPrice": "1694.00 EUR",
     },
@@ -414,23 +463,37 @@ def _extract_price_calendar(data: dict[str, Any]) -> list[dict[str, Any]]:
                 validating_carrier = _scalar_text(_first(offer, ["ns2:ValidatingCarrier"]))
 
                 cabin_class = ""
-                fare_details = offer.get("ns2:FareDetail", []) or []
-                for fd in fare_details:
-                    if not isinstance(fd, dict):
+                # Search the entire offer object for any node named "ns2:CabinType"
+                cabin_nodes = _find_all_keys(offer, "ns2:CabinType")
+                if cabin_nodes:
+                    # The found node might be a list due to XML conversion
+                    node = cabin_nodes[0]
+                    if isinstance(node, list) and node:
+                        node = node[0]
+
+                    if isinstance(node, dict):
+                        # _scalar_text handles the nested lists/dicts automatically
+                        name = _scalar_text(node.get("ns2:CabinTypeName"))
+                        code = _scalar_text(node.get("ns2:CabinTypeCode"))
+
+                        parts = [p for p in [name, code] if p]
+                        cabin_class = " ".join(parts) if parts else _scalar_text(node)
+
+                offer_expires_at = ""
+                time_limits = offer.get("ns2:TimeLimits", []) or []
+                for tl in time_limits:
+                    if not isinstance(tl, dict):
                         continue
-                    components = fd.get("ns2:FareComponent", []) or []
-                    for comp in components:
-                        if not isinstance(comp, dict):
+                    expirations = tl.get("ns2:OfferExpiration", []) or []
+                    for exp in expirations:
+                        if not isinstance(exp, dict):
                             continue
-                        cabin_class = _scalar_text(_first(comp, ["ns2:CabinType"]))
-                        if cabin_class:
+                        offer_expires_at = _as_text(exp.get("$", {}).get("DateTime"))
+                        if offer_expires_at:
                             break
-                    if cabin_class:
+                    if offer_expires_at:
                         break
 
-                offer_expires_at = _scalar_text(
-                    _first(offer, ["ns2:TimeLimits", "ns2:OfferExpiration", "$", "DateTime"])
-                )
 
                 rows.append(
                     {
@@ -440,7 +503,7 @@ def _extract_price_calendar(data: dict[str, Any]) -> list[dict[str, Any]]:
                             "return": _build_flight_str(return_info or {}, return_ref),
                         },
                         "validatingCarrier": validating_carrier,
-                        "cabinClass": cabin_class,
+                        "cabinType": cabin_class,
                         "passengers": passengers,
                         "totalPrice": f"{amount} {code}".strip(),
                         "offerExpiresAt": offer_expires_at,
