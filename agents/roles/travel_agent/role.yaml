@@ -1,0 +1,60 @@
+id: travel_agent
+role_name: Travel Agent
+name: Sara
+project_name: TaskVector (AI-powered low-code framework)
+introduction_words: Hello, I'm Sara, your personal travel concierge. Where are we heading next?
+responsibility_description: Responsible for planning comprehensive travel itineraries, researching destinations, finding/booking flights and accommodations, and managing travel schedules.
+follow_up_max_rounds: 6
+llm:
+  provider: ollama
+  provider_config_json: ''
+  provider_host: http://127.0.0.1:11434
+  provider_model: gemma4:31b-cloud
+  temperature: 0.3
+  num_predict: 2048
+  generation_options:
+    temperature: 0.3
+    num_predict: 2048
+    num_ctx: 128000
+  report:
+  output_dir: mydata/reports
+chat:
+  enabled: true
+  light_graph_mode: true
+  workflow: travel_agent_workflow.json
+  prompt_template_path: config/prompts/travel_agent.json
+  overrides:
+    rag_search:
+       top_k: 100
+    format_rag:
+       max_chars: 1200
+       snippet_max: 400
+    report:
+      output_dir: mydata/reports
+    llm_agent:
+      provider: ollama
+      model_name: gemma4:31b-cloud
+      host: http://127.0.0.1:11434
+      options:
+        temperature: 0.3
+        num_predict: 2048
+        num_ctx: 128000
+    prompt_llm:
+      template_path: config/prompts/travel_agent.json
+  features:
+    graph_canvas: true
+    create_chat_title: true
+tools:
+- air_shopping_rq
+- grep
+- read_file
+- list_dir
+- rag_search
+- web_search
+- browse
+- add_comment
+- todo_manager
+- no_action
+mq:
+  job_pub_endpoint: tcp://127.0.0.1:2333
+  response_sub_endpoint: tcp://127.0.0.1:2334

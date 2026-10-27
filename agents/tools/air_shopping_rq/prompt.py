@@ -1,12 +1,13 @@
 """AirShoppingRQ: Request low-fare flight calendar for a specific range of dates via NDC IATA protocol"""
 
-TOOL_ACTION_PROMPT_LINE = """- air_shopping_rq: Request available flights prices for a specific range of dates via NDC IATA protocol:
+TOOL_ACTION_PROMPT_LINE = """- air_shopping_rq: Request available flights prices (roundtrip) for a specific range of dates via NDC IATA protocol:
     {
-      "action": "get_low_fare_flight_calendar",
+      "action": "air_shopping_rq",
       "method":
         {
           "AirShoppingRQ": {
             "$": {
+              "xmlns": "http://www.iata.org/IATA/EDIST/2017.2",
               "AsynchronousAllowedInd": "true",
               "Version": "17.2"
             },
@@ -20,7 +21,7 @@ TOOL_ACTION_PROMPT_LINE = """- air_shopping_rq: Request available flights prices
                         "_": "MOW"
                       },
                       "Date": {
-                        "_": "2026-10-09"
+                        "_": "2026-11-09"
                       }
                     },
                     "Arrival": {
@@ -41,7 +42,7 @@ TOOL_ACTION_PROMPT_LINE = """- air_shopping_rq: Request available flights prices
                         "_": "LED"
                       },
                       "Date": {
-                        "_": "2026-10-22"
+                        "_": "2026-11-22"
                       }
                     },
                     "Arrival": {

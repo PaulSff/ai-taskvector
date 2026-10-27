@@ -21,6 +21,7 @@ EDIT_FILE_WORKFLOW_PATH = get_tool_workflow_path("edit_file")
 DELETE_WORKFLOW_PATH = get_tool_workflow_path("delete")
 RENAME_WORKFLOW_PATH = get_tool_workflow_path("rename")
 MAKE_DIR_WORKFLOW_PATH = get_tool_workflow_path("make_dir")
+AIR_SHOPPING_RQ_WORKFLOW_PATH = get_tool_workflow_path("air_shopping_rq")
 
 # Timeout so we don't hang when a unit (LLM, RAG, etc.) never responds.
 DEFAULT_EXECUTION_TIMEOUT_S = 300.0

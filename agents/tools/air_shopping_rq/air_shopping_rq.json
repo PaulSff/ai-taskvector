@@ -8,54 +8,6 @@
   "keep_alive": false,
   "units": [
     {
-      "id": "prompt",
-      "type": "Prompt",
-      "controllable": false,
-      "params": {
-        "template": "Low-fare flight calendar:\n{low_fare_calendar}\n\n"
-      },
-      "name": null,
-      "input_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "system_prompt",
-          "type": "str"
-        },
-        {
-          "name": "user_message",
-          "type": "str"
-        }
-      ]
-    },
-    {
-      "id": "json2xml",
-      "type": "NdcJsonToXml",
-      "controllable": false,
-      "params": {},
-      "name": null,
-      "input_ports": [
-        {
-          "name": "data",
-          "type": "JsonValue"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "xml",
-          "type": "str"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
-      ]
-    },
-    {
       "id": "inject_request",
       "type": "Inject",
       "controllable": false,
@@ -75,10 +27,37 @@
       ]
     },
     {
+      "id": "json2xml",
+      "type": "NdcJsonToXml",
+      "controllable": false,
+      "params": {
+        "sequence_file": "units/travel/json2ndc_xml/sequences/sequences-172.json"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "JsonValue"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "xml",
+          "type": "str"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
       "id": "xml2json",
       "type": "NdcXmlToJson",
       "controllable": false,
-      "params": {},
+      "params": {
+        "singleton_file": "units/travel/ndc_xml2json/singletons/singletons-172.json"
+      },
       "name": null,
       "input_ports": [
         {
@@ -102,12 +81,12 @@
       "type": "NdcAirShoppingRQ",
       "controllable": false,
       "params": {
-        "url": "tool.request.url",
-        "username": "tool.request.username",
-        "password": "tool.request.password",
-        "timeout": "tool.request.timeout",
-        "retries": "tool.request.retries",
-        "retry_delay": "tool.request.retry_delay",
+        "url": "settings.ndc_air_shopping_rq_url",
+        "username": "settings.ndc_air_shopping_rq_username",
+        "password": "settings.ndc_air_shopping_rq_password",
+        "timeout": "30",
+        "retries": "3",
+        "retry_delay": "1",
         "headers": {
           "Content-Type": "application/xml",
           "Accept": "application/xml",
@@ -133,30 +112,73 @@
       ]
     },
     {
-      "id": "to_low-fare_cal",
-      "type": "PayloadTransform",
-      "controllable": true,
+      "id": "flight_cal",
+      "type": "BuildFlightCal",
+      "controllable": false,
       "params": {
-        "repeat_for_each": {
-          "field": "AirShoppingRS.OffersGroup.AirlineOffers.Offer",
-          "merge_key": "offer",
-          "output_key": "low_fare_calendar",
-          "item_template": {
-            "offer_id": "{offer.$.OfferID}",
-            "owner": "{offer.$.Owner}",
-            "carrier": "{offer.ValidatingCarrier._}",
-            "expires_at": "{offer.TimeLimits.OfferExpiration.$.DateTime}",
-            "currency": "{offer.TotalPrice.DetailCurrencyPrice.Total.$.Code}",
-            "total_price": "{offer.TotalPrice.DetailCurrencyPrice.Total._}",
-            "flights": "{offer.FlightsOverview.FlightRef}",
-            "offer_item_id": "{offer.OfferItem.0.$.OfferItemID}",
-            "service_id": "{offer.OfferItem.0.Service.0.$.ServiceID}",
-            "passenger_refs": "{offer.OfferItem.0.Service.0.PassengerRefs._}",
-            "flight_refs": "{offer.OfferItem.0.Service.0.FlightRefs._}",
-            "fare_components": "{offer.OfferItem.0.FareDetail.0.FareComponent}",
-            "base_amount": "{offer.OfferItem.0.TotalPriceDetail.BaseAmount._}"
-          }
+        "max_offers": 50
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "JsonValue"
         }
+      ],
+      "output_ports": [
+        {
+          "name": "item",
+          "type": "JsonValue"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "aggregate_response",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": [
+          "low_fare_flight_calendar",
+          "errors"
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "prompt",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "Low-fare flight calendar:\n{low_fare_flight_calendar}\n\nThe search results are saved into metadata.file_path.\n\n"
       },
       "name": null,
       "input_ports": [
@@ -167,8 +189,12 @@
       ],
       "output_ports": [
         {
-          "name": "parser_output",
-          "type": "Any"
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
         }
       ]
     }
@@ -197,13 +223,20 @@
     },
     {
       "from": "xml2json",
-      "to": "to_low-fare_cal",
+      "to": "flight_cal",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
     },
     {
-      "from": "to_low-fare_cal",
+      "from": "flight_cal",
+      "to": "aggregate_response",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "aggregate_response",
       "to": "prompt",
       "from_port": "0",
       "to_port": "0",
@@ -225,17 +258,9 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "Read JSON tool subflow: This workflow extracts content from a JSON file, classifies and gets it formatted into a prompt - str."
+    "description": "AirShoppingRQ tool workflow: This workflow requests flight offers via IATA NDC AirShoppingRQ request and gets them formatted into a prompt - str."
   },
   "comments": [
-    {
-      "id": "comment_system_canonical",
-      "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
-      "commenter": "System",
-      "created_at": "2026-10-21T11:07:49Z",
-      "x": null,
-      "y": null
-    }
   ],
   "todo_lists": []
 }

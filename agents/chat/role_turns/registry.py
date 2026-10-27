@@ -22,6 +22,7 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
         from agents.chat.role_turns.planner import PlannerChatHandler
         from agents.chat.role_turns.receptionist import ReceptionistChatHandler
         from agents.chat.role_turns.rl_coach import RlCoachChatHandler
+        from agents.chat.role_turns.travel_agent import TravelAgentChatHandler
         from agents.chat.role_turns.workflow_designer import (
             WorkflowDesignerChatHandler,
         )
@@ -36,6 +37,7 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
                 PlannerChatHandler(),
                 DemiurgeChatHandler(),
                 ReceptionistChatHandler(),
+                TravelAgentChatHandler()
             ),
         )
 

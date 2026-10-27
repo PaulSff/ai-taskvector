@@ -15,6 +15,7 @@ from .helpers import (
     refresh_last_graph_apply_result,
 )
 from .paths import (
+    AIR_SHOPPING_RQ_WORKFLOW_PATH,
     BROWSER_WORKFLOW_PATH,
     CALENDAR_WORKFLOW_PATH,
     CLONE_ROLE_WORKFLOW_PATH,
@@ -42,6 +43,7 @@ from .wf_response_schema import (
 )
 
 __all__ = [
+    "AIR_SHOPPING_RQ_WORKFLOW_PATH",
     "BROWSER_WORKFLOW_PATH",
     "CALENDAR_WORKFLOW_PATH",
     "CLONE_ROLE_WORKFLOW_PATH",

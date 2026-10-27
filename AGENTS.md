@@ -128,6 +128,14 @@ Ask Devin for:
 - “Design the software architecture for X.”
 - “Create a new folder structure and set up the project files.”
 
+### Sara — Travel Agent
+- Purpose: planning comprehensive travel itineraries, researching destinations, and managing travel schedules.
+
+Ask Sara for:
+- “Plan a 10-day trip to Japan focusing on Kyoto and Tokyo.”
+- “Find the best flights and accommodations for a business trip to New York.”
+- “Research top-rated destinations for a summer vacation in Europe.”
+
 
 ## AI agents
 
@@ -138,6 +146,7 @@ Ask Devin for:
 - Atlas - **Planner** to break down complex tasks into smaller actionable steps.
 - Demiurge - **Demiurge** to create new roles by cloning the Analyst.
 - Devin - **Coder** to handle software engineering, coding, and codebase maintenance.
+- Sara - **Travel Agent** to plan itineraries, research destinations, and manage travel bookings.
 ----
 ## Quick start
 

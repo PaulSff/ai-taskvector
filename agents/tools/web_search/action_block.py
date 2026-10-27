@@ -11,7 +11,7 @@ from agents.tools.web_search import run_web_search_follow_up
 
 class WebSearchActionBlock(ActionBlock[Literal["web_search"]]):
     query: str
-    max_results: int
+    max_results: int = 10 # defaults to 10 results if missing
 
     @field_validator("query")
     @classmethod

@@ -15,16 +15,14 @@ class AirShoppingRQMethodBlock(BaseModel):
 
 
 class AirShoppingRQActionBlock(BaseModel):
-    action: Literal["get_low_fare_flight_calendar"]
+    action: Literal["air_shopping_rq"]
     method: AirShoppingRQMethodBlock
 
     @field_validator("action")
     @classmethod
     def validate_action(cls, value: str) -> str:
-        if value != "get_low_fare_flight_calendar":
-            raise ValueError(
-                'action must be "get_low_fare_flight_calendar"'
-            )
+        if value != "air_shopping_rq":
+            raise ValueError('action must be "air_shopping_rq"')
         return value
 
 

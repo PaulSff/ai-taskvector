@@ -25,6 +25,7 @@ CHAT_NAME_CREATOR_ROLE_ID = "chat_name_creator"
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
 ANALYST_ROLE_ID = "analyst"
+TRAVEL_AGENT_ROLE_ID = "travel_agent"
 CODER_ROLE_ID = "coder"
 PLANNER_ROLE_ID = "planner"
 DEMIURGE_ROLE_ID = "demiurge"
@@ -41,6 +42,7 @@ CHAT_MAIN_AGENT_ROLE_IDS: tuple[str, ...] = (
     DEMIURGE_ROLE_ID,
     PLANNER_ROLE_ID,
     CODER_ROLE_ID,
+    TRAVEL_AGENT_ROLE_ID,
 )
 
 

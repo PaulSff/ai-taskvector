@@ -40,6 +40,7 @@ from agents.roles.dispatcher.prompts import *
 from agents.roles.planner.prompts import *
 from agents.roles.receptionist.prompts import *
 from agents.roles.rl_coach.prompts import *
+from agents.roles.travel_agent.prompts import *
 
 # Re-export role prompt constants (stable import path for the rest of the codebase).
 from agents.roles.workflow_designer.prompts import *

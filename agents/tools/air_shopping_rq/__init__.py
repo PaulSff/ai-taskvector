@@ -68,6 +68,7 @@ async def run_air_shopping_rq_follow_up(
     language_hint: LanguageHintGetter,
 ) -> FollowUpContribution:
     from agents.chat.agent_workflow import (
+        AIR_SHOPPING_RQ_WORKFLOW_PATH,
         run_workflow_with_errors,
     )
     from agents.tools.air_shopping_rq.action_block import AirShoppingRQActionBlock
@@ -78,7 +79,7 @@ async def run_air_shopping_rq_follow_up(
     from core.schemas.primitives import WorkflowInputs
 
     try:
-        ctx.set_inline_status("Processing air shopping request…")
+        ctx.set_inline_status("Searching for flight offers…")
     except (AttributeError, TypeError):
         pass
 
@@ -103,19 +104,20 @@ async def run_air_shopping_rq_follow_up(
                     "Invalid air_shopping_rq action block: "
                     f"errors={exc.errors()!r}"
                 ) from exc
-
+            # Access .method instead of the whole action object
+            # and extract only the {"AirShoppingRQ": {...}} part
             payload = TypeAdapter(JsonValue).validate_json(
-                action.model_dump_json()
+                action.method.model_dump_json()
             )
 
             initial_inputs: WorkflowInputs = {
-                "inject_payload": {
+                "inject_request": {
                     "template": payload,
                 }
             }
 
             out, errs = await run_workflow_with_errors(
-                "air_shopping_rq",
+                AIR_SHOPPING_RQ_WORKFLOW_PATH,
                 initial_inputs=initial_inputs,
                 format="dict",
                 execution_timeout_s=EXECUTION_TIMEOUT_S,
