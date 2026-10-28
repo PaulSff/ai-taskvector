@@ -7,7 +7,7 @@ The `air_shopping_rq` tool allows the AI agent to request low-fare flight calend
 ## Architecture
 
 ### Data Flow
-1. **Action Trigger**: The agent triggers the `get_low_fare_flight_calendar` action.
+1. **Action Trigger**: The agent triggers the `air_shopping_rq` action.
 2. **Payload Injection**: The JSON payload is injected into the `air_shopping_rq` workflow.
 3. **Transformation Pipeline**:
     - `NdcJsonToXml`: Converts the request payload to NDC-compliant XML.
@@ -18,19 +18,19 @@ The `air_shopping_rq` tool allows the AI agent to request low-fare flight calend
 
 ## Action Schema
 
-### `get_low_fare_flight_calendar`
+### `air_shopping_rq`
 
 **Action Block Structure**:
 ```json
 {
-  "action": "get_low_fare_flight_calendar",
+  "action": "air_shopping_rq",
   "method": {
     "AirShoppingRQ": { ... request data ... }
   }
 }
 ```
 
-- **action**: Must be exactly `"get_low_fare_flight_calendar"`.
+- **action**: Must be exactly `"air_shopping_rq"`.
 - **method.AirShoppingRQ**: Contains the specific NDC request parameters (e.g., origin, destination, dates).
 
 ## Technical Details
