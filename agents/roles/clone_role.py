@@ -534,7 +534,7 @@ def main(args):
             else:
                 s = const_line + s
             s = re.sub(
-                r"(CHAT_MAIN_agent_ROLE_IDS\s*:\s*tuple\[str,\s*\.\.\.\]\s*=\s*\(\s*)([\s\S]*?)(\)\s*)",
+                r"(CHAT_MAIN_AGENT_ROLE_IDS\s*:\s*tuple\[str,\s*\.\.\.\]\s*=\s*\(\s*)([\s\S]*?)(\)\s*)",
                 lambda m: m.group(1) + m.group(2) + f"    {const_name},\n" + m.group(3),
                 s,
                 flags=re.MULTILINE,

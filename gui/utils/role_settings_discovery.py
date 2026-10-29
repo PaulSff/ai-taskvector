@@ -54,7 +54,7 @@ def discover_role_llm_ui_entries(
     """
     Scan ``agents/roles/*/role.yaml`` and return roles that declare an ``llm:`` block.
 
-    Ordering: ``CHAT_MAIN_agent_ROLE_IDS`` first (when present), then remaining ids sorted.
+    Ordering: ``CHAT_MAIN_AGENT_ROLE_IDS`` first (when present), then remaining ids sorted.
     Roles may set ``settings.show_llm_ui: false`` to opt out while keeping ``llm`` for runtime.
     """
     root = roles_root or _DEFAULT_ROLES_ROOT

@@ -18,7 +18,7 @@ Resolve the workflow file path with `agents.roles.workflow_path.get_role_chat_wo
 ## Using it in the app
 
 1. Enable the role in **`role.yaml`** (`chat.enabled`, `chat.workflow` if you override the filename).
-2. In the Flet agents UI, pick **Workflow Designer** (dropdown order: `list_chat_dropdown_role_ids()` and `CHAT_MAIN_agent_ROLE_IDS` in `agents/roles/registry.py`; feature flags in `agents/roles/chat_config.py`).
+2. In the Flet agents UI, pick **Workflow Designer** (dropdown order: `list_chat_dropdown_role_ids()` and `CHAT_MAIN_AGENT_ROLE_IDS` in `agents/roles/registry.py`; feature flags in `agents/roles/chat_config.py`).
 3. Optional **`chat.features`**: `graph_canvas` enables dev **Run current graph**; `create_chat_title` runs the first-message title workflow (`create_filename.json`).
 
 The handler builds `initial_inputs` and `unit_param_overrides`, then calls `run_agent_workflow()` (default path = Workflow Designer graph unless **Run current graph** is on).

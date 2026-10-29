@@ -61,7 +61,7 @@ Rules enforced by the loader (`agents/roles/registry.py`):
 - **`role_name`**: short UI label; legacy YAML may use **`display_name`** instead (treated as `role_name`).
 - **`responsibility_description`**: optional plain text for semantic task delegation / routing (`RoleConfig.responsibility_description`); empty if omitted.
 - **`tools`** is an ordered list of non-empty strings; unknown IDs are fine until you wire runners.
-- **`chat`**: optional; when present, `enabled`, optional `workflow` filename, `features` booleans (see `role_chat_feature_enabled` in `agents/roles/chat_config.py`; Flet uses `graph_canvas` for “Run current graph” and `create_chat_title` for the first-message `create_filename` workflow), and optional `handler` / `chat_handler` (string `module.path:ClassName` or `module.path.ClassName`; imported on demand, zero-arg constructor, instance `role_id` must match this role’s `id`). Roles not in `CHAT_MAIN_agent_ROLE_IDS` need `chat.enabled: true` to appear in the dropdown.
+- **`chat`**: optional; when present, `enabled`, optional `workflow` filename, `features` booleans (see `role_chat_feature_enabled` in `agents/roles/chat_config.py`; Flet uses `graph_canvas` for “Run current graph” and `create_chat_title` for the first-message `create_filename` workflow), and optional `handler` / `chat_handler` (string `module.path:ClassName` or `module.path.ClassName`; imported on demand, zero-arg constructor, instance `role_id` must match this role’s `id`). Roles not in `CHAT_MAIN_AGENT_ROLE_IDS` need `chat.enabled: true` to appear in the dropdown.
 - **`follow_up_max_rounds`**: omit to mean “use app settings”; if set, it is clamped to 1–50.
 - Any other top-level keys are preserved on `RoleConfig.extra` for forward-compatible extensions.
 
@@ -87,7 +87,7 @@ For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s
 
 `get_role` only loads YAML; the chat panel loads roles when building the dropdown and each turn.
 
-1. **Dropdown**: `list_chat_dropdown_role_ids()` includes roles from `CHAT_MAIN_agent_ROLE_IDS` that have `chat` enabled, then any other role with `chat.enabled: true`.
+1. **Dropdown**: `list_chat_dropdown_role_ids()` includes roles from `CHAT_MAIN_AGENT_ROLE_IDS` that have `chat` enabled, then any other role with `chat.enabled: true`.
 2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `agents/chat/role_turns/protocol.py`). `workflow_designer`, `analyst`, and `rl_coach` use fixed implementations under `agents/chat/role_turns/<role_id>/`; for a **new** `role_id`, either add a built-in branch in `role_turns/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `role_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
 3. **Turn context**: `agents/chat/chat.py` builds `RoleChatTurnContext` from `get_role(role_id)` (limits, tools, workflow path, feature flags) and awaits `handler.run_turn(...)`.
 

@@ -123,7 +123,7 @@ import os
 import re
 from typing import Any
 
-from core.schemas.primitives import Data, safe_int
+from core.schemas.primitives import Data
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
@@ -172,13 +172,6 @@ def _first(obj: Any, path: list[Any]) -> Any:
         else:
             return None
     return cur
-
-
-def _safe_clamped_int(value: object, default: int, low: int, high: int) -> int:
-    n = safe_int(value)
-    if n is None:
-        n = default
-    return max(low, min(n, high))
 
 
 def _parse_price(price_str: str) -> float:
