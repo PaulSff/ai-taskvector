@@ -10,8 +10,10 @@ The Flet agents panel resolves each turn with **`get_role_chat_handler(role_id)`
 ### Role Configuration
 Each role is defined by a `role.yaml` file containing:
 - `id`: Unique identifier for the role.
+- `responsibility_description`: A high-level description of the role's purpose, used by the dispatcher to assign tasks to the correct agent.
 - `tools`: A list of tool IDs the agent is permitted to use.
-- `follow_up_limit`: Controls the conversation depth/turn limit.
+- `follow_up_max_rounds`: The maximum number of follow-up turns allowed for the role.
+- `overrides`: A dictionary of parameters used to override default settings for specific workflow units within the role's process.
 - `chat`: Optional configuration for workflow files and custom handlers.
 
 ### Tool Architecture
