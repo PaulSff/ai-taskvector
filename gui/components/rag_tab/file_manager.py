@@ -443,12 +443,12 @@ def build_rag_file_browser_panel(
                     ) -> None:
                         open_markdown_dialog(page, local_path=p, title=f"Preview: {n}")
 
-                    def _open_file(
+                    async def _open_file(
                         e: Event[ListTile],
                         p: str = abs_path_str,
                         n: str = name,
                     ) -> None:
-                        page.run_task(lambda: _preview_markdown_async(p, n))
+                        await _preview_markdown_async(p, n)
 
                     rows.append(
                         ft.GestureDetector(
