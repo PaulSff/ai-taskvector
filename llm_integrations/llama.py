@@ -77,6 +77,7 @@ def chat(
     timeout_s: int = LLAMA_SERVE_DEFAULT_TIMEOUT_S,
     options: Data | None = None,
     api_key: str | None = None,
+    cache_prompt: bool = True,
 ) -> str:
     """
     Call llama.cpp server (llama serve) via OpenAI-compatible /v1/chat/completions.
@@ -93,6 +94,7 @@ def chat(
         "model": model,
         "messages": messages,
         "stream": False,
+        "cache_prompt": cache_prompt,
         **(options or {}),
     }
 
@@ -117,6 +119,7 @@ def chat_stream(
     timeout_s: int = LLAMA_SERVE_DEFAULT_TIMEOUT_S,
     options: Data | None = None,
     api_key: str | None = None,
+    cache_prompt: bool = True,
 ) -> Iterator[str]:
     """
     Stream tokens from llama.cpp server (SSE from /v1/chat/completions with stream=true).
@@ -127,6 +130,7 @@ def chat_stream(
         "model": model,
         "messages": messages,
         "stream": True,
+        "cache_prompt": cache_prompt,
         **(options or {}),
     }
 

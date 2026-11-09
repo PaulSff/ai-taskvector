@@ -14,6 +14,7 @@ from core.schemas.primitives import Data
 
 OLLAMA_DEFAULT_HOST = "http://127.0.0.1:11434"
 OLLAMA_DEFAULT_TIMEOUT_S = 300
+OLLAMA_DEFAULT_KEEP_ALIVE_S = 1800
 
 
 class OllamaClientKwargs(TypedDict, total=False):
@@ -146,7 +147,11 @@ def _messages_to_raw_prompt(messages: list[dict[str, str]]) -> str:
 
 
 def _call_client_chat_with_messages(
-    client, model: str, messages: list[dict[str, str]], options: Data
+    client,
+    model: str,
+    messages: list[dict[str, str]],
+    options: Data,
+    keep_alive: str | int | None, # allows for prompt caching e.g. "keep_alive": "30m"
 ) -> object:
     """
     Call client.chat according to model type.
@@ -155,14 +160,22 @@ def _call_client_chat_with_messages(
     For non-cloud models always convert messages to a single raw user prompt and call client.chat
     with that single message. No runtime fallback or signature probing is performed.
     """
+    kwargs = {
+        "model": model,
+        "options": options or {},
+    }
+    if keep_alive is not None:
+        kwargs["keep_alive"] = keep_alive
+    # Cloud models
     if _is_cloud_model(model):
-        return client.chat(model=model, messages=messages, options=options or {})
+        return client.chat(messages=messages, **kwargs)
 
     # Non-cloud/offline models: convert to a single raw prompt (unstructured)
     raw = _messages_to_raw_prompt(messages)
-    fallback_messages = [{"role": "user", "content": raw}]
-    return client.chat(model=model, messages=fallback_messages, options=options or {})
-
+    return client.chat(
+        messages=[{"role": "user", "content": raw}],
+        **kwargs,
+    )
 
 def chat(
     *,
@@ -172,6 +185,7 @@ def chat(
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
     options: Data | None = None,
     api_key: str | None = None,
+    keep_alive: str | int | None = OLLAMA_DEFAULT_KEEP_ALIVE_S,
 ) -> str:
     """
     Call Ollama chat and return agent content.
@@ -189,7 +203,11 @@ def chat(
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
     resp = _call_client_chat_with_messages(
-        client, model=model, messages=messages, options=options or {}
+        client,
+        model=model,
+        messages=messages,
+        options=options or {},
+        keep_alive=keep_alive,
     )
     return _extract_content(resp)
 
@@ -202,6 +220,7 @@ def chat_stream(
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
     options: Data | None = None,
     api_key: str | None = None,
+    keep_alive: str | int | None = OLLAMA_DEFAULT_KEEP_ALIVE_S,
 ) -> Iterator[str]:
     """
     Stream Ollama chat and yield agent content pieces (partial tokens).
@@ -224,11 +243,17 @@ def chat_stream(
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
 
+    chat_kwargs = {"model": model, "options": options or {}}
+    if keep_alive is not None:
+        chat_kwargs["keep_alive"] = keep_alive
+
     # Mode selection is strict based on model name only.
     if _is_cloud_model(model):
         # Structured stream expected to be supported for cloud models.
         for part in client.chat(
-            model=model, messages=messages, options=options or {}, stream=True
+            messages=messages,
+            stream=True,
+            **chat_kwargs,
         ):
             piece = _extract_content_piece(part)
             if piece:
@@ -239,7 +264,7 @@ def chat_stream(
     raw = _messages_to_raw_prompt(messages)
     fallback_messages = [{"role": "user", "content": raw}]
     yield _extract_content(
-        client.chat(model=model, messages=fallback_messages, options=options or {})
+        client.chat(messages=fallback_messages, **chat_kwargs)
     )
     return
 

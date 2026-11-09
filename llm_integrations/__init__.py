@@ -1,1 +1,1 @@
-"""LLM integration adapters (Ollama, etc.)."""
+"""LLM integration adapters (Ollama, llama.cpp etc.)."""

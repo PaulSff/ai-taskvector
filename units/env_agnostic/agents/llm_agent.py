@@ -43,6 +43,24 @@ def _param_int(params: Data, key: str, default: int) -> int:
 
     return default
 
+def _param_bool(params: Data, key: str, default: bool) -> bool:
+    raw = params.get(key)
+
+    if isinstance(raw, bool):
+        return raw
+
+    if isinstance(raw, int):
+        return bool(raw)
+
+    if isinstance(raw, str):
+        value = raw.strip().lower()
+        if value in {"true", "1", "yes", "on"}:
+            return True
+        if value in {"false", "0", "no", "off"}:
+            return False
+
+    return default
+
 def _is_user_message_missing(raw: object) -> bool:
     """True if user_message is empty or the known placeholder (pipeline did not receive real message)."""
     if raw is None:
@@ -98,6 +116,7 @@ def _llm_agent_step(
 
         # Build provider-agnostic config (accept common API key aliases if present)
         config: Data = {"model": model_name}
+
         if provider_lower == "ollama":
             config["host"] = host
             for key in ("api_key", "ollama_api_key", "provider_api_key"):
@@ -105,6 +124,21 @@ def _llm_agent_step(
                 if v:
                     config["api_key"] = v
                     break
+
+            # Ollama keep_alive is a chat-request parameter
+            # to cache prompt for a certain period of time in sec
+            # e.g. "keep_alive": 30 (1800 is set by default at the llm_integrations/ollama.py)
+            raw_keep_alive = params.get("keep_alive")
+            if isinstance(raw_keep_alive, (str, int)) and not isinstance(raw_keep_alive, bool):
+                config["keep_alive"] = raw_keep_alive
+
+        elif provider_lower in {"llama", "llama_cpp", "llama.cpp", "llama-serve"}:
+            config["host"] = host
+            config["cache_prompt"] = _param_bool(
+                params,
+                "cache_prompt",
+                True,
+            )
 
         options = params.get("options") or {}
         if not isinstance(options, dict):

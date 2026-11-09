@@ -541,6 +541,7 @@ def get_llm_provider_config(
     - ``model_name``
     - ``host``
     - ``api_key``
+    - ``keep_alive`` # Ollama only
     - ``options``
 
     The general Ollama API key is used when no workflow-unit override
@@ -553,6 +554,11 @@ def get_llm_provider_config(
 
     overrides = role.chat_overrides or {}
     result: Data = {}
+    keep_alive_value = None
+    has_keep_alive = False
+    cache_prompt_value = None
+    has_cache_prompt = False
+
 
     if isinstance(overrides, Mapping):
         for unit_params in overrides.values():
@@ -591,11 +597,38 @@ def get_llm_provider_config(
                 if api_key is not None:
                     result["api_key"] = api_key
 
+            if (
+                not has_keep_alive
+                and unit_params.get("keep_alive") is not None
+            ):
+                keep_alive_value = unit_params["keep_alive"]
+                has_keep_alive = True
+
+            if (
+                not has_cache_prompt
+                and unit_params.get("cache_prompt") is not None
+            ):
+                cache_prompt_value = unit_params["cache_prompt"]
+                has_cache_prompt = True
+
             if "options" not in result:
                 options = unit_params.get("options")
 
                 if isinstance(options, Mapping):
                     result["options"] = dict(options)
+
+    if (
+        result.get("provider") == "ollama"
+        and has_keep_alive
+        and keep_alive_value is not None
+    ):
+        result["keep_alive"] = keep_alive_value
+
+    if (
+        result.get("provider") == "llama"
+        and has_cache_prompt
+    ):
+        result["cache_prompt"] = cache_prompt_value
 
     if "api_key" not in result:
         api_key = _non_empty(

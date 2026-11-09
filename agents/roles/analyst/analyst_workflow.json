@@ -604,6 +604,7 @@
         "model_name": "role.analyst.llm.provider_model",
         "provider": "role.analyst.llm.provider",
         "host": "role.analyst.llm.provider_host",
+        "keep_alive": "role.analyst.llm.keep_alive",
         "options": "role.analyst.llm.generation_options"
       },
       "name": null,
