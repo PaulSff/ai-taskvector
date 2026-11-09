@@ -18,6 +18,7 @@ from config.settings import (
     get_rag_index_dir,
     get_rag_update_workflow_path,
 )
+from core.schemas.primitives import WorkflowInputs, is_json_object, safe_int
 from gui.utils.file_picker import register_file_picker
 from gui.utils.rag_update_handler import RagUpdateViaZmq
 from rag.mydata_file_manager_ops import organize_mydata_root
@@ -114,7 +115,7 @@ def copy_rag_source_paths_to_mydata(
     return n
 
 
-def build_rag_update_overrides_public() -> dict[str, dict[str, Any]]:
+def build_rag_update_overrides_public() -> WorkflowInputs:
     """Unit param overrides for ``rag/workflows/rag_update.json`` (shared with RAG tab and chat upload)."""
     return {
         "rag_update": {
@@ -178,20 +179,32 @@ async def run_rag_index_update_async(
         # Component contract:
         # - success: {"response": <rag_update output dict>, "outputs": <raw outputs>}
         # - error:   {"error": "<message>", "payload": <raw error payload>}
-        if result.get("error") is not None:
+        if "error" in result:
             msg = str(result.get("error") or "Update failed.")
             if use_dialog_ui and dialog_status is not None:
                 dialog_status.value = msg[:300] if msg else "Update failed."
             toast(msg or "Update failed.")
             return
 
-        response = result.get("response") or {}
-        data = (response.get("rag_update") or {}).get("data") or {}
+        response = result.get("response")
+        if not is_json_object(response):
+            toast("Malformed response.")
+            return
 
-        ok = data.get("ok", False)
-        msg = data.get("message", "") or data.get("error", "")
-        units_count = data.get("units_count", 0)
-        mydata_count = data.get("mydata_count", 0)
+        rag_update = response.get("rag_update")
+        if not is_json_object(rag_update):
+            toast("Malformed response.")
+            return
+
+        data = rag_update.get("data")
+        if not is_json_object(data):
+            toast("Malformed response.")
+            return
+
+        ok = bool(data.get("ok", False))
+        msg = str(data.get("message", "") or data.get("error", ""))
+        units_count = safe_int(data.get("units_count")) or 0
+        mydata_count = safe_int(data.get("mydata_count")) or 0
 
         if ok:
             if use_dialog_ui and dialog_status is not None:
@@ -321,19 +334,29 @@ async def run_rag_file_pick_copy_and_index(
             format="dict",
         )
 
-        if result.get("error") is not None:
-            toast(
-                str(result.get("error") or "Update failed.")[:300] or "Update failed."
-            )
+        if "error" in result:
+            toast(str(result.get("error") or "Update failed.")[:300] or "Update failed.")
             return
 
-        response = result.get("response") or {}
-        data = (response.get("rag_update") or {}).get("data") or {}
+        response = result.get("response")
+        if not is_json_object(response):
+            toast("Malformed response.")
+            return
 
-        ok = data.get("ok", False)
-        msg = data.get("message", "") or data.get("error", "")
-        units_count = data.get("units_count", 0)
-        mydata_count = data.get("mydata_count", 0)
+        rag_update = response.get("rag_update")
+        if not is_json_object(rag_update):
+            toast("Malformed response.")
+            return
+
+        data = rag_update.get("data")
+        if not is_json_object(data):
+            toast("Malformed response.")
+            return
+
+        ok = bool(data.get("ok", False))
+        msg = str(data.get("message", "") or data.get("error", ""))
+        units_count = safe_int(data.get("units_count")) or 0
+        mydata_count = safe_int(data.get("mydata_count")) or 0
 
         if ok:
             toast(f"Index updated. units: {units_count}, mydata: {mydata_count}.")
