@@ -604,6 +604,7 @@
         "model_name": "role.receptionist.llm.provider_model",
         "provider": "role.receptionist.llm.provider",
         "host": "role.receptionist.llm.provider_host",
+        "keep_alive": "role.receptionist.llm.keep_alive",
         "options": "role.receptionist.llm.generation_options"
       },
       "name": null,

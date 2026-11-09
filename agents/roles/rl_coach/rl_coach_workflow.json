@@ -364,9 +364,10 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "role.rl_coach.llm.ollama_host",
-        "model_name": "role.rl_coach.llm.ollama_model",
+        "host": "role.rl_coach.llm.provider_host",
+        "model_name": "role.rl_coach.llm.provider_model",
         "provider": "role.rl_coach.llm.provider",
+        "keep_alive": "role.rl_coach.llm.keep_alive",
         "options": "role.rl_coach.llm.generation_options"
       },
       "input_ports": [

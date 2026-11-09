@@ -26,8 +26,8 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "role.chat_name_creator.llm.ollama_host",
-        "model_name": "role.chat_name_creator.llm.ollama_model",
+        "host": "role.chat_name_creator.llm.provider_host",
+        "model_name": "role.chat_name_creator.llm.provider_model",
         "provider": "role.chat_name_creator.llm.provider",
         "options": "role.chat_name_creator.llm.generation_options"
       },

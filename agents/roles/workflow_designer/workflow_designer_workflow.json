@@ -604,6 +604,7 @@
         "model_name": "role.workflow_designer.llm.provider_model",
         "provider": "role.workflow_designer.llm.provider",
         "host": "role.workflow_designer.llm.provider_host",
+        "keep_alive": "role.workflow_designer.llm.keep_alive",
         "options": "role.workflow_designer.llm.generation_options"
       },
       "name": null,

@@ -604,6 +604,7 @@
         "model_name": "role.demiurge.llm.provider_model",
         "provider": "role.demiurge.llm.provider",
         "host": "role.demiurge.llm.provider_host",
+        "keep_alive": "role.demiurge.llm.keep_alive",
         "options": "role.demiurge.llm.generation_options"
       },
       "name": null,

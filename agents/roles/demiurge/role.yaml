@@ -11,8 +11,9 @@ rag:
 llm:
   provider: ollama
   provider_config_json: ''
-  ollama_host: http://127.0.0.1:11434
-  ollama_model: gemma4:31b-cloud
+  provider_host: http://127.0.0.1:11434
+  provider_model: gemma4:31b-cloud
+  keep_alive: 1800
   temperature: 0.3
   num_predict: 1024
   generation_options:
@@ -37,6 +38,7 @@ chat:
       provider: ollama
       model_name: gemma4:31b-cloud
       host: http://127.0.0.1:11434
+      keep_alive: 1800
       options:
         temperature: 0.3
         num_predict: 1024

@@ -604,6 +604,7 @@
         "model_name": "role.travel_agent.llm.provider_model",
         "provider": "role.travel_agent.llm.provider",
         "host": "role.travel_agent.llm.provider_host",
+        "keep_alive": "role.travel_agent.llm.keep_alive",
         "options": "role.travel_agent.llm.generation_options"
       },
       "name": null,

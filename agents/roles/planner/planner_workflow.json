@@ -604,6 +604,7 @@
         "model_name": "role.planner.llm.provider_model",
         "provider": "role.planner.llm.provider",
         "host": "role.planner.llm.provider_host",
+        "keep_alive": "role.planner.llm.keep_alive",
         "options": "role.planner.llm.generation_options"
       },
       "name": null,
