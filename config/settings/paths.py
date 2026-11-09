@@ -29,7 +29,7 @@ _MESSENGERS_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "messengers_workflows"
 _WORKFLOW_DIR = _SERVICES_DIR / "workflows"
 
 AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import_workflows" / "auto_import_workflow.json"
-NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "import_workflows" / "new_flow_template.json"
+NEW_FLOW_TEMPLATE_PATH = CONFIG_DIR / "workflow_examples" / "new_flow_template.json"
 
 
 def _resolve_dir(value: str) -> Path:
