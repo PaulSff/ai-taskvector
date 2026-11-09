@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import cast
@@ -438,68 +437,65 @@ def build_rag_file_browser_panel(
                             await download_path_or_url_to_disk(page, p)
                         page.run_task(coro)
 
-                    tile_click_last_ts = [0.0]
-                    double_click_window_s = 0.35
-
-                    async def _preview_markdown_async(p: str = abs_path_str, n: str = name) -> None:
+                    async def _preview_markdown_async(
+                        p: str = abs_path_str,
+                        n: str = name,
+                    ) -> None:
                         open_markdown_dialog(page, local_path=p, title=f"Preview: {n}")
 
-                    def _on_tile_double_click(
-                        e: ft.Event[ft.ListTile],
-                        last_ts: list[float] = tile_click_last_ts,
-                        window_s: float = double_click_window_s,
-                        preview_fn=_preview_markdown_async,
+                    def _open_file(
+                        e: Event[ListTile],
+                        p: str = abs_path_str,
+                        n: str = name,
                     ) -> None:
-                        now = time.monotonic()
-                        if now - last_ts[0] <= window_s:
-                            last_ts[0] = 0.0
-                            page.run_task(preview_fn)
-                        else:
-                            last_ts[0] = now
+                        page.run_task(lambda: _preview_markdown_async(p, n))
 
                     rows.append(
-                        ft.ListTile(
-                            leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
-                            title=ft.Text(name, size=13, font_family="monospace"),
-                            subtitle=ft.Text(
-                                f"{_human_bytes(sz or 0)} · {rel_str}",
-                                size=10,
-                                color=ft.Colors.GREY_500,
-                            ),
-                            dense=True,
-                            on_click=_on_tile_double_click,
-                            trailing=ft.Row(
-                                cast(
-                                    list[ft.Control],
-                                    [
-                                        ft.IconButton(
-                                            icon=ft.Icons.CONTENT_COPY,
-                                            icon_size=16,
-                                            icon_color=ft.Colors.GREY_400,
-                                            tooltip="Copy full path",
-                                            style=ft.ButtonStyle(padding=2),
-                                            on_click=_copy_file_path,
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.Icons.DOWNLOAD,
-                                            icon_size=16,
-                                            icon_color=ft.Colors.GREY_400,
-                                            tooltip="Download file",
-                                            style=ft.ButtonStyle(padding=2),
-                                            on_click=_download_file,
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                                            icon_size=16,
-                                            icon_color=ft.Colors.GREY_400,
-                                            tooltip="Add path to chat context",
-                                            style=ft.ButtonStyle(padding=2),
-                                            on_click=_send_path_to_chat,
-                                        ),
-                                    ],
+                        ft.GestureDetector(
+                            on_double_tap=lambda _e, preview_fn=_preview_markdown_async: page.run_task(preview_fn),
+                            content=ft.ListTile(
+                                leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
+                                title=ft.Text(name, size=13, font_family="monospace"),
+                                subtitle=ft.Text(
+                                    f"{_human_bytes(sz or 0)} · {rel_str}",
+                                    size=10,
+                                    color=ft.Colors.GREY_500,
                                 ),
-                                spacing=0,
-                                tight=True,
+                                dense=True,
+                                on_click=_open_file,
+                                trailing=ft.Row(
+                                    cast(
+                                        list[ft.Control],
+                                        [
+                                            ft.IconButton(
+                                                icon=ft.Icons.CONTENT_COPY,
+                                                icon_size=16,
+                                                icon_color=ft.Colors.GREY_400,
+                                                tooltip="Copy full path",
+                                                style=ft.ButtonStyle(padding=2),
+                                                on_click=_copy_file_path,
+                                            ),
+                                            ft.IconButton(
+                                                icon=ft.Icons.DOWNLOAD,
+                                                icon_size=16,
+                                                icon_color=ft.Colors.GREY_400,
+                                                tooltip="Download file",
+                                                style=ft.ButtonStyle(padding=2),
+                                                on_click=_download_file,
+                                            ),
+                                            ft.IconButton(
+                                                icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                                icon_size=16,
+                                                icon_color=ft.Colors.GREY_400,
+                                                tooltip="Add path to chat context",
+                                                style=ft.ButtonStyle(padding=2),
+                                                on_click=_send_path_to_chat,
+                                            ),
+                                        ],
+                                    ),
+                                    spacing=0,
+                                    tight=True,
+                                ),
                             ),
                         )
                     )
