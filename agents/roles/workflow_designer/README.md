@@ -173,7 +173,7 @@ Pass `unit_param_overrides["llm_agent"]` to match app / profile settings, e.g.:
 
 - `workflow_designer_ollama_model` → `model_name`
 - `workflow_designer_llm_provider` → `provider`
-- `workflow_designer_ollama_host` → `host`
+- `workflow_designer_provider_host` → `host`
 
 (Names align with `role.yaml` / settings; exact keys depend on your executor merge.)
 

@@ -72,7 +72,7 @@ docker compose build
 docker compose up
 ```
 
-Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `OLLAMA_HOST`.
+Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `PROVIDER_HOST`.
 
 Pull a model in Ollama (one-time):
 
@@ -87,7 +87,7 @@ Models are stored in a persistent volume (`ollama_data`).
 ```bash
 docker build -t ai-taskvector .
 docker run --rm -p 8550:8550 \
-  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  -e PROVIDER_HOST=http://host.docker.internal:11434 \
   -e SKIP_OLLAMA=1 \
   ai-taskvector
 ```
@@ -96,7 +96,7 @@ Open **http://localhost:8550**. If Ollama runs on your host, point the app at it
 
 ```bash
 docker run --rm -p 8550:8550 \
-  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  -e PROVIDER_HOST=http://host.docker.internal:11434 \
   -e SKIP_OLLAMA=1 \
   ai-taskvector
 ```
@@ -105,7 +105,7 @@ docker run --rm -p 8550:8550 \
 
 | Variable | Description |
 |----------|-------------|
-| `OLLAMA_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
+| `PROVIDER_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
 | `OLLAMA_MODEL` | Default model name (e.g. `gemma4:31b-cloud`) when not set in GUI settings. |
 | `OLLAMA_API_KEY` | Optional (for Ollama Cloud) |
 

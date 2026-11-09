@@ -29,9 +29,9 @@ from .constants import (
     DEFAULT_LEFT_PANEL_WIDTH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROJECT_NAME,
+    DEFAULT_PROVIDER_HOST,
     DEFAULT_RAG_CONFIG_PATH,
     DEFAULT_RAG_FORMAT_MAX_CHARS,
     DEFAULT_RAG_FORMAT_SNIPPET_MAX,
@@ -81,9 +81,9 @@ from .constants import (
     KEY_LEFT_PANEL_WIDTH,
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
-    KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
     KEY_ORCHESTRATOR_UPDATE_ENDPOINT,
+    KEY_PROVIDER_HOST,
     KEY_RAG_CONFIG_PATH,
     KEY_RIGHT_PANEL_VISIBLE,
     KEY_RIGHT_PANEL_WIDTH,
@@ -119,9 +119,9 @@ from .persistence import load_settings
 from .role_yaml import _role_llm_float, _role_llm_int
 
 
-def _default_ollama_host() -> str:
-    """Default Ollama host; use OLLAMA_HOST env in Docker (e.g. http://ollama:11434)."""
-    return (os.environ.get("OLLAMA_HOST") or "").strip() or DEFAULT_OLLAMA_HOST
+def _default_provider_host() -> str:
+    """Default Ollama host; use provider_host env in Docker (e.g. http://ollama:11434)."""
+    return (os.environ.get("provider_host") or "").strip() or DEFAULT_PROVIDER_HOST
 
 
 def _default_ollama_model() -> str:
@@ -476,9 +476,9 @@ def get_debug_log_path() -> Path:
     return p
 
 
-def get_ollama_host() -> str:
-    """Return Ollama host URL, e.g. http://127.0.0.1:11434. Respects OLLAMA_HOST env."""
-    return load_settings().get(KEY_OLLAMA_HOST) or _default_ollama_host()
+def get_provider_host() -> str:
+    """Return inference provide host URL, e.g. http://127.0.0.1:11434 for Ollama. Respects PROVIDER_HOST env."""
+    return load_settings().get(KEY_PROVIDER_HOST) or _default_provider_host()
 
 
 def get_ollama_model() -> str:

@@ -16,7 +16,7 @@ import urllib.request
 from typing import Any
 
 from config.settings import (
-    DEFAULT_OLLAMA_HOST,
+    DEFAULT_PROVIDER_HOST,
     REPO_ROOT,
     STOP_TIMEOUT_S,
     WAIT_POLL_INTERVAL_S,
@@ -71,7 +71,7 @@ def _get_ollama_executable() -> str:
 
 
 
-def _server_is_ready(host: str = DEFAULT_OLLAMA_HOST) -> bool:
+def _server_is_ready(host: str = DEFAULT_PROVIDER_HOST) -> bool:
     """Return True if Ollama server responds at host."""
     try:
         url = host.rstrip("/") + "/api/tags"
@@ -89,7 +89,7 @@ def start_ollama_serve() -> tuple[bool, str]:
     Returns (success, message). Does not start if server is already reachable.
     """
     if _server_is_ready():
-        print("[Ollama] Server already running at", DEFAULT_OLLAMA_HOST, flush=True)
+        print("[Ollama] Server already running at", DEFAULT_PROVIDER_HOST, flush=True)
         return True, "Ollama already running"
 
     exe = _get_ollama_executable()
@@ -117,7 +117,7 @@ def start_ollama_serve() -> tuple[bool, str]:
     for _ in range(int(WAIT_READY_TIMEOUT_S / WAIT_POLL_INTERVAL_S)):
         time.sleep(WAIT_POLL_INTERVAL_S)
         if _server_is_ready():
-            print("[Ollama] Server ready at", DEFAULT_OLLAMA_HOST, flush=True)
+            print("[Ollama] Server ready at", DEFAULT_PROVIDER_HOST, flush=True)
             return True, "Ollama started"
     print("[Ollama] Timeout waiting for server", flush=True)
     return False, "Ollama started but server did not become ready in time"

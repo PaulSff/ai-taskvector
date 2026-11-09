@@ -332,7 +332,7 @@ docker compose build
 docker compose up
 ```
 
-Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `OLLAMA_HOST`.
+Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `PROVIDER_HOST`.
 
 Pull a model in Ollama (one-time):
 
@@ -352,14 +352,14 @@ docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-taskvecto
 Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
 
 ```bash
-docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/main.py --web -p 8550
+docker run --rm -p 8550:8550 -e PROVIDER_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/main.py --web -p 8550
 ```
 
 **Environment variables**
 
 | Variable | Description |
 |----------|-------------|
-| `OLLAMA_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
+| `PROVIDER_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
 | `OLLAMA_MODEL` | Default model name (e.g. `llama3.2`) when not set in GUI settings. |
 | `OLLAMA_API_KEY` | Optional; for Ollama Cloud. |
 

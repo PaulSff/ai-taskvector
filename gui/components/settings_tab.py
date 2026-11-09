@@ -17,8 +17,8 @@ from config.settings.constants import (
     DEFAULT_DEBUG_LOG_PATH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
+    DEFAULT_PROVIDER_HOST,
     DEFAULT_RAG_EMBEDDING_MODEL,
     DEFAULT_RL_COACH_PROMPT_PATH,
     DEFAULT_TELEGRAM_ENABLED,
@@ -36,8 +36,8 @@ from config.settings.constants import (
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_EXECUTABLE_PATH,
-    KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
+    KEY_PROVIDER_HOST,
     KEY_RL_COACH_PROMPT_PATH,
     KEY_START_OLLAMA_WITH_APP,
     KEY_TELEGRAM_ENABLED,
@@ -85,7 +85,7 @@ async def build_settings_tab(
         initial.get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
     )
     best_model_path_value = (initial.get(KEY_BEST_MODEL_PATH) or "").strip()
-    legacy_ollama_host = initial.get(KEY_OLLAMA_HOST)
+    legacy_provider_host = initial.get(KEY_PROVIDER_HOST)
     legacy_ollama_model = initial.get(KEY_OLLAMA_MODEL)
 
     def _initial_llm_row_for_role(role_id: str) -> tuple[str, str, str, str]:
@@ -93,13 +93,13 @@ async def build_settings_tab(
         cfg = _role_llm_str(role_id, "provider_config_json", default="")
         if role_id == "workflow_designer":
             host = (
-                _role_llm_str(role_id, "ollama_host", default=DEFAULT_OLLAMA_HOST)
+                _role_llm_str(role_id, "provider_host", default=DEFAULT_PROVIDER_HOST)
                 or (
-                    str(legacy_ollama_host).strip()
-                    if legacy_ollama_host is not None
+                    str(legacy_provider_host).strip()
+                    if legacy_provider_host is not None
                     else ""
                 )
-                or DEFAULT_OLLAMA_HOST
+                or DEFAULT_PROVIDER_HOST
             )
             model = (
                 _role_llm_str(role_id, "ollama_model", default=DEFAULT_OLLAMA_MODEL)
@@ -113,14 +113,14 @@ async def build_settings_tab(
         else:
             fb_h = (
                 _role_llm_str(
-                    "workflow_designer", "ollama_host", default=DEFAULT_OLLAMA_HOST
+                    "workflow_designer", "provider_host", default=DEFAULT_PROVIDER_HOST
                 )
                 or (
-                    str(legacy_ollama_host).strip()
-                    if legacy_ollama_host is not None
+                    str(legacy_provider_host).strip()
+                    if legacy_provider_host is not None
                     else ""
                 )
-                or DEFAULT_OLLAMA_HOST
+                or DEFAULT_PROVIDER_HOST
             )
             fb_m = (
                 _role_llm_str(
@@ -133,7 +133,7 @@ async def build_settings_tab(
                 )
                 or DEFAULT_OLLAMA_MODEL
             )
-            host = _role_llm_str(role_id, "ollama_host", default=fb_h) or fb_h
+            host = _role_llm_str(role_id, "provider_host", default=fb_h) or fb_h
             model = _role_llm_str(role_id, "ollama_model", default=fb_m) or fb_m
         return prov, cfg, host, model
 
@@ -438,7 +438,7 @@ async def build_settings_tab(
             role_llm_updates[rid] = {
                 "provider": (w["provider"].value or "").strip() or DEFAULT_LLM_PROVIDER,
                 "provider_config_json": (w["config"].value or "").strip(),
-                "ollama_host": (w["host"].value or "").strip() or DEFAULT_OLLAMA_HOST,
+                "provider_host": (w["host"].value or "").strip() or DEFAULT_PROVIDER_HOST,
                 "ollama_model": (w["model"].value or "").strip()
                 or DEFAULT_OLLAMA_MODEL,
             }
@@ -529,7 +529,7 @@ async def build_settings_tab(
                     continue
                 w["provider"].value = patch["provider"]
                 w["config"].value = patch["provider_config_json"]
-                w["host"].value = patch["ollama_host"]
+                w["host"].value = patch["provider_host"]
                 w["model"].value = patch["ollama_model"]
             ollama_api_key_field.value = ollama_api_key
             start_ollama_with_app_cb.value = start_ollama

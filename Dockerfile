@@ -45,7 +45,7 @@ COPY . .
 
 # Run Flet GUI (from repo root).
 # Ollama: the Python client (ollama) is installed; the Ollama server is separate.
-# Use docker-compose.yml to run app + Ollama together; set OLLAMA_HOST=http://ollama:11434.
+# Use docker-compose.yml to run app + Ollama together; set PROVIDER_HOST=http://ollama:11434.
 #
 # Running in WEB mode (WEB UI): override with
 # CMD ["bash", "run.sh", "--web", "-p", "8550"]

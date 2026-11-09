@@ -1,5 +1,5 @@
 # App + Ollama LLM server. The app uses the Python ollama client (already in the image)
-# and connects to the Ollama service via OLLAMA_HOST.
+# and connects to the Ollama service via provider_host.
 #
 # Build and run:
 #   docker compose build
@@ -30,7 +30,7 @@ services:
     build: .
     container_name: ai-taskvector
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      provider_host: http://ollama:11434
       SKIP_OLLAMA: "1"
       PYTHONPATH: /usr/src/app
       # OLLAMA_MODEL: gemma4:31b-cloud
