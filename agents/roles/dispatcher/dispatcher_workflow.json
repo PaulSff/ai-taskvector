@@ -75,8 +75,8 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "role.dispatcher.llm.ollama_host",
-        "model_name": "role.dispatcher.llm.ollama_model",
+        "host": "role.dispatcher.llm.provider_host",
+        "model_name": "role.dispatcher.llm.provider_model",
         "provider": "role.dispatcher.llm.provider",
         "keep_alive": "role.dispatcher.llm.keep_alive",
         "options": "role.dispatcher.llm.generation_options"
