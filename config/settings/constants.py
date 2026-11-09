@@ -23,13 +23,13 @@ DEFAULT_BEST_MODEL_PATH = ""
 # LLM settings (per-agent profiles)
 #
 # Back-compat note:
-# - `provider_host`, `ollama_model`, `llm_provider`, `llm_provider_config_json` were previously global.
+# - `provider_host`, `provider_model`, `llm_provider`, `llm_provider_config_json` were previously global.
 # - We now store separate settings for Workflow Designer and RL Coach, but we still read the old keys
 #   as defaults for Workflow Designer and for migration.
 KEY_PROVIDER_HOST = "provider_host"  # legacy/global
-KEY_OLLAMA_MODEL = "ollama_model"  # legacy/global
+KEY_PROVIDER_MODEL = "provider_model"  # legacy/global
 DEFAULT_PROVIDER_HOST = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "llama3.2"
+DEFAULT_PROVIDER_MODEL = "llama3.2"
 WAIT_READY_TIMEOUT_S = 30
 WAIT_POLL_INTERVAL_S = 0.5
 STOP_TIMEOUT_S = 5
@@ -49,7 +49,7 @@ KEY_OLLAMA_EXECUTABLE_PATH = "ollama_executable_path"
 KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
 KEY_WD_LLM_PROVIDER_CONFIG_JSON = "workflow_designer_llm_provider_config_json"
 KEY_WD_PROVIDER_HOST = "workflow_designer_provider_host"
-KEY_WD_OLLAMA_MODEL = "workflow_designer_ollama_model"
+KEY_WD_PROVIDER_MODEL = "workflow_designer_provider_model"
 # Ollama generation options for agent workflows (passed to LLMAgent.params["options"])
 KEY_WD_LLM_TEMPERATURE = "workflow_designer_llm_temperature"
 KEY_WD_LLM_NUM_PREDICT = "workflow_designer_llm_num_predict"
@@ -60,7 +60,7 @@ DEFAULT_WD_LLM_NUM_PREDICT = 1024
 KEY_RL_LLM_PROVIDER = "rl_coach_llm_provider"
 KEY_RL_LLM_PROVIDER_CONFIG_JSON = "rl_coach_llm_provider_config_json"
 KEY_RL_PROVIDER_HOST = "rl_coach_provider_host"
-KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
+KEY_RL_PROVIDER_MODEL = "rl_coach_provider_model"
 KEY_RL_LLM_TEMPERATURE = "rl_coach_llm_temperature"
 KEY_RL_LLM_NUM_PREDICT = "rl_coach_llm_num_predict"
 DEFAULT_RL_LLM_TEMPERATURE = 0.3

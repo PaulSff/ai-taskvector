@@ -17,8 +17,8 @@ from config.settings.constants import (
     DEFAULT_DEBUG_LOG_PATH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROVIDER_HOST,
+    DEFAULT_PROVIDER_MODEL,
     DEFAULT_RAG_EMBEDDING_MODEL,
     DEFAULT_RL_COACH_PROMPT_PATH,
     DEFAULT_TELEGRAM_ENABLED,
@@ -36,8 +36,8 @@ from config.settings.constants import (
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_EXECUTABLE_PATH,
-    KEY_OLLAMA_MODEL,
     KEY_PROVIDER_HOST,
+    KEY_PROVIDER_MODEL,
     KEY_RL_COACH_PROMPT_PATH,
     KEY_START_OLLAMA_WITH_APP,
     KEY_TELEGRAM_ENABLED,
@@ -86,7 +86,7 @@ async def build_settings_tab(
     )
     best_model_path_value = (initial.get(KEY_BEST_MODEL_PATH) or "").strip()
     legacy_provider_host = initial.get(KEY_PROVIDER_HOST)
-    legacy_ollama_model = initial.get(KEY_OLLAMA_MODEL)
+    legacy_provider_model = initial.get(KEY_PROVIDER_MODEL)
 
     def _initial_llm_row_for_role(role_id: str) -> tuple[str, str, str, str]:
         prov = _role_llm_str(role_id, "provider", default=DEFAULT_LLM_PROVIDER)
@@ -102,13 +102,13 @@ async def build_settings_tab(
                 or DEFAULT_PROVIDER_HOST
             )
             model = (
-                _role_llm_str(role_id, "ollama_model", default=DEFAULT_OLLAMA_MODEL)
+                _role_llm_str(role_id, "provider_model", default=DEFAULT_PROVIDER_MODEL)
                 or (
-                    str(legacy_ollama_model).strip()
-                    if legacy_ollama_model is not None
+                    str(legacy_provider_model).strip()
+                    if legacy_provider_model is not None
                     else ""
                 )
-                or DEFAULT_OLLAMA_MODEL
+                or DEFAULT_PROVIDER_MODEL
             )
         else:
             fb_h = (
@@ -124,17 +124,17 @@ async def build_settings_tab(
             )
             fb_m = (
                 _role_llm_str(
-                    "workflow_designer", "ollama_model", default=DEFAULT_OLLAMA_MODEL
+                    "workflow_designer", "provider_model", default=DEFAULT_PROVIDER_MODEL
                 )
                 or (
-                    str(legacy_ollama_model).strip()
-                    if legacy_ollama_model is not None
+                    str(legacy_provider_model).strip()
+                    if legacy_provider_model is not None
                     else ""
                 )
-                or DEFAULT_OLLAMA_MODEL
+                or DEFAULT_PROVIDER_MODEL
             )
             host = _role_llm_str(role_id, "provider_host", default=fb_h) or fb_h
-            model = _role_llm_str(role_id, "ollama_model", default=fb_m) or fb_m
+            model = _role_llm_str(role_id, "provider_model", default=fb_m) or fb_m
         return prov, cfg, host, model
 
     llm_role_widgets: dict[str, dict[str, Any]] = {}
@@ -439,8 +439,8 @@ async def build_settings_tab(
                 "provider": (w["provider"].value or "").strip() or DEFAULT_LLM_PROVIDER,
                 "provider_config_json": (w["config"].value or "").strip(),
                 "provider_host": (w["host"].value or "").strip() or DEFAULT_PROVIDER_HOST,
-                "ollama_model": (w["model"].value or "").strip()
-                or DEFAULT_OLLAMA_MODEL,
+                "provider_model": (w["model"].value or "").strip()
+                or DEFAULT_PROVIDER_MODEL,
             }
         ollama_api_key = (ollama_api_key_field.value or "").strip()
         start_ollama = bool(start_ollama_with_app_cb.value)
@@ -530,7 +530,7 @@ async def build_settings_tab(
                 w["provider"].value = patch["provider"]
                 w["config"].value = patch["provider_config_json"]
                 w["host"].value = patch["provider_host"]
-                w["model"].value = patch["ollama_model"]
+                w["model"].value = patch["provider_model"]
             ollama_api_key_field.value = ollama_api_key
             start_ollama_with_app_cb.value = start_ollama
             ollama_executable_path_field.value = ollama_path

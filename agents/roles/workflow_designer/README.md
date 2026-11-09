@@ -171,7 +171,7 @@ When `parser_output` includes side channels (`read_file`, `rag_search`, `web_sea
 
 Pass `unit_param_overrides["llm_agent"]` to match app / profile settings, e.g.:
 
-- `workflow_designer_ollama_model` → `model_name`
+- `workflow_designer_provider_model` → `model_name`
 - `workflow_designer_llm_provider` → `provider`
 - `workflow_designer_provider_host` → `host`
 

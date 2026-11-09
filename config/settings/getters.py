@@ -29,9 +29,9 @@ from .constants import (
     DEFAULT_LEFT_PANEL_WIDTH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROJECT_NAME,
     DEFAULT_PROVIDER_HOST,
+    DEFAULT_PROVIDER_MODEL,
     DEFAULT_RAG_CONFIG_PATH,
     DEFAULT_RAG_FORMAT_MAX_CHARS,
     DEFAULT_RAG_FORMAT_SNIPPET_MAX,
@@ -81,9 +81,9 @@ from .constants import (
     KEY_LEFT_PANEL_WIDTH,
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
-    KEY_OLLAMA_MODEL,
     KEY_ORCHESTRATOR_UPDATE_ENDPOINT,
     KEY_PROVIDER_HOST,
+    KEY_PROVIDER_MODEL,
     KEY_RAG_CONFIG_PATH,
     KEY_RIGHT_PANEL_VISIBLE,
     KEY_RIGHT_PANEL_WIDTH,
@@ -124,9 +124,9 @@ def _default_provider_host() -> str:
     return (os.environ.get("provider_host") or "").strip() or DEFAULT_PROVIDER_HOST
 
 
-def _default_ollama_model() -> str:
-    """Default Ollama model; use OLLAMA_MODEL env to override."""
-    return (os.environ.get("OLLAMA_MODEL") or "").strip() or DEFAULT_OLLAMA_MODEL
+def _default_provider_model() -> str:
+    """Default Ollama model; use provider_model env to override."""
+    return (os.environ.get("provider_model") or "").strip() or DEFAULT_PROVIDER_MODEL
 
 
 def _default_chat_history_dir() -> str:
@@ -481,9 +481,9 @@ def get_provider_host() -> str:
     return load_settings().get(KEY_PROVIDER_HOST) or _default_provider_host()
 
 
-def get_ollama_model() -> str:
-    """Return Ollama model name to use for agents chat. Respects OLLAMA_MODEL env."""
-    return load_settings().get(KEY_OLLAMA_MODEL) or _default_ollama_model()
+def get_provider_model() -> str:
+    """Return Ollama model name to use for agents chat. Respects provider_model env."""
+    return load_settings().get(KEY_PROVIDER_MODEL) or _default_provider_model()
 
 
 def list_llm_providers() -> list[str]:

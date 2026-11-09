@@ -19,9 +19,9 @@ from .constants import (
     DEFAULT_LEFT_PANEL_WIDTH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROJECT_NAME,
     DEFAULT_PROVIDER_HOST,
+    DEFAULT_PROVIDER_MODEL,
     DEFAULT_RAG_EMBEDDING_MODEL,
     DEFAULT_RIGHT_PANEL_VISIBLE,
     DEFAULT_RIGHT_PANEL_WIDTH,
@@ -48,8 +48,8 @@ from .constants import (
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_EXECUTABLE_PATH,
-    KEY_OLLAMA_MODEL,
     KEY_PROVIDER_HOST,
+    KEY_PROVIDER_MODEL,
     KEY_RAG_EMBEDDING_MODEL,
     KEY_RAG_INDEX_DATA_DIR,
     KEY_RAG_OFFLINE,
@@ -288,17 +288,17 @@ def save_settings(
     workflow_designer_llm_provider: str | None = None,
     workflow_designer_llm_provider_config_json: str | None = None,
     workflow_designer_provider_host: str | None = None,
-    workflow_designer_ollama_model: str | None = None,
+    workflow_designer_provider_model: str | None = None,
     rl_coach_llm_provider: str | None = None,
     rl_coach_llm_provider_config_json: str | None = None,
     rl_coach_provider_host: str | None = None,
-    rl_coach_ollama_model: str | None = None,
+    rl_coach_provider_model: str | None = None,
     role_llm_updates: dict[str, dict[str, Any]] | None = None,
     ollama_api_key: str | None = None,
     start_ollama_with_app: bool | None = None,
     ollama_executable_path: str | None = None,
     provider_host: str | None = None,
-    ollama_model: str | None = None,
+    provider_model: str | None = None,
     chat_history_dir: str | None = None,
     mydata_dir: str | None = None,
     rag_embedding_model: str | None = None,
@@ -368,10 +368,10 @@ def save_settings(
             wd_llm_patch["provider_host"] = (
                 workflow_designer_provider_host or ""
             ).strip() or DEFAULT_PROVIDER_HOST
-        if workflow_designer_ollama_model is not None:
-            wd_llm_patch["ollama_model"] = (
-                workflow_designer_ollama_model or ""
-            ).strip() or DEFAULT_OLLAMA_MODEL
+        if workflow_designer_provider_model is not None:
+            wd_llm_patch["provider_model"] = (
+                workflow_designer_provider_model or ""
+            ).strip() or DEFAULT_PROVIDER_MODEL
         if wd_llm_patch:
             _patch_role_llm("workflow_designer", wd_llm_patch)
 
@@ -388,10 +388,10 @@ def save_settings(
             rl_llm_patch["provider_host"] = (
                 rl_coach_provider_host or ""
             ).strip() or DEFAULT_PROVIDER_HOST
-        if rl_coach_ollama_model is not None:
-            rl_llm_patch["ollama_model"] = (
-                rl_coach_ollama_model or ""
-            ).strip() or DEFAULT_OLLAMA_MODEL
+        if rl_coach_provider_model is not None:
+            rl_llm_patch["provider_model"] = (
+                rl_coach_provider_model or ""
+            ).strip() or DEFAULT_PROVIDER_MODEL
         if rl_llm_patch:
             _patch_role_llm("rl_coach", rl_llm_patch)
 
@@ -406,8 +406,8 @@ def save_settings(
     # Legacy/global updates (deprecated). Kept only for back-compat; avoid using in new code.
     if provider_host is not None:
         data[KEY_PROVIDER_HOST] = (provider_host or "").strip() or DEFAULT_PROVIDER_HOST
-    if ollama_model is not None:
-        data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+    if provider_model is not None:
+        data[KEY_PROVIDER_MODEL] = (provider_model or "").strip() or DEFAULT_PROVIDER_MODEL
     if chat_history_dir is not None:
         data[KEY_CHAT_HISTORY_DIR] = (
             chat_history_dir or ""

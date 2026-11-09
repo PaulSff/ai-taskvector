@@ -13,7 +13,7 @@ Supported string forms (only when the whole param value is that string):
   For ``role.<id>.report.output_dir``, string values are resolved as repo-relative paths when relative.
 
 Examples: ``tool.rag_search.rag.min_score``, ``role.workflow_designer.rag.top_k``,
-``settings.rag_index_data_dir``, ``role.workflow_designer.llm.ollama_model``.
+``settings.rag_index_data_dir``, ``role.workflow_designer.llm.provider_model``.
 
 Workflow / executor: ``resolve_process_graph_param_refs`` expands refs in every unit's ``params``
 (recursively through dict/list) when a graph is executed.

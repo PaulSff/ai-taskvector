@@ -33,7 +33,7 @@ services:
       provider_host: http://ollama:11434
       SKIP_OLLAMA: "1"
       PYTHONPATH: /usr/src/app
-      # OLLAMA_MODEL: gemma4:31b-cloud
+      # provider_model: gemma4:31b-cloud
     depends_on:
       - ollama
     ports:

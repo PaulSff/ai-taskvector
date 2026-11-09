@@ -106,7 +106,7 @@ docker run --rm -p 8550:8550 \
 | Variable | Description |
 |----------|-------------|
 | `PROVIDER_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
-| `OLLAMA_MODEL` | Default model name (e.g. `gemma4:31b-cloud`) when not set in GUI settings. |
+| `PROVIDER_MODEL` | Default model name (e.g. `gemma4:31b-cloud`) when not set in GUI settings. |
 | `OLLAMA_API_KEY` | Optional (for Ollama Cloud) |
 
 **Docker Files**
