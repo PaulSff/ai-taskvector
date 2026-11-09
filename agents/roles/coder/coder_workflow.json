@@ -604,6 +604,7 @@
         "model_name": "role.coder.llm.provider_model",
         "provider": "role.coder.llm.provider",
         "host": "role.coder.llm.provider_host",
+        "keep_alive": "role.coder.llm.keep_alive",
         "options": "role.coder.llm.generation_options"
       },
       "name": null,
